@@ -4,7 +4,7 @@ Minimizer based de Bruijn-like Graph constructor. Homopolymer compress input seq
 
 #### Compilation
 
-- `git clone`
+- `git clone https://github.com/maickrau/MBG.git`
 - `cd MBG`
 - `git submodule update --init --recursive`
 - `make bin/MBG`
