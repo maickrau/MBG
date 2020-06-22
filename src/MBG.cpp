@@ -1161,6 +1161,12 @@ int main(int argc, char** argv)
 	size_t minCoverage = std::stoi(argv[5]);
 	size_t minUnitigCoverage = std::stod(argv[6]);
 
+	if (windowSize > kmerSize)
+	{
+		std::cerr << "Window size cannot be greater than k-mer size" << std::endl;
+		std::abort();
+	}
+
 	auto beforeReading = getTime();
 	auto reads = loadReadsAsHashes(inputReads, kmerSize, windowSize);
 	auto beforeUnitigs = getTime();
