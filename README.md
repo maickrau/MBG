@@ -1,6 +1,6 @@
 ## MBG
 
-Minimizer based de Bruijn Graph building. Homopolymer compress input sequences, winnow minimizers from hpc-compressed sequences, connect minimizers with an edge if they are adjacent in a read, unitigify. Suggested input is PacBio HiFi/CCS reads. May or may not work with Illumina reads.
+Minimizer based de Bruijn-like Graph constructor. Homopolymer compress input sequences, winnow minimizers from hpc-compressed sequences, connect minimizers with an edge if they are adjacent in a read, unitigify. Suggested input is PacBio HiFi/CCS reads. May or may not work with Illumina reads.
 
 #### Compilation
 
@@ -11,7 +11,9 @@ Minimizer based de Bruijn Graph building. Homopolymer compress input sequences, 
 
 #### Usage
 
-`bin/MBG input_reads.fa output_graph.gfa k w kmerabundance unitigabundance`, eg `bin/MBG reads.fa graph.gfa 2501 500 1 3`
+`bin/MBG input_reads.fa output_graph.gfa k w kmerabundance unitigabundance`
+
+eg `bin/MBG reads.fa graph.gfa 2501 500 1 3`
 
 #### Parameters
 
