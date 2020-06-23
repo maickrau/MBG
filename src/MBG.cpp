@@ -1159,7 +1159,7 @@ int main(int argc, char** argv)
 	size_t kmerSize = std::stoi(argv[3]);
 	size_t windowSize = std::stoi(argv[4]);
 	size_t minCoverage = std::stoi(argv[5]);
-	size_t minUnitigCoverage = std::stod(argv[6]);
+	double minUnitigCoverage = std::stod(argv[6]);
 
 	if (windowSize > kmerSize)
 	{
