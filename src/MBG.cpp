@@ -293,7 +293,7 @@ public:
 	}
 };
 
-std::pair<size_t, bool> getNodeOrNull(const HashList& list, std::string_view sequence, std::string_view reverse)
+std::pair<size_t, bool> getNodeOrNull(const HashList& list, std::string_view sequence)
 {
 	HashType fwHash = hash(sequence);
 	auto found = list.hashToNode.find(fwHash);
@@ -307,8 +307,7 @@ std::pair<size_t, bool> getNodeOrNull(const HashList& list, std::string_view seq
 std::string revCompRLE(const std::string& original)
 {
 	static char mapping[5] { 0, 4, 3, 2, 1 };
-	std::string result { original };
-	std::reverse(result.begin(), result.end());
+	std::string result { original.rbegin(), original.rend() };
 	for (size_t i = 0; i < result.size(); i++)
 	{
 		result[i] = mapping[(int)result[i]];
@@ -351,7 +350,6 @@ public:
 private:
 	void addMiddles(size_t kmerSize, std::pair<size_t, bool> start, std::pair<size_t, bool> end, const std::string& seq, const HashList& list, const std::unordered_set<size_t>& minimizerPrefixes)
 	{
-		auto revseq = revCompRLE(seq);
 		std::vector<std::pair<size_t, bool>> path;
 		std::pair<size_t, bool> old = start;
 		size_t oldpos = 0;
@@ -372,7 +370,7 @@ private:
 			kmer += seq[i+32-1]-1;
 			if (minimizerPrefixes.count(kmer) == 1)
 			{
-				auto here = getNodeOrNull(list, std::string_view { seq.data() + i, kmerSize }, std::string_view { revseq.data() + revseq.size() - i - kmerSize, kmerSize });
+				auto here = getNodeOrNull(list, std::string_view { seq.data() + i, kmerSize });
 				if (here.first == std::numeric_limits<size_t>::max()) continue;
 				path.push_back(here);
 				newSequenceOverlap[old][here] = kmerSize - (i - oldpos);
@@ -422,24 +420,46 @@ private:
 		for (size_t i = 0; i < hashlist.sequenceOverlap.size(); i++)
 		{
 			std::pair<size_t, bool> fw { i, true };
-			for (auto pair : hashlist.sequenceOverlap[fw])
+			if (hashlist.sequenceOverlap[fw].size() > 0)
 			{
 				std::string seq = hashlist.hashSequenceRLE[i];
-				std::string add = hashlist.hashSequenceRLE[pair.first.first];
-				if (!pair.first.second) add = revCompRLE(add);
-				add = add.substr(pair.second);
-				seq += add;
-				addMiddles(kmerSize, fw, pair.first, seq, hashlist, minimizerPrefixes);
+				for (auto pair : hashlist.sequenceOverlap[fw])
+				{
+					std::string add = hashlist.hashSequenceRLE[pair.first.first];
+					if (pair.first.second)
+					{
+						add = add.substr(pair.second);
+					}
+					else
+					{
+						add = add.substr(0, kmerSize - pair.second);
+						add = revCompRLE(add);
+					}
+					seq += add;
+					addMiddles(kmerSize, fw, pair.first, seq, hashlist, minimizerPrefixes);
+					seq = seq.substr(0, kmerSize);
+				}
 			}
 			std::pair<size_t, bool> bw { i, false };
-			for (auto pair : hashlist.sequenceOverlap[bw])
+			if (hashlist.sequenceOverlap[bw].size() > 0)
 			{
 				std::string seq = revCompRLE(hashlist.hashSequenceRLE[i]);
-				std::string add = hashlist.hashSequenceRLE[pair.first.first];
-				if (!pair.first.second) add = revCompRLE(add);
-				add = add.substr(pair.second);
-				seq += add;
-				addMiddles(kmerSize, bw, pair.first, seq, hashlist, minimizerPrefixes);
+				for (auto pair : hashlist.sequenceOverlap[bw])
+				{
+					std::string add = hashlist.hashSequenceRLE[pair.first.first];
+					if (pair.first.second)
+					{
+						add = add.substr(pair.second);
+					}
+					else
+					{
+						add = add.substr(0, kmerSize - pair.second);
+						add = revCompRLE(add);
+					}
+					seq += add;
+					addMiddles(kmerSize, bw, pair.first, seq, hashlist, minimizerPrefixes);
+					seq = seq.substr(0, kmerSize);
+				}
 			}
 		}
 	}
