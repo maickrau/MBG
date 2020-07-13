@@ -273,9 +273,69 @@ private:
 	size_t kmerSize;
 };
 
+std::string revCompRLE(const std::string& original)
+{
+	static char mapping[5] { 0, 4, 3, 2, 1 };
+	std::string result { original.rbegin(), original.rend() };
+	for (size_t i = 0; i < result.size(); i++)
+	{
+		result[i] = mapping[(int)result[i]];
+	}
+	return result;
+}
+
+class AdjacentMinimizerList
+{
+public:
+	AdjacentMinimizerList() :
+		data(),
+		lastHash(0)
+	{
+	}
+	std::string_view getView(size_t coord1, size_t coord2, size_t size) const
+	{
+		return std::string_view { data[coord1].data() + coord2, size };
+	}
+	std::pair<size_t, size_t> addString(std::string_view str, HashType currentHash, HashType previousHash, size_t overlap)
+	{
+		if (data.size() == 0 || lastHash == 0 || previousHash == 0 || previousHash != lastHash)
+		{
+			data.emplace_back(str);
+			lastHash = currentHash;
+			return std::make_pair(data.size()-1, 0);
+		}
+		assert(overlap < str.size());
+		data.back() += std::string { str.begin() + overlap, str.end() };
+		lastHash = currentHash;
+		assert(data.back().size() >= str.size());
+		return std::make_pair(data.size()-1, data.back().size() - str.size());
+	}
+	AdjacentMinimizerList getReverseComplementStorage() const
+	{
+		AdjacentMinimizerList result;
+		result.data.resize(data.size());
+		for (size_t i = 0; i < data.size(); i++)
+		{
+			result.data[i] = revCompRLE(data[i]);
+		}
+		return result;
+	}
+	std::pair<size_t, size_t> getRevCompLocation(size_t coord1, size_t coord2, size_t size) const
+	{
+		assert(data[coord1].size() >= coord2 + size);
+		return std::make_pair(coord1, data[coord1].size() - size - coord2);
+	}
+private:
+	std::vector<std::string> data;
+	HashType lastHash;
+};
+
 class HashList
 {
 public:
+	HashList(size_t kmerSize) :
+		kmerSize(kmerSize)
+	{}
 	std::vector<size_t> coverage;
 	std::vector<std::vector<uint16_t>> hashCharacterLength;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> sequenceOverlap;
@@ -292,27 +352,34 @@ public:
 	}
 	size_t size() const
 	{
-		return hashSequenceRLE.size();
+		return hashSeqPtr.size();
 	}
 	std::string_view getHashSequenceRLE(size_t index) const
 	{
-		return std::string_view { hashSequenceRLE[index].data(), hashSequenceRLE[index].size() };
+		return hashSequences.getView(hashSeqPtr[index].first, hashSeqPtr[index].second, kmerSize);
 	}
 	std::string_view getRevCompHashSequenceRLE(size_t index) const
 	{
-		return std::string_view { hashSequenceRLE[index].data(), hashSequenceRLE[index].size() };
+		return hashSequencesRevComp.getView(hashSeqRevCompPtr[index].first, hashSeqRevCompPtr[index].second, kmerSize);
 	}
-	void addHashSequenceRLE(std::string_view seq)
+	void addHashSequenceRLE(std::string_view seq, HashType currentHash, HashType previousHash, size_t overlap)
 	{
-		hashSequenceRLE.emplace_back(seq.begin(), seq.end());
+		hashSeqPtr.push_back(hashSequences.addString(seq, currentHash, previousHash, overlap));
 	}
-	void addRevCompHashSequenceRLE(std::string_view seq)
+	void buildReverseCompHashSequences()
 	{
-		revCompHashSequenceRLE.emplace_back(seq.begin(), seq.end());
+		hashSequencesRevComp = hashSequences.getReverseComplementStorage();
+		for (size_t i = 0; i < hashSeqPtr.size(); i++)
+		{
+			hashSeqRevCompPtr.push_back(hashSequences.getRevCompLocation(hashSeqPtr[i].first, hashSeqPtr[i].second, kmerSize));
+		}
 	}
 private:
-	std::vector<std::string> hashSequenceRLE;
-	std::vector<std::string> revCompHashSequenceRLE;
+	AdjacentMinimizerList hashSequences;
+	std::vector<std::pair<size_t, size_t>> hashSeqPtr;
+	AdjacentMinimizerList hashSequencesRevComp;
+	std::vector<std::pair<size_t, size_t>> hashSeqRevCompPtr;
+	const size_t kmerSize;
 };
 
 std::pair<size_t, bool> getNodeOrNull(const HashList& list, std::string_view sequence)
@@ -324,17 +391,6 @@ std::pair<size_t, bool> getNodeOrNull(const HashList& list, std::string_view seq
 		return std::pair<size_t, bool> { std::numeric_limits<size_t>::max(), true };
 	}
 	return found->second;
-}
-
-std::string revCompRLE(const std::string& original)
-{
-	static char mapping[5] { 0, 4, 3, 2, 1 };
-	std::string result { original.rbegin(), original.rend() };
-	for (size_t i = 0; i < result.size(); i++)
-	{
-		result[i] = mapping[(int)result[i]];
-	}
-	return result;
 }
 
 class TransitiveCleaner
@@ -601,13 +657,13 @@ void addSequenceOverlap(HashList& list, std::pair<size_t, bool> from, std::pair<
 	list.sequenceOverlap[from][to] = overlap;
 }
 
-std::pair<size_t, bool> getNode(HashList& list, std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd)
+std::pair<std::pair<size_t, bool>, HashType> getNode(HashList& list, std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap)
 {
 	HashType fwHash = hash(sequence);
 	auto found = list.hashToNode.find(fwHash);
 	if (found != list.hashToNode.end())
 	{
-		return found->second;
+		return std::make_pair(found->second, fwHash);
 	}
 	assert(found == list.hashToNode.end());
 	HashType bwHash = hash(reverse);
@@ -615,8 +671,7 @@ std::pair<size_t, bool> getNode(HashList& list, std::string_view sequence, std::
 	size_t fwNode = list.size();
 	list.hashToNode[fwHash] = std::make_pair(fwNode, true);
 	list.hashToNode[bwHash] = std::make_pair(fwNode, false);
-	list.addHashSequenceRLE(sequence);
-	list.addRevCompHashSequenceRLE(reverse);
+	list.addHashSequenceRLE(sequence, fwHash, previousHash, overlap);
 	assert(list.hashCharacterLength.size() == fwNode);
 	list.hashCharacterLength.emplace_back(sequenceCharacterLength.begin() + seqCharLenStart, sequenceCharacterLength.begin() + seqCharLenEnd);
 	assert(list.coverage.size() == fwNode);
@@ -625,8 +680,7 @@ std::pair<size_t, bool> getNode(HashList& list, std::string_view sequence, std::
 	list.edgeCoverage.emplace_back();
 	assert(list.sequenceOverlap.size() == fwNode);
 	list.sequenceOverlap.emplace_back();
-	return std::make_pair(fwNode, true);
-	assert(false);
+	return std::make_pair(std::make_pair(fwNode, true), fwHash);
 }
 
 template <typename F>
@@ -731,7 +785,7 @@ void cleanTransitiveEdges(HashList& result, size_t kmerSize)
 
 HashList loadReadsAsHashes(const std::string& filename, size_t kmerSize, size_t windowSize, bool hpc)
 {
-	HashList result;
+	HashList result { kmerSize };
 	size_t totalNodes = 0;
 	FastQ::streamFastqFromFile(filename, false, [&result, &totalNodes, kmerSize, windowSize, hpc](const FastQ& read){
 		if (read.sequence.size() == 0) return;
@@ -749,7 +803,8 @@ HashList loadReadsAsHashes(const std::string& filename, size_t kmerSize, size_t 
 		std::string revSeq = revCompRLE(seq);
 		size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 		std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
-		findMinimizerPositions(seq, kmerSize, windowSize, [kmerSize, windowSize, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos)
+		HashType lastHash = 0;
+		findMinimizerPositions(seq, kmerSize, windowSize, [kmerSize, windowSize, &lastHash, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos)
 		{
 			assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
 			assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= windowSize);
@@ -757,11 +812,13 @@ HashList loadReadsAsHashes(const std::string& filename, size_t kmerSize, size_t 
 			std::string_view minimizerSequence { seq.data() + pos, kmerSize };
 			size_t revPos = seq.size() - (pos + kmerSize);
 			std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
-			auto current = getNode(result, minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize);
+			std::pair<size_t, bool> current;
+			size_t overlap = lastMinimizerPosition + kmerSize - pos;
+			std::tie(current, lastHash) = getNode(result, minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap);
 			if (last.first != std::numeric_limits<size_t>::max() && pos - lastMinimizerPosition < kmerSize)
 			{
 				assert(lastMinimizerPosition + kmerSize >= pos);
-				addSequenceOverlap(result, last, current, lastMinimizerPosition + kmerSize - pos);
+				addSequenceOverlap(result, last, current, overlap);
 				auto pair = canon(last, current);
 				result.edgeCoverage[pair.first][pair.second] += 1;
 			}
@@ -771,6 +828,7 @@ HashList loadReadsAsHashes(const std::string& filename, size_t kmerSize, size_t 
 			totalNodes += 1;
 		});
 	});
+	result.buildReverseCompHashSequences();
 	std::cerr << totalNodes << " nodes" << std::endl;
 	std::cerr << result.size() << " distinct fw/bw sequence nodes" << std::endl;
 	return result;
