@@ -512,6 +512,41 @@ std::pair<std::string, std::vector<uint16_t>> runLengthEncode(const std::string&
 	return std::make_pair(resultStr, lens);
 }
 
+std::pair<std::string, std::vector<uint16_t>> noRunLengthEncode(const std::string& original)
+{
+	assert(original.size() > 0);
+	std::string resultStr;
+	resultStr.reserve(original.size());
+	for (size_t i = 0; i < original.size(); i++)
+	{
+		switch(original[i])
+		{
+			case 'a':
+			case 'A':
+				resultStr.push_back(1);
+				break;
+			case 'c':
+			case 'C':
+				resultStr.push_back(2);
+				break;
+			case 'g':
+			case 'G':
+				resultStr.push_back(3);
+				break;
+			case 't':
+			case 'T':
+				resultStr.push_back(4);
+				break;
+			default:
+				assert(false);
+		}
+	}
+	std::vector<uint16_t> lens;
+	lens.resize(original.size(), 1);
+	assert(lens.size() == resultStr.size());
+	return std::make_pair(resultStr, lens);
+}
+
 std::string strFromRevComp(const std::string& revComp)
 {
 	std::string result;
@@ -665,15 +700,22 @@ void cleanTransitiveEdges(HashList& result, size_t kmerSize)
 	std::cerr << transitiveEdgesBroken << " transitive edges cleaned" << std::endl;
 }
 
-HashList loadReadsAsHashes(const std::string& filename, size_t kmerSize, size_t windowSize)
+HashList loadReadsAsHashes(const std::string& filename, size_t kmerSize, size_t windowSize, bool hpc)
 {
 	HashList result;
 	size_t totalNodes = 0;
-	FastQ::streamFastqFromFile(filename, false, [&result, &totalNodes, kmerSize, windowSize](const FastQ& read){
+	FastQ::streamFastqFromFile(filename, false, [&result, &totalNodes, kmerSize, windowSize, hpc](const FastQ& read){
 		if (read.sequence.size() == 0) return;
 		std::string seq;
 		std::vector<uint16_t> lens;
-		std::tie(seq, lens) = runLengthEncode(read.sequence);
+		if (hpc)
+		{
+			std::tie(seq, lens) = runLengthEncode(read.sequence);
+		}
+		else
+		{
+			std::tie(seq, lens) = noRunLengthEncode(read.sequence);
+		}
 		if (seq.size() <= kmerSize + windowSize) return;
 		std::string revSeq = revCompRLE(seq);
 		size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
@@ -1160,6 +1202,14 @@ int main(int argc, char** argv)
 	size_t windowSize = std::stoi(argv[4]);
 	size_t minCoverage = std::stoi(argv[5]);
 	double minUnitigCoverage = std::stod(argv[6]);
+	bool hpc = true;
+	if (argc > 7)
+	{
+		if (strncmp(argv[7], "1", 1) == 0)
+		{
+			hpc = false;
+		}
+	}
 
 	if (windowSize > kmerSize)
 	{
@@ -1168,7 +1218,7 @@ int main(int argc, char** argv)
 	}
 
 	auto beforeReading = getTime();
-	auto reads = loadReadsAsHashes(inputReads, kmerSize, windowSize);
+	auto reads = loadReadsAsHashes(inputReads, kmerSize, windowSize, hpc);
 	auto beforeUnitigs = getTime();
 	auto unitigs = getUnitigs(getNodeGraph(reads, minCoverage));
 	auto beforeFilter = getTime();
