@@ -330,6 +330,41 @@ private:
 	HashType lastHash;
 };
 
+class AdjacentLengthList
+{
+public:
+	AdjacentLengthList() :
+		data(),
+		lastHash(0)
+	{
+	}
+	std::vector<uint16_t> getData(size_t coord1, size_t coord2, size_t size) const
+	{
+		std::vector<uint16_t> result { data[coord1].begin() + coord2, data[coord1].begin() + coord2 + size };
+		return result;
+	}
+	std::pair<size_t, size_t> addData(const std::vector<uint16_t>& lens, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap)
+	{
+		assert(end > start);
+		assert(end <= lens.size());
+		if (data.size() == 0 || lastHash == 0 || previousHash == 0 || previousHash != lastHash)
+		{
+			data.emplace_back(lens.begin() + start, lens.begin() + end);
+			lastHash = currentHash;
+			return std::make_pair(data.size()-1, 0);
+		}
+		assert(overlap < lens.size());
+		assert(end > start + overlap);
+		data.back().insert(data.back().end(), lens.begin() + start + overlap, lens.begin() + end);
+		lastHash = currentHash;
+		assert(data.back().size() >= end - start);
+		return std::make_pair(data.size()-1, data.back().size() - (end - start));
+	}
+private:
+	std::vector<std::vector<uint16_t>> data;
+	HashType lastHash;
+};
+
 class HashList
 {
 public:
@@ -337,7 +372,6 @@ public:
 		kmerSize(kmerSize)
 	{}
 	std::vector<size_t> coverage;
-	std::vector<std::vector<uint16_t>> hashCharacterLength;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> sequenceOverlap;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> edgeCoverage;
 	phmap::flat_hash_map<HashType, std::pair<size_t, bool>> hashToNode;
@@ -353,6 +387,14 @@ public:
 	size_t size() const
 	{
 		return hashSeqPtr.size();
+	}
+	std::vector<uint16_t> getHashCharacterLength(size_t index) const
+	{
+		return hashCharacterLengths.getData(hashCharacterLengthPtr[index].first, hashCharacterLengthPtr[index].second, kmerSize);
+	}
+	void addHashCharacterLength(const std::vector<uint16_t>& data, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap)
+	{
+		hashCharacterLengthPtr.push_back(hashCharacterLengths.addData(data, start, end, currentHash, previousHash, overlap));
 	}
 	std::string_view getHashSequenceRLE(size_t index) const
 	{
@@ -375,6 +417,8 @@ public:
 		}
 	}
 private:
+	AdjacentLengthList hashCharacterLengths;
+	std::vector<std::pair<size_t, size_t>> hashCharacterLengthPtr;
 	AdjacentMinimizerList hashSequences;
 	std::vector<std::pair<size_t, size_t>> hashSeqPtr;
 	AdjacentMinimizerList hashSequencesRevComp;
@@ -672,8 +716,7 @@ std::pair<std::pair<size_t, bool>, HashType> getNode(HashList& list, std::string
 	list.hashToNode[fwHash] = std::make_pair(fwNode, true);
 	list.hashToNode[bwHash] = std::make_pair(fwNode, false);
 	list.addHashSequenceRLE(sequence, fwHash, previousHash, overlap);
-	assert(list.hashCharacterLength.size() == fwNode);
-	list.hashCharacterLength.emplace_back(sequenceCharacterLength.begin() + seqCharLenStart, sequenceCharacterLength.begin() + seqCharLenEnd);
+	list.addHashCharacterLength(sequenceCharacterLength, seqCharLenStart, seqCharLenEnd, fwHash, previousHash, overlap);
 	assert(list.coverage.size() == fwNode);
 	list.coverage.emplace_back(0);
 	assert(list.edgeCoverage.size() == fwNode);
@@ -1129,7 +1172,8 @@ size_t getOverlapFromRLE(const HashList& hashlist, std::pair<size_t, bool> from,
 {
 	size_t overlap = hashlist.getOverlap(from, to);
 	size_t RLEoverlap = 0;
-	assert(hashlist.hashCharacterLength[to.first].size() > overlap);
+	auto lens = hashlist.getHashCharacterLength(to.first);
+	assert(lens.size() > overlap);
 	for (size_t offset = 0; offset < overlap; offset++)
 	{
 		size_t i;
@@ -1139,9 +1183,9 @@ size_t getOverlapFromRLE(const HashList& hashlist, std::pair<size_t, bool> from,
 		}
 		else
 		{
-			i = hashlist.hashCharacterLength[to.first].size()-offset-1;
+			i = lens.size()-offset-1;
 		}
-		RLEoverlap += hashlist.hashCharacterLength[to.first][i];
+		RLEoverlap += lens[i];
 	}
 	return RLEoverlap;
 }
@@ -1157,7 +1201,7 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 		{
 			auto to = unitigs.unitigs[i][j];
 			std::string sequenceRLE;
-			std::vector<uint16_t> sequenceCharacterLength = hashlist.hashCharacterLength.at(to.first);
+			std::vector<uint16_t> sequenceCharacterLength = hashlist.getHashCharacterLength(to.first);
 			if (to.second)
 			{
 				sequenceRLE = hashlist.getHashSequenceRLE(to.first);
@@ -1254,7 +1298,7 @@ std::pair<size_t, size_t> getSizeAndN50(const HashList& hashlist, const UnitigGr
 		{
 			auto to = unitig[j];
 			std::string sequenceRLE;
-			std::vector<uint16_t> sequenceCharacterLength = hashlist.hashCharacterLength.at(to.first);
+			std::vector<uint16_t> sequenceCharacterLength = hashlist.getHashCharacterLength(to.first);
 			if (to.first)
 			{
 				sequenceRLE = hashlist.getHashSequenceRLE(to.first);
