@@ -277,8 +277,6 @@ class HashList
 {
 public:
 	std::vector<size_t> coverage;
-	std::vector<std::string> hashSequenceRLE;
-	std::vector<std::string> revCompHashSequenceRLE;
 	std::vector<std::vector<uint16_t>> hashCharacterLength;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> sequenceOverlap;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> edgeCoverage;
@@ -292,6 +290,29 @@ public:
 		if (sequenceOverlap[reverse(from)].count(reverse(to)) == 1) return sequenceOverlap[reverse(from)].at(reverse(to));
 		return sequenceOverlap[from].at(to);
 	}
+	size_t size() const
+	{
+		return hashSequenceRLE.size();
+	}
+	std::string_view getHashSequenceRLE(size_t index) const
+	{
+		return std::string_view { hashSequenceRLE[index].data(), hashSequenceRLE[index].size() };
+	}
+	std::string_view getRevCompHashSequenceRLE(size_t index) const
+	{
+		return std::string_view { hashSequenceRLE[index].data(), hashSequenceRLE[index].size() };
+	}
+	void addHashSequenceRLE(std::string_view seq)
+	{
+		hashSequenceRLE.emplace_back(seq.begin(), seq.end());
+	}
+	void addRevCompHashSequenceRLE(std::string_view seq)
+	{
+		revCompHashSequenceRLE.emplace_back(seq.begin(), seq.end());
+	}
+private:
+	std::vector<std::string> hashSequenceRLE;
+	std::vector<std::string> revCompHashSequenceRLE;
 };
 
 std::pair<size_t, bool> getNodeOrNull(const HashList& list, std::string_view sequence)
@@ -391,24 +412,24 @@ private:
 	{
 		std::unordered_set<size_t> result;
 		assert(kmerSize >= 32);
-		for (size_t i = 0; i < hashlist.hashSequenceRLE.size(); i++)
+		for (size_t i = 0; i < hashlist.size(); i++)
 		{
 			size_t kmer = 0;
 			for (size_t j = 0; j < 32; j++)
 			{
 				kmer <<= 2;
-				assert(hashlist.hashSequenceRLE[i][j] >= 1);
-				assert(hashlist.hashSequenceRLE[i][j] <= 4);
-				kmer += hashlist.hashSequenceRLE[i][j]-1;
+				assert(hashlist.getHashSequenceRLE(i)[j] >= 1);
+				assert(hashlist.getHashSequenceRLE(i)[j] <= 4);
+				kmer += hashlist.getHashSequenceRLE(i)[j]-1;
 			}
 			result.emplace(kmer);
 			kmer = 0;
 			for (size_t j = 0; j < 32; j++)
 			{
 				kmer <<= 2;
-				assert(hashlist.hashSequenceRLE[i][kmerSize-j-1] >= 1);
-				assert(hashlist.hashSequenceRLE[i][kmerSize-j-1] <= 4);
-				kmer += 3 - (hashlist.hashSequenceRLE[i][kmerSize-j-1]-1);
+				assert(hashlist.getHashSequenceRLE(i)[kmerSize-j-1] >= 1);
+				assert(hashlist.getHashSequenceRLE(i)[kmerSize-j-1] <= 4);
+				kmer += 3 - (hashlist.getHashSequenceRLE(i)[kmerSize-j-1]-1);
 			}
 			result.emplace(kmer);
 		}
@@ -425,17 +446,17 @@ private:
 			std::pair<size_t, bool> fw { i, true };
 			if (hashlist.sequenceOverlap[fw].size() > 0)
 			{
-				seq = hashlist.hashSequenceRLE[i];
+				seq = hashlist.getHashSequenceRLE(i);
 				for (auto pair : hashlist.sequenceOverlap[fw])
 				{
 					if (pair.first.first < i) continue;
 					if (pair.first.second)
 					{
-						seq += hashlist.hashSequenceRLE[pair.first.first].substr(pair.second);
+						seq += hashlist.getHashSequenceRLE(pair.first.first).substr(pair.second);
 					}
 					else
 					{
-						seq += hashlist.revCompHashSequenceRLE[pair.first.first].substr(pair.second);
+						seq += hashlist.getRevCompHashSequenceRLE(pair.first.first).substr(pair.second);
 					}
 					addMiddles(kmerSize, fw, pair.first, seq, hashlist, minimizerPrefixes);
 					seq.resize(kmerSize);
@@ -444,17 +465,17 @@ private:
 			std::pair<size_t, bool> bw { i, false };
 			if (hashlist.sequenceOverlap[bw].size() > 0)
 			{
-				seq = hashlist.revCompHashSequenceRLE[i];
+				seq = hashlist.getRevCompHashSequenceRLE(i);
 				for (auto pair : hashlist.sequenceOverlap[bw])
 				{
 					if (pair.first.first < i) continue;
 					if (pair.first.second)
 					{
-						seq += hashlist.hashSequenceRLE[pair.first.first].substr(pair.second);
+						seq += hashlist.getHashSequenceRLE(pair.first.first).substr(pair.second);
 					}
 					else
 					{
-						seq += hashlist.revCompHashSequenceRLE[pair.first.first].substr(pair.second);
+						seq += hashlist.getRevCompHashSequenceRLE(pair.first.first).substr(pair.second);
 					}
 					addMiddles(kmerSize, bw, pair.first, seq, hashlist, minimizerPrefixes);
 					seq.resize(kmerSize);
@@ -591,13 +612,11 @@ std::pair<size_t, bool> getNode(HashList& list, std::string_view sequence, std::
 	assert(found == list.hashToNode.end());
 	HashType bwHash = hash(reverse);
 	assert(list.hashToNode.find(bwHash) == list.hashToNode.end());
-	size_t fwNode = list.hashSequenceRLE.size();
+	size_t fwNode = list.size();
 	list.hashToNode[fwHash] = std::make_pair(fwNode, true);
 	list.hashToNode[bwHash] = std::make_pair(fwNode, false);
-	assert(list.hashSequenceRLE.size() == fwNode);
-	list.hashSequenceRLE.push_back(std::string(sequence));
-	assert(list.revCompHashSequenceRLE.size() == fwNode);
-	list.revCompHashSequenceRLE.push_back(std::string(reverse));
+	list.addHashSequenceRLE(sequence);
+	list.addRevCompHashSequenceRLE(reverse);
 	assert(list.hashCharacterLength.size() == fwNode);
 	list.hashCharacterLength.emplace_back(sequenceCharacterLength.begin() + seqCharLenStart, sequenceCharacterLength.begin() + seqCharLenEnd);
 	assert(list.coverage.size() == fwNode);
@@ -753,7 +772,7 @@ HashList loadReadsAsHashes(const std::string& filename, size_t kmerSize, size_t 
 		});
 	});
 	std::cerr << totalNodes << " nodes" << std::endl;
-	std::cerr << result.hashSequenceRLE.size() << " distinct fw/bw sequence nodes" << std::endl;
+	std::cerr << result.size() << " distinct fw/bw sequence nodes" << std::endl;
 	return result;
 }
 
@@ -1083,11 +1102,11 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 			std::vector<uint16_t> sequenceCharacterLength = hashlist.hashCharacterLength.at(to.first);
 			if (to.second)
 			{
-				sequenceRLE = hashlist.hashSequenceRLE.at(to.first);
+				sequenceRLE = hashlist.getHashSequenceRLE(to.first);
 			}
 			else
 			{
-				sequenceRLE = hashlist.revCompHashSequenceRLE.at(to.first);
+				sequenceRLE = hashlist.getRevCompHashSequenceRLE(to.first);
 				std::reverse(sequenceCharacterLength.begin(), sequenceCharacterLength.end());
 			}
 			if (j > 0)
@@ -1180,11 +1199,11 @@ std::pair<size_t, size_t> getSizeAndN50(const HashList& hashlist, const UnitigGr
 			std::vector<uint16_t> sequenceCharacterLength = hashlist.hashCharacterLength.at(to.first);
 			if (to.first)
 			{
-				sequenceRLE = hashlist.hashSequenceRLE.at(to.first);
+				sequenceRLE = hashlist.getHashSequenceRLE(to.first);
 			}
 			else
 			{
-				sequenceRLE = hashlist.revCompHashSequenceRLE.at(to.first);
+				sequenceRLE = hashlist.getRevCompHashSequenceRLE(to.first);
 				std::reverse(sequenceCharacterLength.begin() ,sequenceCharacterLength.end());
 			}
 			if (j > 0)
