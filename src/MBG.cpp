@@ -281,7 +281,7 @@ public:
 	std::vector<std::vector<uint16_t>> hashCharacterLength;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> sequenceOverlap;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> edgeCoverage;
-	phmap::flat_hash_map<HashType, size_t> hashToNode;
+	phmap::flat_hash_map<HashType, std::pair<size_t, bool>> hashToNode;
 	size_t getOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to) const
 	{
 		std::tie(from, to) = canon(from, to);
@@ -296,16 +296,12 @@ public:
 std::pair<size_t, bool> getNodeOrNull(const HashList& list, std::string_view sequence, std::string_view reverse)
 {
 	HashType fwHash = hash(sequence);
-	if (list.hashToNode.count(fwHash) == 1)
+	auto found = list.hashToNode.find(fwHash);
+	if (found == list.hashToNode.end())
 	{
-		return std::make_pair(list.hashToNode.at(fwHash), true);
+		return std::pair<size_t, bool> { std::numeric_limits<size_t>::max(), true };
 	}
-	HashType bwHash = hash(reverse);
-	if (list.hashToNode.count(bwHash) == 1)
-	{
-		return std::make_pair(list.hashToNode.at(bwHash), false);
-	}
-	return std::pair<size_t, bool> { std::numeric_limits<size_t>::max(), true };
+	return found->second;
 }
 
 std::string revCompRLE(const std::string& original)
@@ -568,35 +564,28 @@ void addSequenceOverlap(HashList& list, std::pair<size_t, bool> from, std::pair<
 std::pair<size_t, bool> getNode(HashList& list, std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd)
 {
 	HashType fwHash = hash(sequence);
+	auto found = list.hashToNode.find(fwHash);
+	if (found != list.hashToNode.end())
+	{
+		return found->second;
+	}
+	assert(found == list.hashToNode.end());
 	HashType bwHash = hash(reverse);
-	if (list.hashToNode.count(fwHash) == 0 && list.hashToNode.count(bwHash) == 0)
-	{
-		size_t fwNode = list.hashToNode.size();
-		list.hashToNode[fwHash] = fwNode;
-		assert(list.hashSequenceRLE.size() == fwNode);
-		list.hashSequenceRLE.push_back(std::string(sequence));
-		assert(list.hashCharacterLength.size() == fwNode);
-		list.hashCharacterLength.emplace_back(sequenceCharacterLength.begin() + seqCharLenStart, sequenceCharacterLength.begin() + seqCharLenEnd);
-		assert(list.coverage.size() == fwNode);
-		list.coverage.emplace_back(0);
-		assert(list.edgeCoverage.size() == fwNode);
-		list.edgeCoverage.emplace_back();
-		assert(list.sequenceOverlap.size() == fwNode);
-		list.sequenceOverlap.emplace_back();
-	}
-	else
-	{
-		assert(list.hashToNode.count(fwHash) == 0 || list.hashSequenceRLE.at(list.hashToNode.at(fwHash)) == sequence);
-		assert(list.hashToNode.count(bwHash) == 0 || list.hashSequenceRLE.at(list.hashToNode.at(bwHash)) == reverse);
-	}
-	if (list.hashToNode.count(fwHash) == 1)
-	{
-		return std::make_pair(list.hashToNode.at(fwHash), true);
-	}
-	else if (list.hashToNode.count(bwHash) == 1)
-	{
-		return std::make_pair(list.hashToNode.at(bwHash), false);
-	}
+	assert(list.hashToNode.find(bwHash) == list.hashToNode.end());
+	size_t fwNode = list.hashSequenceRLE.size();
+	list.hashToNode[fwHash] = std::make_pair(fwNode, true);
+	list.hashToNode[bwHash] = std::make_pair(fwNode, false);
+	assert(list.hashSequenceRLE.size() == fwNode);
+	list.hashSequenceRLE.push_back(std::string(sequence));
+	assert(list.hashCharacterLength.size() == fwNode);
+	list.hashCharacterLength.emplace_back(sequenceCharacterLength.begin() + seqCharLenStart, sequenceCharacterLength.begin() + seqCharLenEnd);
+	assert(list.coverage.size() == fwNode);
+	list.coverage.emplace_back(0);
+	assert(list.edgeCoverage.size() == fwNode);
+	list.edgeCoverage.emplace_back();
+	assert(list.sequenceOverlap.size() == fwNode);
+	list.sequenceOverlap.emplace_back();
+	return std::make_pair(fwNode, true);
 	assert(false);
 }
 
@@ -742,8 +731,6 @@ HashList loadReadsAsHashes(const std::string& filename, size_t kmerSize, size_t 
 			totalNodes += 1;
 		});
 	});
-	cleanTransitiveEdges(result, kmerSize);
-	// cleanTransitiveEdges(result, kmerSize);
 	std::cerr << totalNodes << " nodes" << std::endl;
 	std::cerr << result.hashSequenceRLE.size() << " distinct fw/bw sequence nodes" << std::endl;
 	return result;
@@ -1219,6 +1206,8 @@ int main(int argc, char** argv)
 
 	auto beforeReading = getTime();
 	auto reads = loadReadsAsHashes(inputReads, kmerSize, windowSize, hpc);
+	auto beforeCleaning = getTime();
+	cleanTransitiveEdges(reads, kmerSize);
 	auto beforeUnitigs = getTime();
 	auto unitigs = getUnitigs(getNodeGraph(reads, minCoverage));
 	auto beforeFilter = getTime();
@@ -1228,7 +1217,8 @@ int main(int argc, char** argv)
 	auto beforeStats = getTime();
 	auto unitigStats = getSizeAndN50(reads, unitigs);
 	auto afterStats = getTime();
-	std::cerr << "reading and hashing sequences took " << formatTime(beforeReading, beforeUnitigs) << std::endl;
+	std::cerr << "reading and hashing sequences took " << formatTime(beforeReading, beforeCleaning) << std::endl;
+	std::cerr << "cleaning transitive edges took " << formatTime(beforeCleaning, beforeUnitigs) << std::endl;
 	std::cerr << "unitigifying took " << formatTime(beforeUnitigs, beforeFilter) << std::endl;
 	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforeWrite) << std::endl;
 	std::cerr << "writing the graph took " << formatTime(beforeWrite, beforeStats) << std::endl;
