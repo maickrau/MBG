@@ -384,6 +384,16 @@ public:
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> sequenceOverlap;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> edgeCoverage;
 	phmap::flat_hash_map<HashType, std::pair<size_t, bool>> hashToNode;
+	size_t numSequenceOverlaps() const
+	{
+		size_t total = 0;
+		for (size_t i = 0; i < sequenceOverlap.size(); i++)
+		{
+			total += sequenceOverlap[std::make_pair(i, true)].size();
+			total += sequenceOverlap[std::make_pair(i, false)].size();
+		}
+		return total;
+	}
 	size_t getOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to) const
 	{
 		std::tie(from, to) = canon(from, to);
@@ -502,14 +512,18 @@ private:
 				auto here = getNodeOrNull(list, std::string_view { seq.data() + i, kmerSize });
 				if (here.first == std::numeric_limits<size_t>::max()) continue;
 				path.push_back(here);
-				newSequenceOverlap[old][here] = kmerSize - (i - oldpos);
-				newSequenceOverlap[reverse(here)][reverse(old)] = kmerSize - (i - oldpos);
+				std::pair<size_t, bool> canonFrom;
+				std::pair<size_t, bool> canonTo;
+				std::tie(canonFrom, canonTo) = canon(old, here);
+				newSequenceOverlap[canonFrom][canonTo] = kmerSize - (i - oldpos);
 				old = here;
 				oldpos = i;
 			}
 		}
-		newSequenceOverlap[old][end] = kmerSize - (seq.size() - kmerSize - oldpos);
-		newSequenceOverlap[reverse(end)][reverse(old)] = kmerSize - (seq.size() - kmerSize - oldpos);
+		std::pair<size_t, bool> canonFrom;
+		std::pair<size_t, bool> canonTo;
+		std::tie(canonFrom, canonTo) = canon(old, end);
+		newSequenceOverlap[canonFrom][canonTo] = kmerSize - (seq.size() - kmerSize - oldpos);
 		if (path.size() > 0)
 		{
 			transitiveMiddle[start][end] = path;
