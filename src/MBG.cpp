@@ -169,6 +169,13 @@ private:
 class FastHasher
 {
 public:
+	FastHasher(size_t kmerSize, uint64_t fwHash, uint64_t bwHash) :
+	fwHash(fwHash),
+	bwHash(bwHash),
+	kmerSize(kmerSize % 64)
+	{
+		precalcRots();
+	}
 	FastHasher(size_t kmerSize) :
 	fwHash(0),
 	bwHash(0),
@@ -192,6 +199,16 @@ public:
 	uint64_t hash() const
 	{
 		return std::min(fwHash, bwHash);
+	}
+	__attribute__((always_inline))
+	uint64_t getFwHash() const
+	{
+		return fwHash;
+	}
+	__attribute__((always_inline))
+	uint64_t getBwHash() const
+	{
+		return bwHash;
 	}
 private:
 	char complement(char c) const
@@ -381,6 +398,8 @@ public:
 		kmerSize(kmerSize)
 	{}
 	std::vector<size_t> coverage;
+	std::vector<uint64_t> fakeFwHashes;
+	std::vector<uint64_t> fakeBwHashes;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> sequenceOverlap;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> edgeCoverage;
 	phmap::flat_hash_map<HashType, std::pair<size_t, bool>> hashToNode;
@@ -533,49 +552,23 @@ private:
 		std::vector<std::pair<size_t, bool>> path;
 		std::pair<size_t, bool> old = start;
 		size_t oldpos = 0;
-		size_t kmer = 0;
-		size_t endKmer = 0;
-		for (size_t i = 0; i < 32; i++)
-		{
-			kmer <<= 2;
-			size_t index = i;
-			assert(index < seq.size());
-			assert(seq[index] >= 1);
-			assert(seq[index] <= 4);
-			kmer += seq[index]-1;
-			endKmer >>= 2;
-			assert((endKmer & ((size_t)3 << (size_t)62)) == (size_t)0);
-			size_t revIndex = i + kmerSize - 32;
-			assert(revIndex < seq.size());
-			assert(seq[revIndex] >= 1);
-			assert(seq[revIndex] <= 4);
-			size_t oldEndKmer = endKmer;
-			endKmer += (3 - (size_t)(seq[revIndex] - 1)) << (size_t)62;
-			assert((oldEndKmer | ((size_t)3 << (size_t)62)) == (endKmer | ((size_t)3 << (size_t)62)));
-		}
-		assert(minimizerPrefixes.count(kmer) == 1);
-		assert(minimizerPrefixes.count(endKmer) == 1);
+
+		uint64_t fwHash = start.second ? list.fakeFwHashes[start.first] : list.fakeBwHashes[start.first];
+		uint64_t bwHash = start.second ? list.fakeBwHashes[start.first] : list.fakeFwHashes[start.first];
+		FastHasher fwkmerHasher { kmerSize, fwHash, bwHash };
+		assert(minimizerPrefixes.count(fwkmerHasher.hash()) == 1);
 		for (size_t i = 1; i < seq.size() - kmerSize; i++)
 		{
-			kmer <<= 2;
-			size_t index = i + 32 - 1;
-			assert(index < seq.size());
-			assert(seq[index] >= 1);
-			assert(seq[index] <= 4);
-			kmer += seq[index]-1;
-			endKmer >>= 2;
-			assert((endKmer & ((size_t)3 << (size_t)62)) == (size_t)0);
-			size_t revIndex = i + kmerSize - 1;
-			assert(revIndex < seq.size());
-			assert(seq[revIndex] >= 1);
-			assert(seq[revIndex] <= 4);
-			size_t oldEndKmer = endKmer;
-			endKmer += (3 - (size_t)(seq[revIndex] - 1)) << (size_t)62;
-			assert((oldEndKmer | ((size_t)3 << (size_t)62)) == (endKmer | ((size_t)3 << (size_t)62)));
-			if (minimizerPrefixes.count(kmer) == 1 && minimizerPrefixes.count(endKmer) == 1)
+			fwkmerHasher.addChar(seq[i + kmerSize - 1]);
+			fwkmerHasher.removeChar(seq[i - 1]);
+			size_t hash = fwkmerHasher.hash();
+			if (minimizerPrefixes.count(hash) == 1)
 			{
 				auto here = getNodeOrNull(list, seq.view(i, kmerSize));
-				if (here.first == std::numeric_limits<size_t>::max()) continue;
+				if (here.first == std::numeric_limits<size_t>::max())
+				{
+					continue;
+				}
 				path.push_back(here);
 				std::pair<size_t, bool> canonFrom;
 				std::pair<size_t, bool> canonTo;
@@ -585,6 +578,7 @@ private:
 				oldpos = i;
 			}
 		}
+
 		if (path.size() > 0)
 		{
 			assert(old != start);
@@ -602,30 +596,8 @@ private:
 	std::unordered_set<size_t> getMinimizerPrefixes(size_t kmerSize, const HashList& hashlist)
 	{
 		std::unordered_set<size_t> result;
-		assert(kmerSize >= 64);
-		for (size_t i = 0; i < hashlist.size(); i++)
-		{
-			size_t kmer = 0;
-			for (size_t j = 0; j < 32; j++)
-			{
-				kmer <<= 2;
-				size_t index = j;
-				assert(hashlist.getHashSequenceRLE(i)[index] >= 1);
-				assert(hashlist.getHashSequenceRLE(i)[index] <= 4);
-				kmer += hashlist.getHashSequenceRLE(i)[index]-1;
-			}
-			result.emplace(kmer);
-			kmer = 0;
-			for (size_t j = 0; j < 32; j++)
-			{
-				kmer <<= 2;
-				size_t index = kmerSize - j - 1;
-				assert(hashlist.getHashSequenceRLE(i)[index] >= 1);
-				assert(hashlist.getHashSequenceRLE(i)[index] <= 4);
-				kmer += 3 - (hashlist.getHashSequenceRLE(i)[index]-1);
-			}
-			result.emplace(kmer);
-		}
+		result.insert(hashlist.fakeFwHashes.begin(), hashlist.fakeFwHashes.end());
+		result.insert(hashlist.fakeBwHashes.begin(), hashlist.fakeBwHashes.end());
 		return result;
 	}
 	void getMiddles(size_t kmerSize, const HashList& hashlist)
@@ -786,7 +758,7 @@ std::string strFromRevComp(const std::string& revComp)
 	return result;
 }
 
-std::pair<std::pair<size_t, bool>, HashType> getNode(HashList& list, std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap)
+std::pair<std::pair<size_t, bool>, HashType> getNode(HashList& list, std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t fakeFwHash, uint64_t fakeBwHash)
 {
 	HashType fwHash = hash(sequence);
 	auto found = list.hashToNode.find(fwHash);
@@ -808,6 +780,10 @@ std::pair<std::pair<size_t, bool>, HashType> getNode(HashList& list, std::string
 	list.edgeCoverage.emplace_back();
 	assert(list.sequenceOverlap.size() == fwNode);
 	list.sequenceOverlap.emplace_back();
+	assert(list.fakeFwHashes.size() == fwNode);
+	list.fakeFwHashes.emplace_back(fakeFwHash);
+	assert(list.fakeBwHashes.size() == fwNode);
+	list.fakeBwHashes.emplace_back(fakeBwHash);
 	return std::make_pair(std::make_pair(fwNode, true), fwHash);
 }
 
@@ -820,21 +796,21 @@ void findMinimizerPositions(const std::string& sequence, size_t kmerSize, size_t
 	{
 		fwkmerHasher.addChar(sequence[i]);
 	}
-	std::deque<std::pair<size_t, size_t>> minimizerOrder;
-	minimizerOrder.emplace_back(0, fwkmerHasher.hash());
+	std::deque<std::tuple<size_t, uint64_t, uint64_t, uint64_t>> minimizerOrder;
+	minimizerOrder.emplace_back(0, fwkmerHasher.hash(), fwkmerHasher.getFwHash(), fwkmerHasher.getBwHash());
 	for (size_t i = 0; i < windowSize-1; i++)
 	{
 		size_t seqPos = kmerSize+i;
 		fwkmerHasher.addChar(sequence[seqPos]);
 		fwkmerHasher.removeChar(sequence[seqPos-kmerSize]);
 		size_t hash = fwkmerHasher.hash();
-		while (minimizerOrder.size() > 0 && minimizerOrder.back().second > hash) minimizerOrder.pop_back();
-		minimizerOrder.emplace_back(i+1, hash);
+		while (minimizerOrder.size() > 0 && std::get<1>(minimizerOrder.back()) > hash) minimizerOrder.pop_back();
+		minimizerOrder.emplace_back(i+1, hash, fwkmerHasher.getFwHash(), fwkmerHasher.getBwHash());
 	}
 	auto pos = minimizerOrder.begin();
-	while (pos != minimizerOrder.end() && pos->second == minimizerOrder.front().second)
+	while (pos != minimizerOrder.end() && std::get<1>(*pos) == std::get<1>(minimizerOrder.front()))
 	{
-		callback(pos->first);
+		callback(std::get<0>(*pos), std::get<2>(*pos), std::get<3>(*pos));
 		++pos;
 	}
 	for (size_t i = windowSize-1; kmerSize+i < sequence.size(); i++)
@@ -842,21 +818,21 @@ void findMinimizerPositions(const std::string& sequence, size_t kmerSize, size_t
 		size_t seqPos = kmerSize+i;
 		fwkmerHasher.addChar(sequence[seqPos]);
 		fwkmerHasher.removeChar(sequence[seqPos-kmerSize]);
-		auto oldMinimizer = minimizerOrder.front().second;
+		auto oldMinimizer = std::get<1>(minimizerOrder.front());
 		size_t hash = fwkmerHasher.hash();
-		while (minimizerOrder.size() > 0 && minimizerOrder.front().first <= i + 1 - windowSize) minimizerOrder.pop_front();
-		while (minimizerOrder.size() > 0 && minimizerOrder.back().second > hash) minimizerOrder.pop_back();
-		if (minimizerOrder.size() > 0 && oldMinimizer != minimizerOrder.front().second)
+		while (minimizerOrder.size() > 0 && std::get<0>(minimizerOrder.front()) <= i + 1 - windowSize) minimizerOrder.pop_front();
+		while (minimizerOrder.size() > 0 && std::get<1>(minimizerOrder.back()) > hash) minimizerOrder.pop_back();
+		if (minimizerOrder.size() > 0 && oldMinimizer != std::get<1>(minimizerOrder.front()))
 		{
 			auto pos = minimizerOrder.begin();
-			while (pos != minimizerOrder.end() && pos->second == minimizerOrder.front().second)
+			while (pos != minimizerOrder.end() && std::get<1>(*pos) == std::get<1>(minimizerOrder.front()))
 			{
-				callback(pos->first);
+				callback(std::get<0>(*pos), std::get<2>(*pos), std::get<3>(*pos));
 				++pos;
 			}
 		}
-		if (minimizerOrder.size() == 0 || hash == minimizerOrder.front().second) callback(i+1);
-		minimizerOrder.emplace_back(i+1, hash);
+		if (minimizerOrder.size() == 0 || hash == std::get<1>(minimizerOrder.front())) callback(i+1, fwkmerHasher.getFwHash(), fwkmerHasher.getBwHash());
+		minimizerOrder.emplace_back(i+1, hash, fwkmerHasher.getFwHash(), fwkmerHasher.getBwHash());
 	}
 }
 
@@ -943,7 +919,7 @@ HashList loadReadsAsHashes(const std::string& filename, size_t kmerSize, size_t 
 		size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 		std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
 		HashType lastHash = 0;
-		findMinimizerPositions(seq, kmerSize, windowSize, [kmerSize, windowSize, &lastHash, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos)
+		findMinimizerPositions(seq, kmerSize, windowSize, [kmerSize, windowSize, &lastHash, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos, uint64_t fwHash, uint64_t bwHash)
 		{
 			assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
 			assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= windowSize);
@@ -953,7 +929,7 @@ HashList loadReadsAsHashes(const std::string& filename, size_t kmerSize, size_t 
 			std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
 			std::pair<size_t, bool> current;
 			size_t overlap = lastMinimizerPosition + kmerSize - pos;
-			std::tie(current, lastHash) = getNode(result, minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap);
+			std::tie(current, lastHash) = getNode(result, minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, fwHash, bwHash);
 			if (last.first != std::numeric_limits<size_t>::max() && pos - lastMinimizerPosition < kmerSize)
 			{
 				assert(lastMinimizerPosition + kmerSize >= pos);
