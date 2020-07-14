@@ -360,6 +360,15 @@ public:
 		assert(data.back().size() >= end - start);
 		return std::make_pair(data.size()-1, data.back().size() - (end - start));
 	}
+	size_t size() const
+	{
+		size_t total = 0;
+		for (size_t i = 0; i < data.size(); i++)
+		{
+			total += data[i].size();
+		}
+		return total;
+	}
 private:
 	std::vector<std::vector<uint16_t>> data;
 	HashType lastHash;
@@ -402,7 +411,8 @@ public:
 	}
 	std::string_view getRevCompHashSequenceRLE(size_t index) const
 	{
-		return hashSequencesRevComp.getView(hashSeqRevCompPtr[index].first, hashSeqRevCompPtr[index].second, kmerSize);
+		auto pos = hashSequences.getRevCompLocation(hashSeqPtr[index].first, hashSeqPtr[index].second, kmerSize);
+		return hashSequencesRevComp.getView(pos.first, pos.second, kmerSize);
 	}
 	void addHashSequenceRLE(std::string_view seq, HashType currentHash, HashType previousHash, size_t overlap)
 	{
@@ -411,10 +421,6 @@ public:
 	void buildReverseCompHashSequences()
 	{
 		hashSequencesRevComp = hashSequences.getReverseComplementStorage();
-		for (size_t i = 0; i < hashSeqPtr.size(); i++)
-		{
-			hashSeqRevCompPtr.push_back(hashSequences.getRevCompLocation(hashSeqPtr[i].first, hashSeqPtr[i].second, kmerSize));
-		}
 	}
 private:
 	AdjacentLengthList hashCharacterLengths;
@@ -422,7 +428,6 @@ private:
 	AdjacentMinimizerList hashSequences;
 	std::vector<std::pair<size_t, size_t>> hashSeqPtr;
 	AdjacentMinimizerList hashSequencesRevComp;
-	std::vector<std::pair<size_t, size_t>> hashSeqRevCompPtr;
 	const size_t kmerSize;
 };
 
