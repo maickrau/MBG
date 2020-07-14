@@ -493,21 +493,44 @@ private:
 		std::pair<size_t, bool> old = start;
 		size_t oldpos = 0;
 		size_t kmer = 0;
+		size_t endKmer = 0;
 		for (size_t i = 0; i < 32; i++)
 		{
 			kmer <<= 2;
-			assert(seq[i] >= 1);
-			assert(seq[i] <= 5);
-			kmer += seq[i]-1;
+			size_t index = i;
+			assert(seq[index] >= 1);
+			assert(seq[index] <= 4);
+			kmer += seq[index]-1;
+			endKmer >>= 2;
+			assert((endKmer & ((size_t)3 << (size_t)62)) == (size_t)0);
+			size_t revIndex = i + kmerSize - 32;
+			assert(revIndex < seq.size());
+			assert(seq[revIndex] >= 1);
+			assert(seq[revIndex] <= 4);
+			size_t oldEndKmer = endKmer;
+			endKmer += (3 - (size_t)(seq[revIndex] - 1)) << (size_t)62;
+			assert((oldEndKmer | ((size_t)3 << (size_t)62)) == (endKmer | ((size_t)3 << (size_t)62)));
 		}
+		assert(minimizerPrefixes.count(kmer) == 1);
+		assert(minimizerPrefixes.count(endKmer) == 1);
 		for (size_t i = 1; i < seq.size() - kmerSize; i++)
 		{
 			kmer <<= 2;
-			assert(i+32-1 < seq.size());
-			assert(seq[i+32-1] >= 1);
-			assert(seq[i+32-1] <= 4);
-			kmer += seq[i+32-1]-1;
-			if (minimizerPrefixes.count(kmer) == 1)
+			size_t index = i + 32 - 1;
+			assert(index < seq.size());
+			assert(seq[index] >= 1);
+			assert(seq[index] <= 4);
+			kmer += seq[index]-1;
+			endKmer >>= 2;
+			assert((endKmer & ((size_t)3 << (size_t)62)) == (size_t)0);
+			size_t revIndex = i + kmerSize - 1;
+			assert(revIndex < seq.size());
+			assert(seq[revIndex] >= 1);
+			assert(seq[revIndex] <= 4);
+			size_t oldEndKmer = endKmer;
+			endKmer += (3 - (size_t)(seq[revIndex] - 1)) << (size_t)62;
+			assert((oldEndKmer | ((size_t)3 << (size_t)62)) == (endKmer | ((size_t)3 << (size_t)62)));
+			if (minimizerPrefixes.count(kmer) == 1 && minimizerPrefixes.count(endKmer) == 1)
 			{
 				auto here = getNodeOrNull(list, std::string_view { seq.data() + i, kmerSize });
 				if (here.first == std::numeric_limits<size_t>::max()) continue;
@@ -520,37 +543,44 @@ private:
 				oldpos = i;
 			}
 		}
-		std::pair<size_t, bool> canonFrom;
-		std::pair<size_t, bool> canonTo;
-		std::tie(canonFrom, canonTo) = canon(old, end);
-		newSequenceOverlaps.emplace_back(canonFrom, canonTo, kmerSize - (seq.size() - kmerSize - oldpos));
 		if (path.size() > 0)
 		{
+			assert(old != start);
+			std::pair<size_t, bool> canonFrom;
+			std::pair<size_t, bool> canonTo;
+			std::tie(canonFrom, canonTo) = canon(old, end);
+			newSequenceOverlaps.emplace_back(canonFrom, canonTo, kmerSize - (seq.size() - kmerSize - oldpos));
 			transitiveMiddle[start][end] = path;
+		}
+		else
+		{
+			assert(old == start);
 		}
 	}
 	std::unordered_set<size_t> getMinimizerPrefixes(size_t kmerSize, const HashList& hashlist)
 	{
 		std::unordered_set<size_t> result;
-		assert(kmerSize >= 32);
+		assert(kmerSize >= 64);
 		for (size_t i = 0; i < hashlist.size(); i++)
 		{
 			size_t kmer = 0;
 			for (size_t j = 0; j < 32; j++)
 			{
 				kmer <<= 2;
-				assert(hashlist.getHashSequenceRLE(i)[j] >= 1);
-				assert(hashlist.getHashSequenceRLE(i)[j] <= 4);
-				kmer += hashlist.getHashSequenceRLE(i)[j]-1;
+				size_t index = j;
+				assert(hashlist.getHashSequenceRLE(i)[index] >= 1);
+				assert(hashlist.getHashSequenceRLE(i)[index] <= 4);
+				kmer += hashlist.getHashSequenceRLE(i)[index]-1;
 			}
 			result.emplace(kmer);
 			kmer = 0;
 			for (size_t j = 0; j < 32; j++)
 			{
 				kmer <<= 2;
-				assert(hashlist.getHashSequenceRLE(i)[kmerSize-j-1] >= 1);
-				assert(hashlist.getHashSequenceRLE(i)[kmerSize-j-1] <= 4);
-				kmer += 3 - (hashlist.getHashSequenceRLE(i)[kmerSize-j-1]-1);
+				size_t index = kmerSize - j - 1;
+				assert(hashlist.getHashSequenceRLE(i)[index] >= 1);
+				assert(hashlist.getHashSequenceRLE(i)[index] <= 4);
+				kmer += 3 - (hashlist.getHashSequenceRLE(i)[index]-1);
 			}
 			result.emplace(kmer);
 		}
