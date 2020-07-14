@@ -389,6 +389,12 @@ public:
 		std::tie(from, to) = canon(from, to);
 		return sequenceOverlap.at(from).at(to);
 	}
+	void addSequenceOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, const size_t overlap)
+	{
+		std::tie(from, to) = canon(from, to);
+		if (sequenceOverlap[from].count(to) == 1) return;
+		sequenceOverlap[from][to] = overlap;
+	}
 	size_t size() const
 	{
 		return hashSeqPtr.size();
@@ -695,13 +701,6 @@ std::string strFromRevComp(const std::string& revComp)
 	return result;
 }
 
-void addSequenceOverlap(HashList& list, std::pair<size_t, bool> from, std::pair<size_t, bool> to, const size_t overlap)
-{
-	if (list.sequenceOverlap[from].count(to) == 1) return;
-	std::tie(from, to) = canon(from, to);
-	list.sequenceOverlap[from][to] = overlap;
-}
-
 std::pair<std::pair<size_t, bool>, HashType> getNode(HashList& list, std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap)
 {
 	HashType fwHash = hash(sequence);
@@ -862,7 +861,7 @@ HashList loadReadsAsHashes(const std::string& filename, size_t kmerSize, size_t 
 			if (last.first != std::numeric_limits<size_t>::max() && pos - lastMinimizerPosition < kmerSize)
 			{
 				assert(lastMinimizerPosition + kmerSize >= pos);
-				addSequenceOverlap(result, last, current, overlap);
+				result.addSequenceOverlap(last, current, overlap);
 				auto pair = canon(last, current);
 				result.edgeCoverage[pair.first][pair.second] += 1;
 			}
