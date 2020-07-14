@@ -387,11 +387,7 @@ public:
 	size_t getOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to) const
 	{
 		std::tie(from, to) = canon(from, to);
-		if (sequenceOverlap[from].count(to) == 1) return sequenceOverlap[from].at(to);
-		if (sequenceOverlap[from].count(reverse(to)) == 1) return sequenceOverlap[from].at(reverse(to));
-		if (sequenceOverlap[reverse(from)].count(to) == 1) return sequenceOverlap[reverse(from)].at(to);
-		if (sequenceOverlap[reverse(from)].count(reverse(to)) == 1) return sequenceOverlap[reverse(from)].at(reverse(to));
-		return sequenceOverlap[from].at(to);
+		return sequenceOverlap.at(from).at(to);
 	}
 	size_t size() const
 	{
@@ -447,7 +443,7 @@ class TransitiveCleaner
 public:
 	TransitiveCleaner(size_t kmerSize, const HashList& hashlist)
 	{
-		transitiveMiddle.resize(hashlist.sequenceOverlap.size());
+		transitiveMiddle.resize(hashlist.size());
 		getMiddles(kmerSize, hashlist);
 	}
 	std::vector<std::pair<size_t, bool>> insertMiddles(std::vector<std::pair<size_t, bool>> raw) const
