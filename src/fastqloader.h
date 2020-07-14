@@ -14,6 +14,7 @@ public:
 		{
 			std::string line;
 			std::getline(file, line);
+			if (line.size() == 0) continue;
 			if (line[0] != '@') continue;
 			FastQ newread;
 			if (line.back() == '\r') line.pop_back();
@@ -35,6 +36,11 @@ public:
 		std::getline(file, line);
 		do
 		{
+			if (line.size() == 0)
+			{
+				std::getline(file, line);
+				continue;
+			}
 			if (line[0] != '>')
 			{
 				std::getline(file, line);
@@ -47,6 +53,7 @@ public:
 			do
 			{
 				std::getline(file, line);
+				if (line.size() == 0) continue;
 				if (line[0] == '>') break;
 				if (line.back() == '\r') line.pop_back();
 				newread.sequence += line;

@@ -454,6 +454,47 @@ std::pair<size_t, bool> getNodeOrNull(const HashList& list, std::string_view seq
 	return found->second;
 }
 
+class LazyString
+{
+public:
+	LazyString(std::string_view first, std::string_view second, size_t overlap) :
+	first(first),
+	second(second),
+	overlap(overlap)
+	{
+		assert(overlap < first.size());
+		assert(overlap < second.size());
+	}
+	char operator[](size_t index) const
+	{
+		if (index < first.size()) return first[index];
+		assert(index >= first.size());
+		size_t secondIndex = index - first.size() + overlap;
+		assert(secondIndex < second.size());
+		return second[secondIndex];
+	}
+	std::string_view view(size_t start, size_t kmerSize)
+	{
+		if (str.size() == 0)
+		{
+			str.reserve(size());
+			str.insert(str.end(), first.begin(), first.end());
+			str.insert(str.end(), second.begin() + overlap, second.end());
+		}
+		assert(str.size() == size());
+		return std::string_view { str.data() + start, kmerSize };
+	}
+	size_t size() const
+	{
+		return first.size() + second.size() - overlap;
+	}
+private:
+	std::string_view first;
+	std::string_view second;
+	const size_t overlap;
+	std::string str;
+};
+
 class TransitiveCleaner
 {
 public:
@@ -487,7 +528,7 @@ public:
 	}
 	std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t>> newSequenceOverlaps;
 private:
-	void addMiddles(size_t kmerSize, std::pair<size_t, bool> start, std::pair<size_t, bool> end, const std::string& seq, const HashList& list, const std::unordered_set<size_t>& minimizerPrefixes)
+	void addMiddles(size_t kmerSize, std::pair<size_t, bool> start, std::pair<size_t, bool> end, LazyString seq, const HashList& list, const std::unordered_set<size_t>& minimizerPrefixes)
 	{
 		std::vector<std::pair<size_t, bool>> path;
 		std::pair<size_t, bool> old = start;
@@ -498,6 +539,7 @@ private:
 		{
 			kmer <<= 2;
 			size_t index = i;
+			assert(index < seq.size());
 			assert(seq[index] >= 1);
 			assert(seq[index] <= 4);
 			kmer += seq[index]-1;
@@ -532,7 +574,7 @@ private:
 			assert((oldEndKmer | ((size_t)3 << (size_t)62)) == (endKmer | ((size_t)3 << (size_t)62)));
 			if (minimizerPrefixes.count(kmer) == 1 && minimizerPrefixes.count(endKmer) == 1)
 			{
-				auto here = getNodeOrNull(list, std::string_view { seq.data() + i, kmerSize });
+				auto here = getNodeOrNull(list, seq.view(i, kmerSize));
 				if (here.first == std::numeric_limits<size_t>::max()) continue;
 				path.push_back(here);
 				std::pair<size_t, bool> canonFrom;
@@ -589,46 +631,46 @@ private:
 	void getMiddles(size_t kmerSize, const HashList& hashlist)
 	{
 		std::unordered_set<size_t> minimizerPrefixes = getMinimizerPrefixes(kmerSize, hashlist);
-		std::string seq;
-		seq.reserve(kmerSize * 2);
 		for (size_t i = 0; i < hashlist.sequenceOverlap.size(); i++)
 		{
 			std::pair<size_t, bool> fw { i, true };
 			if (hashlist.sequenceOverlap[fw].size() > 0)
 			{
-				seq = hashlist.getHashSequenceRLE(i);
+				std::string_view seq = hashlist.getHashSequenceRLE(i);
 				for (auto pair : hashlist.sequenceOverlap[fw])
 				{
-					if (pair.first.first < i) continue;
+					assert(pair.first.first >= i);
+					std::string_view second;
 					if (pair.first.second)
 					{
-						seq += hashlist.getHashSequenceRLE(pair.first.first).substr(pair.second);
+						second = hashlist.getHashSequenceRLE(pair.first.first);
 					}
 					else
 					{
-						seq += hashlist.getRevCompHashSequenceRLE(pair.first.first).substr(pair.second);
+						second = hashlist.getRevCompHashSequenceRLE(pair.first.first);
 					}
-					addMiddles(kmerSize, fw, pair.first, seq, hashlist, minimizerPrefixes);
-					seq.resize(kmerSize);
+					LazyString lazy { seq, second, pair.second };
+					addMiddles(kmerSize, fw, pair.first, lazy, hashlist, minimizerPrefixes);
 				}
 			}
 			std::pair<size_t, bool> bw { i, false };
 			if (hashlist.sequenceOverlap[bw].size() > 0)
 			{
-				seq = hashlist.getRevCompHashSequenceRLE(i);
+				std::string_view seq = hashlist.getRevCompHashSequenceRLE(i);
 				for (auto pair : hashlist.sequenceOverlap[bw])
 				{
-					if (pair.first.first < i) continue;
+					assert(pair.first.first >= i);
+					std::string_view second;
 					if (pair.first.second)
 					{
-						seq += hashlist.getHashSequenceRLE(pair.first.first).substr(pair.second);
+						second = hashlist.getHashSequenceRLE(pair.first.first);
 					}
 					else
 					{
-						seq += hashlist.getRevCompHashSequenceRLE(pair.first.first).substr(pair.second);
+						second = hashlist.getRevCompHashSequenceRLE(pair.first.first);
 					}
-					addMiddles(kmerSize, bw, pair.first, seq, hashlist, minimizerPrefixes);
-					seq.resize(kmerSize);
+					LazyString lazy { seq, second, pair.second };
+					addMiddles(kmerSize, bw, pair.first, lazy, hashlist, minimizerPrefixes);
 				}
 			}
 		}
