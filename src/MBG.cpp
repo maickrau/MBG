@@ -485,7 +485,7 @@ public:
 		std::reverse(result.begin(), result.end());
 		return result;
 	}
-	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> newSequenceOverlap;
+	std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t>> newSequenceOverlaps;
 private:
 	void addMiddles(size_t kmerSize, std::pair<size_t, bool> start, std::pair<size_t, bool> end, const std::string& seq, const HashList& list, const std::unordered_set<size_t>& minimizerPrefixes)
 	{
@@ -515,7 +515,7 @@ private:
 				std::pair<size_t, bool> canonFrom;
 				std::pair<size_t, bool> canonTo;
 				std::tie(canonFrom, canonTo) = canon(old, here);
-				newSequenceOverlap[canonFrom][canonTo] = kmerSize - (i - oldpos);
+				newSequenceOverlaps.emplace_back(canonFrom, canonTo, kmerSize - (i - oldpos));
 				old = here;
 				oldpos = i;
 			}
@@ -523,7 +523,7 @@ private:
 		std::pair<size_t, bool> canonFrom;
 		std::pair<size_t, bool> canonTo;
 		std::tie(canonFrom, canonTo) = canon(old, end);
-		newSequenceOverlap[canonFrom][canonTo] = kmerSize - (seq.size() - kmerSize - oldpos);
+		newSequenceOverlaps.emplace_back(canonFrom, canonTo, kmerSize - (seq.size() - kmerSize - oldpos));
 		if (path.size() > 0)
 		{
 			transitiveMiddle[start][end] = path;
@@ -558,7 +558,6 @@ private:
 	}
 	void getMiddles(size_t kmerSize, const HashList& hashlist)
 	{
-		newSequenceOverlap = hashlist.sequenceOverlap;
 		std::unordered_set<size_t> minimizerPrefixes = getMinimizerPrefixes(kmerSize, hashlist);
 		std::string seq;
 		seq.reserve(kmerSize * 2);
@@ -792,10 +791,8 @@ void findMinimizerPositions(const std::string& sequence, size_t kmerSize, size_t
 void cleanTransitiveEdges(HashList& result, size_t kmerSize)
 {
 	TransitiveCleaner cleaner { kmerSize, result };
-	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> newEdgeCoverage;
+	std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t>> newEdgeCoverage;
 
-	std::vector<size_t> newCoverage = result.coverage;
-	newEdgeCoverage.resize(result.edgeCoverage.size());
 	size_t transitiveEdgesBroken = 0;
 	for (size_t node = 0; node < result.edgeCoverage.size(); node++)
 	{
@@ -809,11 +806,14 @@ void cleanTransitiveEdges(HashList& result, size_t kmerSize)
 			if (vec.size() != 2) transitiveEdgesBroken += 1;
 			for (size_t i = 1; i < vec.size(); i++)
 			{
-				newEdgeCoverage[vec[i-1]][vec[i]] += target.second;
+				std::pair<size_t, bool> canonFrom;
+				std::pair<size_t, bool> canonTo;
+				std::tie(canonFrom, canonTo) = canon(vec[i-1], vec[i]);
+				newEdgeCoverage.emplace_back(canonFrom, canonTo, target.second);
 			}
 			for (size_t i = 1; i < vec.size()-1; i++)
 			{
-				newCoverage[vec[i].first] += target.second;
+				result.coverage[vec[i].first] += target.second;
 			}
 		}
 		std::pair<size_t, bool> bw { node, false };
@@ -826,17 +826,27 @@ void cleanTransitiveEdges(HashList& result, size_t kmerSize)
 			if (vec.size() != 2) transitiveEdgesBroken += 1;
 			for (size_t i = 1; i < vec.size(); i++)
 			{
-				newEdgeCoverage[vec[i-1]][vec[i]] += target.second;
+				std::pair<size_t, bool> canonFrom;
+				std::pair<size_t, bool> canonTo;
+				std::tie(canonFrom, canonTo) = canon(vec[i-1], vec[i]);
+				newEdgeCoverage.emplace_back(canonFrom, canonTo, target.second);
 			}
 			for (size_t i = 1; i < vec.size()-1; i++)
 			{
-				newCoverage[vec[i].first] += target.second;
+				result.coverage[vec[i].first] += target.second;
 			}
 		}
 	}
-	result.sequenceOverlap = cleaner.newSequenceOverlap;
-	result.edgeCoverage = newEdgeCoverage;
-	result.coverage = newCoverage;
+	for (auto t : cleaner.newSequenceOverlaps)
+	{
+		result.sequenceOverlap[std::get<0>(t)][std::get<1>(t)] = std::get<2>(t);
+	}
+	result.edgeCoverage.clear();
+	result.edgeCoverage.resize(result.size());
+	for (auto t : newEdgeCoverage)
+	{
+		result.edgeCoverage[std::get<0>(t)][std::get<1>(t)] += std::get<2>(t);
+	}
 	std::cerr << transitiveEdgesBroken << " transitive edges cleaned" << std::endl;
 }
 
