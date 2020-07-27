@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <string_view>
 #include <phmap.h>
+#include <cxxopts.hpp>
 #include "fastqloader.h"
 #include "CommonUtils.h"
 
@@ -1416,26 +1417,76 @@ std::pair<size_t, size_t> getSizeAndN50(const HashList& hashlist, const UnitigGr
 
 int main(int argc, char** argv)
 {
-	std::string inputReads { argv[1] };
-	std::string outputGraph { argv[2] };
-	size_t kmerSize = std::stoi(argv[3]);
-	size_t windowSize = std::stoi(argv[4]);
-	size_t minCoverage = std::stoi(argv[5]);
-	double minUnitigCoverage = std::stod(argv[6]);
-	bool hpc = true;
-	if (argc > 7)
+	cxxopts::Options options { "MBG" };
+	options.add_options()
+		("h,help", "Print help")
+		("i,in", "Input reads", cxxopts::value<std::string>())
+		("o,out", "Output graph", cxxopts::value<std::string>())
+		("k", "K-mer size", cxxopts::value<size_t>())
+		("w", "Window size", cxxopts::value<size_t>())
+		("a,kmer-abundance", "Minimum k-mer abundance", cxxopts::value<size_t>()->default_value("1"))
+		("u,unitig-abundance", "Minimum average unitig abundace and edge abundance", cxxopts::value<double>()->default_value("2"))
+		("no-hpc", "Don't use homopolymer compression")
+	;
+	auto params = options.parse(argc, argv);
+	if (params.count("h") == 1)
 	{
-		if (strncmp(argv[7], "1", 1) == 0)
-		{
-			hpc = false;
-		}
+		std::cerr << options.help() << std::endl;
+		exit(0);
 	}
+	bool paramError = false;
+	if (params.count("i") == 0)
+	{
+		std::cerr << "Select input reads -i" << std::endl;
+		paramError = true;
+	}
+	if (params.count("o") == 0)
+	{
+		std::cerr << "Select output filename -o" << std::endl;
+		paramError = true;
+	}
+	if (params.count("k") == 0)
+	{
+		std::cerr << "Select k-mer size -k" << std::endl;
+		paramError = true;
+	}
+	if (params.count("w") == 0)
+	{
+		std::cerr << "Select window size -k" << std::endl;
+		paramError = true;
+	}
+	if (paramError) std::abort();
+	std::string inputReads = params["i"].as<std::string>();
+	std::string outputGraph = params["o"].as<std::string>();
+	size_t kmerSize = params["k"].as<size_t>();
+	size_t windowSize = params["w"].as<size_t>();
+	size_t minCoverage = params["a"].as<size_t>();
+	size_t minUnitigCoverage = params["u"].as<double>();
+	bool hpc = true;
+	if (params.count("no-hpc") == 1) hpc = false;
 
 	if (windowSize > kmerSize)
 	{
 		std::cerr << "Window size cannot be greater than k-mer size" << std::endl;
-		std::abort();
+		paramError = true;
 	}
+	if (windowSize == 0)
+	{
+		std::cerr << "Window size must be >0" << std::endl;
+		paramError = true;
+	}
+	if (kmerSize == 0)
+	{
+		std::cerr << "K-mer size must be >0" << std::endl;
+		paramError = true;
+	}
+	if (paramError) std::abort();
+	
+	std::cerr << "k=" << kmerSize << ",";
+	std::cerr << "w=" << windowSize << ",";
+	std::cerr << "a=" << minCoverage << ",";
+	std::cerr << "u=" << minUnitigCoverage << ",";
+	std::cerr << "hpc=" << (hpc ? "yes" : "no") << std::endl;
 
 	auto beforeReading = getTime();
 	auto reads = loadReadsAsHashes(inputReads, kmerSize, windowSize, hpc);
