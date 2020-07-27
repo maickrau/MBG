@@ -910,51 +910,55 @@ void cleanTransitiveEdges(HashList& result, size_t kmerSize)
 	std::cerr << transitiveEdgesBroken << " transitive edges cleaned" << std::endl;
 }
 
-HashList loadReadsAsHashes(const std::string& filename, size_t kmerSize, size_t windowSize, bool hpc)
+HashList loadReadsAsHashes(const std::vector<std::string>& files, size_t kmerSize, size_t windowSize, bool hpc)
 {
 	HashList result { kmerSize };
 	size_t totalNodes = 0;
-	FastQ::streamFastqFromFile(filename, false, [&result, &totalNodes, kmerSize, windowSize, hpc](const FastQ& read){
-		if (read.sequence.size() == 0) return;
-		std::string seq;
-		std::vector<uint16_t> lens;
-		if (hpc)
-		{
-			std::tie(seq, lens) = runLengthEncode(read.sequence);
-		}
-		else
-		{
-			std::tie(seq, lens) = noRunLengthEncode(read.sequence);
-		}
-		if (seq.size() <= kmerSize + windowSize) return;
-		std::string revSeq = revCompRLE(seq);
-		size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
-		std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
-		HashType lastHash = 0;
-		findMinimizerPositions(seq, kmerSize, windowSize, [kmerSize, windowSize, &lastHash, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos, uint64_t fwHash, uint64_t bwHash)
-		{
-			assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
-			assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= windowSize);
-			assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
-			std::string_view minimizerSequence { seq.data() + pos, kmerSize };
-			size_t revPos = seq.size() - (pos + kmerSize);
-			std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
-			std::pair<size_t, bool> current;
-			size_t overlap = lastMinimizerPosition + kmerSize - pos;
-			std::tie(current, lastHash) = getNode(result, minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, fwHash, bwHash);
-			if (last.first != std::numeric_limits<size_t>::max() && pos - lastMinimizerPosition < kmerSize)
+	for (const std::string& filename : files)
+	{
+		std::cerr << "Reading sequences from " << filename << std::endl;
+		FastQ::streamFastqFromFile(filename, false, [&result, &totalNodes, kmerSize, windowSize, hpc](const FastQ& read){
+			if (read.sequence.size() == 0) return;
+			std::string seq;
+			std::vector<uint16_t> lens;
+			if (hpc)
 			{
-				assert(lastMinimizerPosition + kmerSize >= pos);
-				result.addSequenceOverlap(last, current, overlap);
-				auto pair = canon(last, current);
-				result.edgeCoverage[pair.first][pair.second] += 1;
+				std::tie(seq, lens) = runLengthEncode(read.sequence);
 			}
-			lastMinimizerPosition = pos;
-			result.coverage[current.first] += 1;
-			last = current;
-			totalNodes += 1;
+			else
+			{
+				std::tie(seq, lens) = noRunLengthEncode(read.sequence);
+			}
+			if (seq.size() <= kmerSize + windowSize) return;
+			std::string revSeq = revCompRLE(seq);
+			size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
+			std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
+			HashType lastHash = 0;
+			findMinimizerPositions(seq, kmerSize, windowSize, [kmerSize, windowSize, &lastHash, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos, uint64_t fwHash, uint64_t bwHash)
+			{
+				assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
+				assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= windowSize);
+				assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
+				std::string_view minimizerSequence { seq.data() + pos, kmerSize };
+				size_t revPos = seq.size() - (pos + kmerSize);
+				std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
+				std::pair<size_t, bool> current;
+				size_t overlap = lastMinimizerPosition + kmerSize - pos;
+				std::tie(current, lastHash) = getNode(result, minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, fwHash, bwHash);
+				if (last.first != std::numeric_limits<size_t>::max() && pos - lastMinimizerPosition < kmerSize)
+				{
+					assert(lastMinimizerPosition + kmerSize >= pos);
+					result.addSequenceOverlap(last, current, overlap);
+					auto pair = canon(last, current);
+					result.edgeCoverage[pair.first][pair.second] += 1;
+				}
+				lastMinimizerPosition = pos;
+				result.coverage[current.first] += 1;
+				last = current;
+				totalNodes += 1;
+			});
 		});
-	});
+	}
 	result.buildReverseCompHashSequences();
 	std::cerr << totalNodes << " nodes" << std::endl;
 	std::cerr << result.size() << " distinct fw/bw sequence nodes" << std::endl;
@@ -1420,10 +1424,10 @@ int main(int argc, char** argv)
 	cxxopts::Options options { "MBG" };
 	options.add_options()
 		("h,help", "Print help")
-		("i,in", "Input reads", cxxopts::value<std::string>())
-		("o,out", "Output graph", cxxopts::value<std::string>())
-		("k", "K-mer size", cxxopts::value<size_t>())
-		("w", "Window size", cxxopts::value<size_t>())
+		("i,in", "Input reads. Multiple files can be input with -i file1.fa -i file2.fa etc (required)", cxxopts::value<std::vector<std::string>>())
+		("o,out", "Output graph (required)", cxxopts::value<std::string>())
+		("k", "K-mer size (required)", cxxopts::value<size_t>())
+		("w", "Window size (required)", cxxopts::value<size_t>())
 		("a,kmer-abundance", "Minimum k-mer abundance", cxxopts::value<size_t>()->default_value("1"))
 		("u,unitig-abundance", "Minimum average unitig abundace and edge abundance", cxxopts::value<double>()->default_value("2"))
 		("no-hpc", "Don't use homopolymer compression")
@@ -1456,7 +1460,7 @@ int main(int argc, char** argv)
 		paramError = true;
 	}
 	if (paramError) std::abort();
-	std::string inputReads = params["i"].as<std::string>();
+	std::vector<std::string> inputReads = params["i"].as<std::vector<std::string>>();
 	std::string outputGraph = params["o"].as<std::string>();
 	size_t kmerSize = params["k"].as<size_t>();
 	size_t windowSize = params["w"].as<size_t>();
@@ -1482,6 +1486,7 @@ int main(int argc, char** argv)
 	}
 	if (paramError) std::abort();
 	
+	std::cerr << "Parameters: ";
 	std::cerr << "k=" << kmerSize << ",";
 	std::cerr << "w=" << windowSize << ",";
 	std::cerr << "a=" << minCoverage << ",";
