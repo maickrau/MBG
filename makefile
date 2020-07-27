@@ -23,6 +23,9 @@ $(shell mkdir -p obj)
 $(BINDIR)/MBG: $(OBJ)
 	$(GPP) -o $@ $^ $(LINKFLAGS)
 
+$(ODIR)/main.o: $(SRCDIR)/main.cpp $(DEPS)
+	$(GPP) -c -o $@ $< $(CPPFLAGS) -DVERSION="\"$(VERSION)\""
+
 $(ODIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
 	$(GPP) -c -o $@ $< $(CPPFLAGS)
 

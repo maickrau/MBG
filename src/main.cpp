@@ -5,9 +5,11 @@
 
 int main(int argc, char** argv)
 {
+	std::cerr << "MBG " << VERSION << std::endl;
 	cxxopts::Options options { "MBG" };
 	options.add_options()
 		("h,help", "Print help")
+		("v,version", "Print version")
 		("i,in", "Input reads. Multiple files can be input with -i file1.fa -i file2.fa etc (required)", cxxopts::value<std::vector<std::string>>())
 		("o,out", "Output graph (required)", cxxopts::value<std::string>())
 		("k", "K-mer size (required)", cxxopts::value<size_t>())
@@ -17,6 +19,11 @@ int main(int argc, char** argv)
 		("no-hpc", "Don't use homopolymer compression")
 	;
 	auto params = options.parse(argc, argv);
+	if (params.count("v") == 1)
+	{
+		std::cerr << "Version: " << VERSION << std::endl;
+		exit(0);
+	}
 	if (params.count("h") == 1)
 	{
 		std::cerr << options.help() << std::endl;
