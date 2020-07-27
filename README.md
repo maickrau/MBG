@@ -13,7 +13,7 @@ Minimizer based de Bruijn-like Graph constructor. Homopolymer compress input seq
 
 `bin/MBG -i input_reads.fa -o output_graph.gfa -k k -w w -a kmerabundance -u unitigabundance`
 
-eg `bin/MBG -i reads.fa -g graph.gfa -k 2501 -w 2000 -a 1 -u 3`
+eg `bin/MBG -i reads.fa -g graph.gfa -k 1501 -w 1500 -a 1 -u 3`
 
 Multiple read files can be inputted with "-i file1.fa -i file2.fa" etc. Input read type can be .fa / .fq / .fa.gz / .fq.gz.
 
