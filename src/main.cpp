@@ -68,6 +68,11 @@ int main(int argc, char** argv)
 		std::cerr << "K-mer size must be >0" << std::endl;
 		paramError = true;
 	}
+	if (kmerSize % 2 == 0)
+	{
+		std::cerr << "K-mer size must be odd" << std::endl;
+		paramError = true;
+	}
 	if (paramError) std::abort();
 	
 	std::cerr << "Parameters: ";
