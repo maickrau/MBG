@@ -11,9 +11,9 @@ Minimizer based de Bruijn-like Graph constructor. Homopolymer compress input seq
 
 #### Usage
 
-`bin/MBG input_reads.fa output_graph.gfa k w kmerabundance unitigabundance`
+`bin/MBG -i input_reads.fa -o output_graph.gfa -k k -w w -a kmerabundance -u unitigabundance`
 
-eg `bin/MBG reads.fa graph.gfa 2501 500 1 3`
+eg `bin/MBG -i reads.fa -g graph.gfa -k 2501 -w 500 -a 1 -u 3`
 
 #### Parameters
 
