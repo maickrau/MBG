@@ -1052,6 +1052,25 @@ public:
 		}
 		return result;
 	}
+	size_t numNodes() const
+	{
+		return unitigs.size();
+	}
+	size_t numEdges() const
+	{
+		size_t result = 0;
+		for (size_t i = 0; i < edges.size(); i++)
+		{
+			std::pair<size_t, bool> fw { i, true };
+			std::pair<size_t, bool> bw { i, false };
+			result += edges[fw].size();
+			result += edges[bw].size();
+		}
+		// edges are stored in both directions
+		assert(result % 2 == 0);
+		result /= 2;
+		return result;
+	}
 };
 
 void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, bool> start, const VectorWithDirection<std::unordered_set<std::pair<size_t, bool>>>& edges, std::vector<std::pair<size_t, bool>>& belongsToUnitig)
@@ -1226,6 +1245,7 @@ UnitigGraph getUnitigGraph(const HashList& hashlist, size_t minCoverage)
 	auto edges = getCoveredEdges(hashlist, minCoverage);
 	for (size_t i = 0; i < hashlist.coverage.size(); i++)
 	{
+		if (hashlist.coverage[i] < minCoverage) continue;
 		std::pair<size_t, bool> fw { i, true };
 		std::pair<size_t, bool> bw { i, false };
 		auto fwEdges = edges[fw];
@@ -1242,6 +1262,7 @@ UnitigGraph getUnitigGraph(const HashList& hashlist, size_t minCoverage)
 			for (auto edge : bwEdges)
 			{
 				if (belongsToUnitig[edge.first]) continue;
+				assert(hashlist.coverage[edge.first] >= minCoverage);
 				startUnitig(result, edge, edges, belongsToUnitig, hashlist, minCoverage);
 				assert(result.unitigs.size() > 0);
 				unitigTip[result.unitigs.back().back()] = std::make_pair(result.unitigs.size()-1, true);
@@ -1260,6 +1281,7 @@ UnitigGraph getUnitigGraph(const HashList& hashlist, size_t minCoverage)
 			for (auto edge : fwEdges)
 			{
 				if (belongsToUnitig[edge.first]) continue;
+				assert(hashlist.coverage[edge.first] >= minCoverage);
 				startUnitig(result, edge, edges, belongsToUnitig, hashlist, minCoverage);
 				assert(result.unitigs.size() > 0);
 				unitigTip[result.unitigs.back().back()] = std::make_pair(result.unitigs.size()-1, true);
@@ -1624,7 +1646,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	auto beforeUnitigs = getTime();
 	auto unitigs = getUnitigGraph(reads, minCoverage);
 	auto beforeFilter = getTime();
-	if (minUnitigCoverage != minCoverage) unitigs = getUnitigs(filterUnitigsByCoverage(unitigs, minUnitigCoverage));
+	if (minUnitigCoverage > minCoverage) unitigs = getUnitigs(filterUnitigsByCoverage(unitigs, minUnitigCoverage));
 	auto beforeWrite = getTime();
 	writeGraph(unitigs, outputGraph, reads);
 	auto beforeStats = getTime();
@@ -1636,5 +1658,8 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforeWrite) << std::endl;
 	std::cerr << "writing the graph took " << formatTime(beforeWrite, beforeStats) << std::endl;
 	std::cerr << "calculating stats took " << formatTime(beforeStats, afterStats) << std::endl;
-	std::cerr << "assembly size " << unitigStats.first << " N50 " << unitigStats.second << std::endl;
+	std::cerr << "nodes: " << unitigs.numNodes() << std::endl; 
+	std::cerr << "edges: " << unitigs.numEdges() << std::endl; 
+	std::cerr << "assembly size " << unitigStats.first << " bp, N50 " << unitigStats.second << std::endl;
+	std::cerr << "approximate number of k-mers ~ " << (unitigStats.first - unitigs.numNodes() * (kmerSize - windowSize/2 - 1)) << std::endl;
 }
