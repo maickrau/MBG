@@ -1063,12 +1063,17 @@ public:
 		{
 			std::pair<size_t, bool> fw { i, true };
 			std::pair<size_t, bool> bw { i, false };
-			result += edges[fw].size();
-			result += edges[bw].size();
+			for (auto edge : edges[fw])
+			{
+				auto c = canon(fw, edge);
+				if (c.first == fw && c.second == edge) result += 1;
+			}
+			for (auto edge : edges[bw])
+			{
+				auto c = canon(bw, edge);
+				if (c.first == bw && c.second == edge) result += 1;
+			}
 		}
-		// edges are stored in both directions
-		assert(result % 2 == 0);
-		result /= 2;
 		return result;
 	}
 };
