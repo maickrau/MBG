@@ -291,6 +291,89 @@ private:
 	size_t kmerSize;
 };
 
+class TwobitString
+{
+public:
+	TwobitString() :
+	data(),
+	realSize(0)
+	{}
+	TwobitString(const std::string_view& str) :
+	data(),
+	realSize(0)
+	{
+		*this = str;
+	}
+	char get(size_t i) const
+	{
+		size_t pos = i / 4;
+		size_t off = (i % 4) * 2;
+		return ((data[pos] >> off) & 3) + 1;
+	}
+	void set(size_t i, char c)
+	{
+		assert(c >= 1);
+		assert(c <= 4);
+		size_t pos = i / 4;
+		size_t off = (i % 4) * 2;
+		data[pos] &= ~(3 << off);
+		data[pos] |= (c-1) << off;
+	}
+	size_t size() const
+	{
+		return realSize;
+	}
+	TwobitString& operator=(const std::string& str)
+	{
+		data.clear();
+		resize(str.size());
+		for (size_t i = 0; i < str.size(); i++)
+		{
+			set(i, str[i]);
+		}
+		return *this;
+	}
+	TwobitString& operator=(const std::string_view& str)
+	{
+		data.clear();
+		resize(str.size());
+		for (size_t i = 0; i < str.size(); i++)
+		{
+			set(i, str[i]);
+		}
+		return *this;
+	}
+	void resize(size_t size)
+	{
+		size_t max = (size + 3) / 4;
+		data.resize(max, 0);
+		realSize = size;
+	}
+	void push_back(char c)
+	{
+		size_t pos = realSize / 4;
+		if (pos >= data.size())
+		{
+			data.resize(data.size() * 2, 0);
+		}
+		set(realSize, c);
+		realSize += 1;
+	}
+	template <typename Iter>
+	void insert(Iter start, Iter end)
+	{
+		Iter i = start;
+		while (i != end)
+		{
+			push_back(*i);
+			++i;
+		}
+	}
+private:
+	std::vector<unsigned char> data;
+	size_t realSize;
+};
+
 std::string revCompRLE(const std::string& original)
 {
 	static char mapping[5] { 0, 4, 3, 2, 1 };
@@ -302,6 +385,61 @@ std::string revCompRLE(const std::string& original)
 	return result;
 }
 
+TwobitString revCompRLE(const TwobitString& original)
+{
+	static char mapping[5] { 0, 4, 3, 2, 1 };
+	TwobitString result;
+	result.resize(original.size());
+	for (size_t i = 0; i < result.size(); i++)
+	{
+		result.set(i, mapping[(int)original.get(original.size()-1-i)]);
+	}
+	return result;
+}
+
+class TwobitView
+{
+public:
+	TwobitView(const TwobitString& str, const size_t start, const size_t end) :
+	str(str),
+	start(start),
+	end(end)
+	{}
+	char operator[](size_t i) const
+	{
+		return str.get(start+i);
+	}
+	size_t size() const
+	{
+		return end-start;
+	}
+	std::string toString() const
+	{
+		std::string result;
+		result.reserve(end - start);
+		for (size_t i = start; i < end; i++)
+		{
+			result.push_back(str.get(i));
+		}
+		return result;
+	}
+	std::string toSubstring(size_t substrStart) const
+	{
+		assert(start + substrStart < end);
+		std::string result;
+		result.reserve(end - (start + substrStart));
+		for (size_t i = start + substrStart; i < end; i++)
+		{
+			result.push_back(str.get(i));
+		}
+		return result;
+	}
+private:
+	const TwobitString& str;
+	const size_t start;
+	const size_t end;
+};
+
 class AdjacentMinimizerList
 {
 public:
@@ -310,9 +448,9 @@ public:
 		lastHash(0)
 	{
 	}
-	std::string_view getView(size_t coord1, size_t coord2, size_t size) const
+	TwobitView getView(size_t coord1, size_t coord2, size_t size) const
 	{
-		return std::string_view { data[coord1].data() + coord2, size };
+		return TwobitView { data[coord1], coord2, coord2+size };
 	}
 	std::pair<size_t, size_t> addString(std::string_view str, HashType currentHash, HashType previousHash, size_t overlap)
 	{
@@ -323,7 +461,7 @@ public:
 			return std::make_pair(data.size()-1, 0);
 		}
 		assert(overlap < str.size());
-		data.back() += std::string { str.begin() + overlap, str.end() };
+		data.back().insert(str.begin() + overlap, str.end());
 		lastHash = currentHash;
 		assert(data.back().size() >= str.size());
 		return std::make_pair(data.size()-1, data.back().size() - str.size());
@@ -344,7 +482,7 @@ public:
 		return std::make_pair(coord1, data[coord1].size() - size - coord2);
 	}
 private:
-	std::vector<std::string> data;
+	std::vector<TwobitString> data;
 	HashType lastHash;
 };
 
@@ -500,11 +638,11 @@ public:
 		if (collapseRunLengths) return;
 		hashCharacterLengths.addCounts(data, fw, start, end, hashCharacterLengthPtr[node].first, hashCharacterLengthPtr[node].second);
 	}
-	std::string_view getHashSequenceRLE(size_t index) const
+	TwobitView getHashSequenceRLE(size_t index) const
 	{
 		return hashSequences.getView(hashSeqPtr[index].first, hashSeqPtr[index].second, kmerSize);
 	}
-	std::string_view getRevCompHashSequenceRLE(size_t index) const
+	TwobitView getRevCompHashSequenceRLE(size_t index) const
 	{
 		auto pos = hashSequences.getRevCompLocation(hashSeqPtr[index].first, hashSeqPtr[index].second, kmerSize);
 		return hashSequencesRevComp.getView(pos.first, pos.second, kmerSize);
@@ -542,7 +680,7 @@ std::pair<size_t, bool> getNodeOrNull(const HashList& list, std::string_view seq
 class LazyString
 {
 public:
-	LazyString(std::string_view first, std::string_view second, size_t overlap) :
+	LazyString(TwobitView first, TwobitView second, size_t overlap) :
 	first(first),
 	second(second),
 	overlap(overlap)
@@ -563,8 +701,8 @@ public:
 		if (str.size() == 0)
 		{
 			str.reserve(size());
-			str.insert(str.end(), first.begin(), first.end());
-			str.insert(str.end(), second.begin() + overlap, second.end());
+			str += first.toString();
+			str += second.toSubstring(overlap);
 		}
 		assert(str.size() == size());
 		return std::string_view { str.data() + start, kmerSize };
@@ -574,8 +712,8 @@ public:
 		return first.size() + second.size() - overlap;
 	}
 private:
-	std::string_view first;
-	std::string_view second;
+	TwobitView first;
+	TwobitView second;
 	const size_t overlap;
 	std::string str;
 };
@@ -674,19 +812,11 @@ private:
 			std::pair<size_t, bool> fw { i, true };
 			if (hashlist.sequenceOverlap[fw].size() > 0)
 			{
-				std::string_view seq = hashlist.getHashSequenceRLE(i);
+				TwobitView seq = hashlist.getHashSequenceRLE(i);
 				for (auto pair : hashlist.sequenceOverlap[fw])
 				{
 					assert(pair.first.first >= i);
-					std::string_view second;
-					if (pair.first.second)
-					{
-						second = hashlist.getHashSequenceRLE(pair.first.first);
-					}
-					else
-					{
-						second = hashlist.getRevCompHashSequenceRLE(pair.first.first);
-					}
+					TwobitView second { pair.first.second ? hashlist.getHashSequenceRLE(pair.first.first) : hashlist.getRevCompHashSequenceRLE(pair.first.first) };
 					LazyString lazy { seq, second, pair.second };
 					addMiddles(kmerSize, fw, pair.first, lazy, hashlist, minimizerPrefixes);
 				}
@@ -694,19 +824,11 @@ private:
 			std::pair<size_t, bool> bw { i, false };
 			if (hashlist.sequenceOverlap[bw].size() > 0)
 			{
-				std::string_view seq = hashlist.getRevCompHashSequenceRLE(i);
+				TwobitView seq = hashlist.getRevCompHashSequenceRLE(i);
 				for (auto pair : hashlist.sequenceOverlap[bw])
 				{
 					assert(pair.first.first >= i);
-					std::string_view second;
-					if (pair.first.second)
-					{
-						second = hashlist.getHashSequenceRLE(pair.first.first);
-					}
-					else
-					{
-						second = hashlist.getRevCompHashSequenceRLE(pair.first.first);
-					}
+					TwobitView second { pair.first.second ? hashlist.getHashSequenceRLE(pair.first.first) : hashlist.getRevCompHashSequenceRLE(pair.first.first) };
 					LazyString lazy { seq, second, pair.second };
 					addMiddles(kmerSize, bw, pair.first, lazy, hashlist, minimizerPrefixes);
 				}
@@ -1575,11 +1697,11 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 			std::vector<uint16_t> sequenceCharacterLength = hashlist.getHashCharacterLength(to.first);
 			if (to.second)
 			{
-				sequenceRLE = hashlist.getHashSequenceRLE(to.first);
+				sequenceRLE = hashlist.getHashSequenceRLE(to.first).toString();
 			}
 			else
 			{
-				sequenceRLE = hashlist.getRevCompHashSequenceRLE(to.first);
+				sequenceRLE = hashlist.getRevCompHashSequenceRLE(to.first).toString();
 				std::reverse(sequenceCharacterLength.begin(), sequenceCharacterLength.end());
 			}
 			if (j > 0)
@@ -1672,11 +1794,11 @@ std::pair<size_t, size_t> getSizeAndN50(const HashList& hashlist, const UnitigGr
 			std::vector<uint16_t> sequenceCharacterLength = hashlist.getHashCharacterLength(to.first);
 			if (to.first)
 			{
-				sequenceRLE = hashlist.getHashSequenceRLE(to.first);
+				sequenceRLE = hashlist.getHashSequenceRLE(to.first).toString();
 			}
 			else
 			{
-				sequenceRLE = hashlist.getRevCompHashSequenceRLE(to.first);
+				sequenceRLE = hashlist.getRevCompHashSequenceRLE(to.first).toString();
 				std::reverse(sequenceCharacterLength.begin() ,sequenceCharacterLength.end());
 			}
 			if (j > 0)
