@@ -402,16 +402,22 @@ public:
 		{
 			for (size_t i = 0; i < end - start; i++)
 			{
-				sums[coord1][coord2 + i] += lens[start + i];
-				counts[coord1][coord2 + i] += 1;
+				if (lens[start+i] < std::numeric_limits<uint16_t>::max() - sums[coord1][coord2+i] && counts[coord1][coord2 + i] < std::numeric_limits<uint8_t>::max() - 1)
+				{
+					sums[coord1][coord2 + i] += lens[start + i];
+					counts[coord1][coord2 + i] += 1;
+				}
 			}
 		}
 		else
 		{
 			for (size_t i = 0; i < end - start; i++)
 			{
-				sums[coord1][coord2 + i] += lens[end - 1 - i];
-				counts[coord1][coord2 + i] += 1;
+				if (lens[end - 1 - i] < std::numeric_limits<uint16_t>::max() - sums[coord1][coord2+i] && counts[coord1][coord2 + i] < std::numeric_limits<uint8_t>::max() - 1)
+				{
+					sums[coord1][coord2 + i] += lens[end - 1 - i];
+					counts[coord1][coord2 + i] += 1;
+				}
 			}
 		}
 	}
