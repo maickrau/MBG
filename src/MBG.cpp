@@ -439,8 +439,9 @@ private:
 class HashList
 {
 public:
-	HashList(size_t kmerSize) :
-		kmerSize(kmerSize)
+	HashList(size_t kmerSize, bool collapseRunLengths) :
+		kmerSize(kmerSize),
+		collapseRunLengths(collapseRunLengths)
 	{}
 	std::vector<size_t> coverage;
 	std::vector<uint64_t> fakeFwHashes;
@@ -481,14 +482,22 @@ public:
 	}
 	std::vector<uint16_t> getHashCharacterLength(size_t index) const
 	{
+		if (collapseRunLengths)
+		{
+			std::vector<uint16_t> result;
+			result.resize(kmerSize, 1);
+			return result;
+		}
 		return hashCharacterLengths.getData(hashCharacterLengthPtr[index].first, hashCharacterLengthPtr[index].second, kmerSize);
 	}
 	void addHashCharacterLength(const std::vector<uint16_t>& data, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap)
 	{
+		if (collapseRunLengths) return;
 		hashCharacterLengthPtr.push_back(hashCharacterLengths.addData(data, start, end, currentHash, previousHash, overlap));
 	}
 	void addHashCharacterLength(const std::vector<uint16_t>& data, bool fw, size_t start, size_t end, size_t node)
 	{
+		if (collapseRunLengths) return;
 		hashCharacterLengths.addCounts(data, fw, start, end, hashCharacterLengthPtr[node].first, hashCharacterLengthPtr[node].second);
 	}
 	std::string_view getHashSequenceRLE(size_t index) const
@@ -516,6 +525,7 @@ private:
 	std::vector<std::pair<size_t, size_t>> hashSeqPtr;
 	AdjacentMinimizerList hashSequencesRevComp;
 	const size_t kmerSize;
+	const bool collapseRunLengths;
 };
 
 std::pair<size_t, bool> getNodeOrNull(const HashList& list, std::string_view sequence)
@@ -966,9 +976,9 @@ void cleanTransitiveEdges(HashList& result, size_t kmerSize)
 	std::cerr << transitiveEdgesBroken << " transitive edges cleaned" << std::endl;
 }
 
-HashList loadReadsAsHashes(const std::vector<std::string>& files, size_t kmerSize, size_t windowSize, bool hpc)
+HashList loadReadsAsHashes(const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool collapseRunLengths)
 {
-	HashList result { kmerSize };
+	HashList result { kmerSize, collapseRunLengths };
 	size_t totalNodes = 0;
 	for (const std::string& filename : files)
 	{
@@ -1692,10 +1702,10 @@ std::pair<size_t, size_t> getSizeAndN50(const HashList& hashlist, const UnitigGr
 	return std::make_pair(total, 0);
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc, const bool collapseRunLengths)
 {
 	auto beforeReading = getTime();
-	auto reads = loadReadsAsHashes(inputReads, kmerSize, windowSize, hpc);
+	auto reads = loadReadsAsHashes(inputReads, kmerSize, windowSize, hpc, collapseRunLengths);
 	auto beforeCleaning = getTime();
 	cleanTransitiveEdges(reads, kmerSize);
 	auto beforeUnitigs = getTime();

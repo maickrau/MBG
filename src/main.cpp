@@ -17,6 +17,7 @@ int main(int argc, char** argv)
 		("a,kmer-abundance", "Minimum k-mer abundance", cxxopts::value<size_t>()->default_value("1"))
 		("u,unitig-abundance", "Minimum average unitig abundace and edge abundance", cxxopts::value<double>()->default_value("2"))
 		("no-hpc", "Don't use homopolymer compression")
+		("collapse-hpc", "Collapse homopolymer runs to one character instead of taking consensus")
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
@@ -58,7 +59,9 @@ int main(int argc, char** argv)
 	size_t minCoverage = params["a"].as<size_t>();
 	size_t minUnitigCoverage = params["u"].as<double>();
 	bool hpc = true;
+	bool collapseRunLengths = false;
 	if (params.count("no-hpc") == 1) hpc = false;
+	if (params.count("collapse-hpc") == 1) collapseRunLengths = true;
 
 	if (windowSize > kmerSize)
 	{
@@ -87,7 +90,8 @@ int main(int argc, char** argv)
 	std::cerr << "w=" << windowSize << ",";
 	std::cerr << "a=" << minCoverage << ",";
 	std::cerr << "u=" << minUnitigCoverage << ",";
-	std::cerr << "hpc=" << (hpc ? "yes" : "no") << std::endl;
+	std::cerr << "hpc=" << (hpc ? "yes" : "no") << ",";
+	std::cerr << "collapse=" << (collapseRunLengths ? "yes" : "no") << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, hpc);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, hpc, collapseRunLengths);
 }
