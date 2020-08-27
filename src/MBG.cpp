@@ -56,7 +56,7 @@ std::istream& operator>>(std::istream& is, HashType& t)
 	return is;
 }
 
-namespace std 
+namespace std
 {
 	template <> struct hash<HashType>
 	{
@@ -1663,8 +1663,8 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforeWrite) << std::endl;
 	std::cerr << "writing the graph took " << formatTime(beforeWrite, beforeStats) << std::endl;
 	std::cerr << "calculating stats took " << formatTime(beforeStats, afterStats) << std::endl;
-	std::cerr << "nodes: " << unitigs.numNodes() << std::endl; 
-	std::cerr << "edges: " << unitigs.numEdges() << std::endl; 
+	std::cerr << "nodes: " << unitigs.numNodes() << std::endl;
+	std::cerr << "edges: " << unitigs.numEdges() << std::endl;
 	std::cerr << "assembly size " << unitigStats.first << " bp, N50 " << unitigStats.second << std::endl;
 	std::cerr << "approximate number of k-mers ~ " << (unitigStats.first - unitigs.numNodes() * (kmerSize - windowSize/2 - 1)) << std::endl;
 }
