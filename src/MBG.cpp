@@ -352,43 +352,81 @@ class AdjacentLengthList
 {
 public:
 	AdjacentLengthList() :
-		data(),
+		sums(),
+		counts(),
 		lastHash(0)
 	{
 	}
 	std::vector<uint16_t> getData(size_t coord1, size_t coord2, size_t size) const
 	{
-		std::vector<uint16_t> result { data[coord1].begin() + coord2, data[coord1].begin() + coord2 + size };
+		std::vector<uint16_t> result;
+		result.resize(size, 0);
+		assert(sums.size() == counts.size());
+		assert(sums[coord1].size() == counts[coord1].size());
+		for (size_t i = 0; i < size; i++)
+		{
+			result[i] = int(double(sums[coord1][coord2+i]) / double(counts[coord1][coord2+i]) + .5);
+		}
 		return result;
 	}
 	std::pair<size_t, size_t> addData(const std::vector<uint16_t>& lens, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap)
 	{
 		assert(end > start);
 		assert(end <= lens.size());
-		if (data.size() == 0 || lastHash == 0 || previousHash == 0 || previousHash != lastHash)
+		if (sums.size() == 0 || lastHash == 0 || previousHash == 0 || previousHash != lastHash)
 		{
-			data.emplace_back(lens.begin() + start, lens.begin() + end);
+			sums.emplace_back(lens.begin() + start, lens.begin() + end);
+			counts.emplace_back();
+			counts.back().resize(end - start, 1);
 			lastHash = currentHash;
-			return std::make_pair(data.size()-1, 0);
+			assert(sums.back().size() == counts.back().size());
+			return std::make_pair(sums.size()-1, 0);
 		}
 		assert(overlap < lens.size());
 		assert(end > start + overlap);
-		data.back().insert(data.back().end(), lens.begin() + start + overlap, lens.begin() + end);
+		sums.back().insert(sums.back().end(), lens.begin() + start + overlap, lens.begin() + end);
+		counts.back().resize(counts.back().size() + end - (start + overlap), 1);
+		assert(counts.back().size() == sums.back().size());
 		lastHash = currentHash;
-		assert(data.back().size() >= end - start);
-		return std::make_pair(data.size()-1, data.back().size() - (end - start));
+		assert(sums.back().size() >= end - start);
+		return std::make_pair(sums.size()-1, sums.back().size() - (end - start));
+	}
+	void addCounts(const std::vector<uint16_t>& lens, bool fw, size_t start, size_t end, size_t coord1, size_t coord2)
+	{
+		assert(coord1 < sums.size());
+		assert(sums.size() == counts.size());
+		assert(coord2 < sums[coord1].size());
+		assert(sums[coord1].size() == counts[coord1].size());
+		assert(coord2 + end - start <= sums[coord1].size());
+		if (fw)
+		{
+			for (size_t i = 0; i < end - start; i++)
+			{
+				sums[coord1][coord2 + i] += lens[start + i];
+				counts[coord1][coord2 + i] += 1;
+			}
+		}
+		else
+		{
+			for (size_t i = 0; i < end - start; i++)
+			{
+				sums[coord1][coord2 + i] += lens[end - 1 - i];
+				counts[coord1][coord2 + i] += 1;
+			}
+		}
 	}
 	size_t size() const
 	{
 		size_t total = 0;
-		for (size_t i = 0; i < data.size(); i++)
+		for (size_t i = 0; i < sums.size(); i++)
 		{
-			total += data[i].size();
+			total += sums[i].size();
 		}
 		return total;
 	}
 private:
-	std::vector<std::vector<uint16_t>> data;
+	std::vector<std::vector<uint16_t>> sums;
+	std::vector<std::vector<uint8_t>> counts;
 	HashType lastHash;
 };
 
@@ -443,6 +481,10 @@ public:
 	{
 		hashCharacterLengthPtr.push_back(hashCharacterLengths.addData(data, start, end, currentHash, previousHash, overlap));
 	}
+	void addHashCharacterLength(const std::vector<uint16_t>& data, bool fw, size_t start, size_t end, size_t node)
+	{
+		hashCharacterLengths.addCounts(data, fw, start, end, hashCharacterLengthPtr[node].first, hashCharacterLengthPtr[node].second);
+	}
 	std::string_view getHashSequenceRLE(size_t index) const
 	{
 		return hashSequences.getView(hashSeqPtr[index].first, hashSeqPtr[index].second, kmerSize);
@@ -463,6 +505,7 @@ public:
 private:
 	AdjacentLengthList hashCharacterLengths;
 	std::vector<std::pair<size_t, size_t>> hashCharacterLengthPtr;
+	std::vector<size_t> hashCharacterCounts;
 	AdjacentMinimizerList hashSequences;
 	std::vector<std::pair<size_t, size_t>> hashSeqPtr;
 	AdjacentMinimizerList hashSequencesRevComp;
@@ -765,12 +808,13 @@ std::string strFromRevComp(const std::string& revComp)
 	return result;
 }
 
-std::pair<std::pair<size_t, bool>, HashType> getNode(HashList& list, std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t fakeFwHash, uint64_t fakeBwHash)
+std::pair<std::pair<size_t, bool>, HashType> addNode(HashList& list, std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t fakeFwHash, uint64_t fakeBwHash)
 {
 	HashType fwHash = hash(sequence);
 	auto found = list.hashToNode.find(fwHash);
 	if (found != list.hashToNode.end())
 	{
+		list.addHashCharacterLength(sequenceCharacterLength, found->second.second, seqCharLenStart, seqCharLenEnd, found->second.first);
 		return std::make_pair(found->second, fwHash);
 	}
 	assert(found == list.hashToNode.end());
@@ -950,7 +994,7 @@ HashList loadReadsAsHashes(const std::vector<std::string>& files, size_t kmerSiz
 				std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
 				std::pair<size_t, bool> current;
 				size_t overlap = lastMinimizerPosition + kmerSize - pos;
-				std::tie(current, lastHash) = getNode(result, minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, fwHash, bwHash);
+				std::tie(current, lastHash) = addNode(result, minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, fwHash, bwHash);
 				if (last.first != std::numeric_limits<size_t>::max() && pos - lastMinimizerPosition < kmerSize)
 				{
 					assert(lastMinimizerPosition + kmerSize >= pos);
