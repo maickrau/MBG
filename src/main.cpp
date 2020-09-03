@@ -48,7 +48,7 @@ int main(int argc, char** argv)
 	}
 	if (params.count("w") == 0)
 	{
-		std::cerr << "Select window size -k" << std::endl;
+		std::cerr << "Select window size -w" << std::endl;
 		paramError = true;
 	}
 	if (paramError) std::exit(1);
