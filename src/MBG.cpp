@@ -1686,6 +1686,7 @@ size_t getOverlapFromRLE(const HashList& hashlist, std::pair<size_t, bool> from,
 void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const HashList& hashlist)
 {
 	std::ofstream file { filename };
+	file << "H\tVN:Z:1.0" << std::endl;
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
 		file << "S\t" << i << "\t";
