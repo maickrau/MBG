@@ -51,7 +51,7 @@ int main(int argc, char** argv)
 		std::cerr << "Select window size -k" << std::endl;
 		paramError = true;
 	}
-	if (paramError) std::abort();
+	if (paramError) std::exit(1);
 	std::vector<std::string> inputReads = params["i"].as<std::vector<std::string>>();
 	std::string outputGraph = params["o"].as<std::string>();
 	size_t kmerSize = params["k"].as<size_t>();
