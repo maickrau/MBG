@@ -18,6 +18,8 @@ int main(int argc, char** argv)
 		("u,unitig-abundance", "Minimum average unitig abundace and edge abundance", cxxopts::value<double>()->default_value("2"))
 		("no-hpc", "Don't use homopolymer compression")
 		("collapse-hpc", "Collapse homopolymer runs to one character instead of taking consensus")
+		("pairing-min-distance", "Build a sparse \"paired\" DBG with minimizer triples having distance at least arg", cxxopts::value<size_t>()->default_value("0"))
+		("pairing-max-distance", "Build a sparse \"paired\" DBG with minimizer triples having distance at most arg", cxxopts::value<size_t>()->default_value("0"))
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
@@ -58,6 +60,8 @@ int main(int argc, char** argv)
 	size_t windowSize = params["w"].as<size_t>();
 	size_t minCoverage = params["a"].as<size_t>();
 	size_t minUnitigCoverage = params["u"].as<double>();
+	size_t pairingMinDistance = params["pairing-min-distance"].as<size_t>();
+	size_t pairingMaxDistance = params["pairing-max-distance"].as<size_t>();
 	bool hpc = true;
 	bool collapseRunLengths = false;
 	if (params.count("no-hpc") == 1) hpc = false;
@@ -83,6 +87,11 @@ int main(int argc, char** argv)
 		std::cerr << "K-mer size must be odd" << std::endl;
 		paramError = true;
 	}
+	if (pairingMinDistance > pairingMaxDistance)
+	{
+		std::cerr << "Pairing min distance cannot be greater than max distance" << std::endl;
+		paramError = true;
+	}
 	if (paramError) std::abort();
 	
 	std::cerr << "Parameters: ";
@@ -91,7 +100,9 @@ int main(int argc, char** argv)
 	std::cerr << "a=" << minCoverage << ",";
 	std::cerr << "u=" << minUnitigCoverage << ",";
 	std::cerr << "hpc=" << (hpc ? "yes" : "no") << ",";
-	std::cerr << "collapse=" << (collapseRunLengths ? "yes" : "no") << std::endl;
+	std::cerr << "collapse=" << (collapseRunLengths ? "yes" : "no") << ",";
+	std::cerr << "pairingmindistance=" << pairingMinDistance << ",";
+	std::cerr << "pairingmaxdistance=" << pairingMaxDistance << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, hpc, collapseRunLengths);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, hpc, collapseRunLengths, pairingMinDistance, pairingMaxDistance);
 }

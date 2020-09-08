@@ -946,9 +946,9 @@ std::string strFromRevComp(const std::string& revComp)
 	return result;
 }
 
-std::pair<std::pair<size_t, bool>, HashType> addNode(HashList& list, std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t fakeFwHash, uint64_t fakeBwHash)
+std::pair<std::pair<size_t, bool>, HashType> addNode(HashList& list, std::string_view hashableSequence, std::string_view realSequence, std::string_view reverseHashableSequence, std::string_view reverseRealSequence, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t fakeFwHash, uint64_t fakeBwHash)
 {
-	HashType fwHash = hash(sequence);
+	HashType fwHash = hash(hashableSequence);
 	auto found = list.hashToNode.find(fwHash);
 	if (found != list.hashToNode.end())
 	{
@@ -956,12 +956,12 @@ std::pair<std::pair<size_t, bool>, HashType> addNode(HashList& list, std::string
 		return std::make_pair(found->second, fwHash);
 	}
 	assert(found == list.hashToNode.end());
-	HashType bwHash = hash(reverse);
+	HashType bwHash = hash(reverseHashableSequence);
 	assert(list.hashToNode.find(bwHash) == list.hashToNode.end());
 	size_t fwNode = list.size();
 	list.hashToNode[fwHash] = std::make_pair(fwNode, true);
 	list.hashToNode[bwHash] = std::make_pair(fwNode, false);
-	list.addHashSequenceRLE(sequence, fwHash, previousHash, overlap);
+	list.addHashSequenceRLE(realSequence, fwHash, previousHash, overlap);
 	list.addHashCharacterLength(sequenceCharacterLength, seqCharLenStart, seqCharLenEnd, fwHash, previousHash, overlap);
 	assert(list.coverage.size() == fwNode);
 	list.coverage.emplace_back(0);
@@ -974,6 +974,88 @@ std::pair<std::pair<size_t, bool>, HashType> addNode(HashList& list, std::string
 	assert(list.fakeBwHashes.size() == fwNode);
 	list.fakeBwHashes.emplace_back(fakeBwHash);
 	return std::make_pair(std::make_pair(fwNode, true), fwHash);
+}
+
+std::pair<std::pair<size_t, bool>, HashType> addNode(HashList& list, std::string_view hash1, std::string_view hash2, std::string_view hash3, std::string_view hash4, std::string_view realSequence, std::string_view revhash1, std::string_view revhash2, std::string_view revhash3, std::string_view revhash4, std::string_view reverseRealSequence, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t fakeFwHash, uint64_t fakeBwHash)
+{
+	HashType fwHash1 = hash(hash1);
+	HashType fwHash2 = hash(hash2);
+	HashType fwHash3 = hash(hash3);
+	HashType fwHash4 = hash(hash4);
+	auto found1 = list.hashToNode.find(fwHash1);
+	auto found2 = list.hashToNode.find(fwHash2);
+	auto found3 = list.hashToNode.find(fwHash3);
+	auto found4 = list.hashToNode.find(fwHash4);
+	HashType bwHash1 = hash(revhash1);
+	HashType bwHash2 = hash(revhash2);
+	HashType bwHash3 = hash(revhash3);
+	HashType bwHash4 = hash(revhash4);
+	auto bwfound1 = list.hashToNode.find(bwHash1);
+	auto bwfound2 = list.hashToNode.find(bwHash2);
+	auto bwfound3 = list.hashToNode.find(bwHash3);
+	auto bwfound4 = list.hashToNode.find(bwHash4);
+	auto foundReal = found1;
+	if (found1 != list.hashToNode.end())
+	{
+		list.addHashCharacterLength(sequenceCharacterLength, found1->second.second, seqCharLenStart, seqCharLenEnd, found1->second.first);
+		foundReal = found1;
+	}
+	else if (found2 != list.hashToNode.end())
+	{
+		list.addHashCharacterLength(sequenceCharacterLength, found2->second.second, seqCharLenStart, seqCharLenEnd, found2->second.first);
+		foundReal = found2;
+	}
+	else if (found3 != list.hashToNode.end())
+	{
+		list.addHashCharacterLength(sequenceCharacterLength, found3->second.second, seqCharLenStart, seqCharLenEnd, found3->second.first);
+		foundReal = found3;
+	}
+	else if (found4 != list.hashToNode.end())
+	{
+		list.addHashCharacterLength(sequenceCharacterLength, found4->second.second, seqCharLenStart, seqCharLenEnd, found4->second.first);
+		foundReal = found4;
+	}
+	if (foundReal != list.hashToNode.end())
+	{
+		auto found = foundReal->second;
+		if (found1 == list.hashToNode.end()) list.hashToNode[fwHash1] = std::make_pair(found.first, found.second);
+		if (found2 == list.hashToNode.end()) list.hashToNode[fwHash2] = std::make_pair(found.first, found.second);
+		if (found3 == list.hashToNode.end()) list.hashToNode[fwHash3] = std::make_pair(found.first, found.second);
+		if (found4 == list.hashToNode.end()) list.hashToNode[fwHash4] = std::make_pair(found.first, found.second);
+		if (bwfound1 == list.hashToNode.end()) list.hashToNode[bwHash1] = std::make_pair(found.first, !found.second);
+		if (bwfound2 == list.hashToNode.end()) list.hashToNode[bwHash2] = std::make_pair(found.first, !found.second);
+		if (bwfound3 == list.hashToNode.end()) list.hashToNode[bwHash3] = std::make_pair(found.first, !found.second);
+		if (bwfound4 == list.hashToNode.end()) list.hashToNode[bwHash4] = std::make_pair(found.first, !found.second);
+		return std::make_pair(found, fwHash1);
+	}
+
+	assert(foundReal == list.hashToNode.end());
+	assert(bwfound1 == list.hashToNode.end());
+	assert(bwfound2 == list.hashToNode.end());
+	assert(bwfound3 == list.hashToNode.end());
+	assert(bwfound4 == list.hashToNode.end());
+	size_t fwNode = list.size();
+	list.hashToNode[fwHash1] = std::make_pair(fwNode, true);
+	list.hashToNode[fwHash2] = std::make_pair(fwNode, true);
+	list.hashToNode[fwHash3] = std::make_pair(fwNode, true);
+	list.hashToNode[fwHash4] = std::make_pair(fwNode, true);
+	list.hashToNode[bwHash1] = std::make_pair(fwNode, false);
+	list.hashToNode[bwHash2] = std::make_pair(fwNode, false);
+	list.hashToNode[bwHash3] = std::make_pair(fwNode, false);
+	list.hashToNode[bwHash4] = std::make_pair(fwNode, false);
+	list.addHashSequenceRLE(realSequence, fwHash1, previousHash, overlap);
+	list.addHashCharacterLength(sequenceCharacterLength, seqCharLenStart, seqCharLenEnd, fwHash1, previousHash, overlap);
+	assert(list.coverage.size() == fwNode);
+	list.coverage.emplace_back(0);
+	assert(list.edgeCoverage.size() == fwNode);
+	list.edgeCoverage.emplace_back();
+	assert(list.sequenceOverlap.size() == fwNode);
+	list.sequenceOverlap.emplace_back();
+	assert(list.fakeFwHashes.size() == fwNode);
+	list.fakeFwHashes.emplace_back(fakeFwHash);
+	assert(list.fakeBwHashes.size() == fwNode);
+	list.fakeBwHashes.emplace_back(fakeBwHash);
+	return std::make_pair(std::make_pair(fwNode, true), fwHash1);
 }
 
 template <typename F>
@@ -1098,6 +1180,125 @@ void cleanTransitiveEdges(HashList& result, size_t kmerSize)
 	std::cerr << transitiveEdgesBroken << " transitive edges cleaned" << std::endl;
 }
 
+HashList loadReadsAsPairedHashes(const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool collapseRunLengths, const size_t pairingMinDistance, const size_t pairingMaxDistance)
+{
+	HashList paired { kmerSize, collapseRunLengths };
+	size_t totalNodes = 0;
+	for (const std::string& filename : files)
+	{
+		std::cerr << "Reading sequences from " << filename << std::endl;
+		FastQ::streamFastqFromFile(filename, false, [&paired, &totalNodes, kmerSize, windowSize, hpc, pairingMinDistance, pairingMaxDistance](const FastQ& read){
+			if (read.sequence.size() == 0) return;
+			std::string seq;
+			std::vector<uint16_t> lens;
+			if (hpc)
+			{
+				std::tie(seq, lens) = runLengthEncode(read.sequence);
+			}
+			else
+			{
+				std::tie(seq, lens) = noRunLengthEncode(read.sequence);
+			}
+			if (seq.size() <= kmerSize + windowSize) return;
+			std::string revSeq = revCompRLE(seq);
+			std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
+			HashType lastHash = 0;
+			std::vector<size_t> minimizerPositions;
+			std::vector<size_t> minimizerHash;
+			findMinimizerPositions(seq, kmerSize, windowSize, [&minimizerPositions, &minimizerHash](size_t pos, uint64_t fwHash, uint64_t bwHash)
+			{
+				minimizerPositions.push_back(pos);
+				minimizerHash.push_back(std::min(fwHash, bwHash));
+			});
+			for (size_t i = 1; i < minimizerPositions.size()-1; i++)
+			{
+				size_t previousMax = i-1;
+				while (previousMax > 0 && minimizerPositions[i] - minimizerPositions[previousMax] < pairingMinDistance + kmerSize) previousMax -= 1;
+				if (minimizerPositions[i] - minimizerPositions[previousMax] < pairingMinDistance + kmerSize) continue;
+				size_t previousMin = previousMax;
+				while (previousMin > 0 && minimizerPositions[i] - minimizerPositions[previousMin] < pairingMaxDistance + kmerSize) previousMin -= 1;
+				if (minimizerPositions[i] - minimizerPositions[previousMin] < pairingMaxDistance + kmerSize) continue;
+				assert(previousMax >= previousMin + 2);
+				size_t previousMid = (previousMax + previousMin) / 2;
+				assert(previousMid < previousMax);
+				size_t previous = previousMin + 1;
+				size_t previous2 = previousMid + 1;
+				for (size_t j = previousMin+1; j <= previousMid; j++)
+				{
+					if (minimizerHash[j] < minimizerHash[previous]) previous = j;
+				}
+				for (size_t j = previousMid+1; j <= previousMax; j++)
+				{
+					if (minimizerHash[j] < minimizerHash[previous2]) previous2 = j;
+				}
+				assert(previous != previous2);
+				size_t nextMin = i+1;
+				while (nextMin < minimizerPositions.size() && minimizerPositions[nextMin] - minimizerPositions[i] < pairingMinDistance + kmerSize) nextMin += 1;
+				if (nextMin == minimizerPositions.size()) continue;
+				if (minimizerPositions[nextMin] - minimizerPositions[i] < pairingMinDistance + kmerSize) continue;
+				size_t nextMax = nextMin;
+				while (nextMax < minimizerPositions.size() && minimizerPositions[nextMax] - minimizerPositions[i] < pairingMaxDistance + kmerSize) nextMax += 1;
+				if (nextMax == minimizerPositions.size()) continue;
+				if (minimizerPositions[nextMax] - minimizerPositions[i] < pairingMaxDistance + kmerSize) continue;
+				size_t nextMid = (nextMin + nextMax) / 2;
+				assert(nextMid > nextMin);
+				assert(nextMid < nextMax);
+				size_t next = nextMin;
+				size_t next2 = nextMid;
+				for (size_t j = nextMin; j < nextMid; j++)
+				{
+					if (minimizerHash[j] < minimizerHash[next]) next = j;
+				}
+				for (size_t j = nextMid; j < nextMax; j++)
+				{
+					if (minimizerHash[j] < minimizerHash[next2]) next2 = j;
+				}
+				assert(next != next2);
+				std::string hashseq1 = seq.substr(minimizerPositions[previous], kmerSize) + seq.substr(minimizerPositions[i], kmerSize) + seq.substr(minimizerPositions[next], kmerSize);
+				std::string hashseq2 = seq.substr(minimizerPositions[previous2], kmerSize) + seq.substr(minimizerPositions[i], kmerSize) + seq.substr(minimizerPositions[next], kmerSize);
+				std::string hashseq3 = seq.substr(minimizerPositions[previous], kmerSize) + seq.substr(minimizerPositions[i], kmerSize) + seq.substr(minimizerPositions[next2], kmerSize);
+				std::string hashseq4 = seq.substr(minimizerPositions[previous2], kmerSize) + seq.substr(minimizerPositions[i], kmerSize) + seq.substr(minimizerPositions[next2], kmerSize);
+				std::string revSeq1 = revCompRLE(hashseq1);
+				std::string revSeq2 = revCompRLE(hashseq2);
+				std::string revSeq3 = revCompRLE(hashseq3);
+				std::string revSeq4 = revCompRLE(hashseq4);
+				assert(hashseq1.size() == kmerSize * 3);
+				assert(minimizerPositions[previous] + kmerSize < minimizerPositions[i]);
+				assert(minimizerPositions[i] + kmerSize < minimizerPositions[next]);
+				std::string_view hashview1 { hashseq1.data(), hashseq1.size() };
+				std::string_view hashview2 { hashseq2.data(), hashseq2.size() };
+				std::string_view hashview3 { hashseq3.data(), hashseq3.size() };
+				std::string_view hashview4 { hashseq4.data(), hashseq4.size() };
+				std::string_view realview { hashseq1.data() + kmerSize, kmerSize };
+				std::string_view revhashview1 { revSeq1.data(), revSeq1.size() };
+				std::string_view revhashview2 { revSeq2.data(), revSeq2.size() };
+				std::string_view revhashview3 { revSeq3.data(), revSeq3.size() };
+				std::string_view revhashview4 { revSeq4.data(), revSeq4.size() };
+				std::string_view revrealview { revSeq1.data() + kmerSize, kmerSize };
+
+				assert(last.first == std::numeric_limits<size_t>::max() || minimizerPositions[i] - minimizerPositions[i-1] <= kmerSize);
+				std::pair<size_t, bool> current;
+				size_t overlap = minimizerPositions[i-1] + kmerSize - minimizerPositions[i];
+				std::tie(current, lastHash) = addNode(paired, hashseq1, hashseq2, hashseq3, hashseq4, realview, revhashview1, revhashview2, revhashview3, revhashview4, revrealview, lens, minimizerPositions[i], minimizerPositions[i] + kmerSize, lastHash, overlap, 0, 0);
+				if (last.first != std::numeric_limits<size_t>::max() && minimizerPositions[i] - minimizerPositions[i-1] < kmerSize)
+				{
+					assert(minimizerPositions[i-1] + kmerSize >= minimizerPositions[i]);
+					paired.addSequenceOverlap(last, current, overlap);
+					auto pair = canon(last, current);
+					paired.edgeCoverage[pair.first][pair.second] += 1;
+				}
+				paired.coverage[current.first] += 1;
+				last = current;
+				totalNodes += 1;
+			}
+		});
+	}
+	paired.buildReverseCompHashSequences();
+	std::cerr << totalNodes << " nodes" << std::endl;
+	std::cerr << paired.size() << " distinct fw/bw sequence nodes" << std::endl;
+	return paired;
+}
+
 HashList loadReadsAsHashes(const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool collapseRunLengths)
 {
 	HashList result { kmerSize, collapseRunLengths };
@@ -1132,7 +1333,7 @@ HashList loadReadsAsHashes(const std::vector<std::string>& files, const size_t k
 				std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
 				std::pair<size_t, bool> current;
 				size_t overlap = lastMinimizerPosition + kmerSize - pos;
-				std::tie(current, lastHash) = addNode(result, minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, fwHash, bwHash);
+				std::tie(current, lastHash) = addNode(result, minimizerSequence, minimizerSequence, revMinimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, fwHash, bwHash);
 				if (last.first != std::numeric_limits<size_t>::max() && pos - lastMinimizerPosition < kmerSize)
 				{
 					assert(lastMinimizerPosition + kmerSize >= pos);
@@ -1825,12 +2026,12 @@ std::pair<size_t, size_t> getSizeAndN50(const HashList& hashlist, const UnitigGr
 	return std::make_pair(total, 0);
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc, const bool collapseRunLengths)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc, const bool collapseRunLengths, const size_t pairingMinDistance, const size_t pairingMaxDistance)
 {
 	auto beforeReading = getTime();
-	auto reads = loadReadsAsHashes(inputReads, kmerSize, windowSize, hpc, collapseRunLengths);
+	HashList reads = (pairingMaxDistance == 0 ? loadReadsAsHashes(inputReads, kmerSize, windowSize, hpc, collapseRunLengths) : loadReadsAsPairedHashes(inputReads, kmerSize, windowSize, hpc, collapseRunLengths, pairingMinDistance, pairingMaxDistance));
 	auto beforeCleaning = getTime();
-	cleanTransitiveEdges(reads, kmerSize);
+	if (pairingMaxDistance == 0) cleanTransitiveEdges(reads, kmerSize);
 	auto beforeUnitigs = getTime();
 	auto unitigs = getUnitigGraph(reads, minCoverage);
 	auto beforeFilter = getTime();
