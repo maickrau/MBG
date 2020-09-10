@@ -1059,16 +1059,41 @@ std::pair<std::pair<size_t, bool>, HashType> addNode(HashList& list, std::string
 }
 
 template <typename F>
-void findMinimizerPositions(const std::string& sequence, size_t kmerSize, size_t windowSize, F callback)
+void findCollectedMinimizerPositions(const std::string& sequence, size_t kmerSize, const std::unordered_set<uint64_t>& collected, F callback)
 {
-	if (sequence.size() < kmerSize + windowSize) return;
+	std::unordered_set<uint64_t> result;
+	if (sequence.size() < kmerSize) return;
 	FastHasher fwkmerHasher { kmerSize };
 	for (size_t i = 0; i < kmerSize; i++)
 	{
 		fwkmerHasher.addChar(sequence[i]);
 	}
-	std::deque<std::tuple<size_t, uint64_t, uint64_t, uint64_t>> minimizerOrder;
-	minimizerOrder.emplace_back(0, fwkmerHasher.hash(), fwkmerHasher.getFwHash(), fwkmerHasher.getBwHash());
+	if (collected.count(fwkmerHasher.hash()) == 1)
+	{
+		callback(0, fwkmerHasher.getFwHash(), fwkmerHasher.getBwHash());
+	}
+	for (size_t i = kmerSize; i < sequence.size(); i++)
+	{
+		fwkmerHasher.addChar(sequence[i]);
+		fwkmerHasher.removeChar(sequence[i-kmerSize]);
+		if (collected.count(fwkmerHasher.hash()) == 1)
+		{
+			callback(i - kmerSize + 1, fwkmerHasher.getFwHash(), fwkmerHasher.getBwHash());
+		}
+	}
+}
+
+std::unordered_set<uint64_t> collectMinimizerHashes(const std::string& sequence, size_t kmerSize, size_t windowSize)
+{
+	std::unordered_set<uint64_t> result;
+	if (sequence.size() < kmerSize + windowSize) return result;
+	FastHasher fwkmerHasher { kmerSize };
+	for (size_t i = 0; i < kmerSize; i++)
+	{
+		fwkmerHasher.addChar(sequence[i]);
+	}
+	std::deque<std::tuple<size_t, uint64_t>> minimizerOrder;
+	minimizerOrder.emplace_back(0, fwkmerHasher.hash());
 	for (size_t i = 0; i < windowSize-1; i++)
 	{
 		size_t seqPos = kmerSize+i;
@@ -1076,12 +1101,12 @@ void findMinimizerPositions(const std::string& sequence, size_t kmerSize, size_t
 		fwkmerHasher.removeChar(sequence[seqPos-kmerSize]);
 		size_t hash = fwkmerHasher.hash();
 		while (minimizerOrder.size() > 0 && std::get<1>(minimizerOrder.back()) > hash) minimizerOrder.pop_back();
-		minimizerOrder.emplace_back(i+1, hash, fwkmerHasher.getFwHash(), fwkmerHasher.getBwHash());
+		minimizerOrder.emplace_back(i+1, hash);
 	}
 	auto pos = minimizerOrder.begin();
 	while (pos != minimizerOrder.end() && std::get<1>(*pos) == std::get<1>(minimizerOrder.front()))
 	{
-		callback(std::get<0>(*pos), std::get<2>(*pos), std::get<3>(*pos));
+		result.insert(std::get<1>(*pos));
 		++pos;
 	}
 	for (size_t i = windowSize-1; kmerSize+i < sequence.size(); i++)
@@ -1098,13 +1123,14 @@ void findMinimizerPositions(const std::string& sequence, size_t kmerSize, size_t
 			auto pos = minimizerOrder.begin();
 			while (pos != minimizerOrder.end() && std::get<1>(*pos) == std::get<1>(minimizerOrder.front()))
 			{
-				callback(std::get<0>(*pos), std::get<2>(*pos), std::get<3>(*pos));
+				result.insert(std::get<1>(*pos));
 				++pos;
 			}
 		}
-		if (minimizerOrder.size() == 0 || hash == std::get<1>(minimizerOrder.front())) callback(i+1, fwkmerHasher.getFwHash(), fwkmerHasher.getBwHash());
-		minimizerOrder.emplace_back(i+1, hash, fwkmerHasher.getFwHash(), fwkmerHasher.getBwHash());
+		if (minimizerOrder.size() == 0 || hash == std::get<1>(minimizerOrder.front())) result.insert(fwkmerHasher.hash());
+		minimizerOrder.emplace_back(i+1, hash);
 	}
+	return result;
 }
 
 void cleanTransitiveEdges(HashList& result, size_t kmerSize)
@@ -1182,12 +1208,33 @@ void cleanTransitiveEdges(HashList& result, size_t kmerSize)
 
 HashList loadReadsAsPairedHashes(const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool collapseRunLengths, const size_t pairingMinDistance, const size_t pairingMaxDistance)
 {
+	std::unordered_set<uint64_t> collectedMinimizerHashes;
+	for (const std::string& filename : files)
+	{
+		std::cerr << "Reading sequences from " << filename << std::endl;
+		FastQ::streamFastqFromFile(filename, false, [&collectedMinimizerHashes, kmerSize, windowSize, hpc](const FastQ& read){
+			if (read.sequence.size() == 0) return;
+			std::string seq;
+			std::vector<uint16_t> lens;
+			if (hpc)
+			{
+				std::tie(seq, lens) = runLengthEncode(read.sequence);
+			}
+			else
+			{
+				std::tie(seq, lens) = noRunLengthEncode(read.sequence);
+			}
+			if (seq.size() <= kmerSize + windowSize) return;
+			auto collected = collectMinimizerHashes(seq, kmerSize, windowSize);
+			collectedMinimizerHashes.insert(collected.begin(), collected.end());
+		});
+	}
 	HashList paired { kmerSize, collapseRunLengths };
 	size_t totalNodes = 0;
 	for (const std::string& filename : files)
 	{
 		std::cerr << "Reading sequences from " << filename << std::endl;
-		FastQ::streamFastqFromFile(filename, false, [&paired, &totalNodes, kmerSize, windowSize, hpc, pairingMinDistance, pairingMaxDistance](const FastQ& read){
+		FastQ::streamFastqFromFile(filename, false, [&paired, &totalNodes, &collectedMinimizerHashes, kmerSize, windowSize, hpc, pairingMinDistance, pairingMaxDistance](const FastQ& read){
 			if (read.sequence.size() == 0) return;
 			std::string seq;
 			std::vector<uint16_t> lens;
@@ -1205,7 +1252,7 @@ HashList loadReadsAsPairedHashes(const std::vector<std::string>& files, const si
 			HashType lastHash = 0;
 			std::vector<size_t> minimizerPositions;
 			std::vector<size_t> minimizerHash;
-			findMinimizerPositions(seq, kmerSize, windowSize, [&minimizerPositions, &minimizerHash](size_t pos, uint64_t fwHash, uint64_t bwHash)
+			findCollectedMinimizerPositions(seq, kmerSize, collectedMinimizerHashes, [&minimizerPositions, &minimizerHash](size_t pos, uint64_t fwHash, uint64_t bwHash)
 			{
 				minimizerPositions.push_back(pos);
 				minimizerHash.push_back(std::min(fwHash, bwHash));
@@ -1303,10 +1350,31 @@ HashList loadReadsAsHashes(const std::vector<std::string>& files, const size_t k
 {
 	HashList result { kmerSize, collapseRunLengths };
 	size_t totalNodes = 0;
+	std::unordered_set<uint64_t> collectedMinimizerHashes;
 	for (const std::string& filename : files)
 	{
 		std::cerr << "Reading sequences from " << filename << std::endl;
-		FastQ::streamFastqFromFile(filename, false, [&result, &totalNodes, kmerSize, windowSize, hpc](const FastQ& read){
+		FastQ::streamFastqFromFile(filename, false, [&collectedMinimizerHashes, kmerSize, windowSize, hpc](const FastQ& read){
+			if (read.sequence.size() == 0) return;
+			std::string seq;
+			std::vector<uint16_t> lens;
+			if (hpc)
+			{
+				std::tie(seq, lens) = runLengthEncode(read.sequence);
+			}
+			else
+			{
+				std::tie(seq, lens) = noRunLengthEncode(read.sequence);
+			}
+			if (seq.size() <= kmerSize + windowSize) return;
+			auto collected = collectMinimizerHashes(seq, kmerSize, windowSize);
+			collectedMinimizerHashes.insert(collected.begin(), collected.end());
+		});
+	}
+	for (const std::string& filename : files)
+	{
+		std::cerr << "Reading sequences from " << filename << std::endl;
+		FastQ::streamFastqFromFile(filename, false, [&result, &totalNodes, &collectedMinimizerHashes, kmerSize, windowSize, hpc](const FastQ& read){
 			if (read.sequence.size() == 0) return;
 			std::string seq;
 			std::vector<uint16_t> lens;
@@ -1323,7 +1391,7 @@ HashList loadReadsAsHashes(const std::vector<std::string>& files, const size_t k
 			size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 			std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
 			HashType lastHash = 0;
-			findMinimizerPositions(seq, kmerSize, windowSize, [kmerSize, windowSize, &lastHash, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos, uint64_t fwHash, uint64_t bwHash)
+			findCollectedMinimizerPositions(seq, kmerSize, collectedMinimizerHashes, [kmerSize, windowSize, &lastHash, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos, uint64_t fwHash, uint64_t bwHash)
 			{
 				assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
 				assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= windowSize);
@@ -2030,8 +2098,6 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 {
 	auto beforeReading = getTime();
 	HashList reads = (pairingMaxDistance == 0 ? loadReadsAsHashes(inputReads, kmerSize, windowSize, hpc, collapseRunLengths) : loadReadsAsPairedHashes(inputReads, kmerSize, windowSize, hpc, collapseRunLengths, pairingMinDistance, pairingMaxDistance));
-	auto beforeCleaning = getTime();
-	if (pairingMaxDistance == 0) cleanTransitiveEdges(reads, kmerSize);
 	auto beforeUnitigs = getTime();
 	auto unitigs = getUnitigGraph(reads, minCoverage);
 	auto beforeFilter = getTime();
@@ -2041,8 +2107,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	auto beforeStats = getTime();
 	auto unitigStats = getSizeAndN50(reads, unitigs);
 	auto afterStats = getTime();
-	std::cerr << "reading and hashing sequences took " << formatTime(beforeReading, beforeCleaning) << std::endl;
-	std::cerr << "cleaning transitive edges took " << formatTime(beforeCleaning, beforeUnitigs) << std::endl;
+	std::cerr << "reading and hashing sequences took " << formatTime(beforeReading, beforeUnitigs) << std::endl;
 	std::cerr << "unitigifying took " << formatTime(beforeUnitigs, beforeFilter) << std::endl;
 	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforeWrite) << std::endl;
 	std::cerr << "writing the graph took " << formatTime(beforeWrite, beforeStats) << std::endl;
