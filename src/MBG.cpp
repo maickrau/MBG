@@ -1065,19 +1065,37 @@ HashList loadReadsAsPairedHashes(const std::vector<std::string>& files, const si
 				minimizerPositions.push_back(pos);
 				minimizerHash.push_back(std::min(fwHash, bwHash));
 			});
+			assert(minimizerPositions.size() >= 1);
+			size_t previousMin = 0;
+			size_t previousMid = 0;
+			size_t previousMax = 0;
+			size_t nextMin = 2;
+			size_t nextMid = 2;
+			size_t nextMax = 2;
 			for (size_t i = 1; i < minimizerPositions.size()-1; i++)
 			{
-				size_t previousMax = i-1;
-				while (previousMax > 0 && minimizerPositions[i] - minimizerPositions[previousMax] < pairingMinDistance + kmerSize) previousMax -= 1;
-				if (minimizerPositions[i] - minimizerPositions[previousMax] < pairingMinDistance + kmerSize) continue;
-				size_t previousMid = previousMax;
-				while (previousMid > 0 && minimizerPositions[i] - minimizerPositions[previousMid] < pairingMidDistance + kmerSize) previousMid -= 1;
-				if (minimizerPositions[i] - minimizerPositions[previousMid] < pairingMidDistance + kmerSize) continue;
-				size_t previousMin = previousMid;
-				while (previousMin > 0 && minimizerPositions[i] - minimizerPositions[previousMin] < pairingMaxDistance + kmerSize) previousMin -= 1;
-				if (minimizerPositions[i] - minimizerPositions[previousMin] < pairingMaxDistance + kmerSize) continue;
+				if (minimizerPositions[i] - minimizerPositions[0] <= pairingMaxDistance + kmerSize) continue;
+				if (minimizerPositions.back() - minimizerPositions[i] <= pairingMaxDistance + kmerSize) break;
+				while (minimizerPositions[i] - minimizerPositions[previousMin + 1] > pairingMaxDistance + kmerSize) previousMin += 1;
+				// if (minimizerPositions[i] - minimizerPositions[previousMin] <= pairingMaxDistance + kmerSize) continue;
+				if (previousMid <= previousMin) previousMid = previousMin+1;
+				while (minimizerPositions[i] - minimizerPositions[previousMid + 1] > pairingMidDistance + kmerSize) previousMid += 1;
+				// if (minimizerPositions[i] - minimizerPositions[previousMid] <= pairingMidDistance + kmerSize) continue;
+				if (previousMax <= previousMid) previousMax = previousMid+1;
+				while (minimizerPositions[i] - minimizerPositions[previousMax + 1] > pairingMinDistance + kmerSize) previousMax += 1;
+				// if (minimizerPositions[i] - minimizerPositions[previousMax] <= pairingMaxDistance + kmerSize) continue;
+				assert(previousMin < i);
+				assert(previousMid < i);
+				assert(previousMax < i);
 				assert(previousMin < previousMid);
 				assert(previousMid < previousMax);
+				assert(minimizerPositions[i] - minimizerPositions[previousMin] > pairingMaxDistance + kmerSize);
+				assert(minimizerPositions[i] - minimizerPositions[previousMin+1] <= pairingMaxDistance + kmerSize);
+				assert(minimizerPositions[i] - minimizerPositions[previousMid] > pairingMidDistance + kmerSize);
+				assert(minimizerPositions[i] - minimizerPositions[previousMid+1] <= pairingMidDistance + kmerSize);
+				assert(minimizerPositions[i] - minimizerPositions[previousMax] > pairingMinDistance + kmerSize);
+				assert(minimizerPositions[i] - minimizerPositions[previousMax+1] <= pairingMinDistance + kmerSize);
+
 				size_t previous = previousMin + 1;
 				size_t previous2 = previousMid + 1;
 				for (size_t j = previousMin+1; j <= previousMid; j++)
@@ -1089,20 +1107,29 @@ HashList loadReadsAsPairedHashes(const std::vector<std::string>& files, const si
 					if (minimizerHash[j] < minimizerHash[previous2]) previous2 = j;
 				}
 				assert(previous != previous2);
-				size_t nextMin = i+1;
+
+				if (nextMin <= i) nextMin = i+1;
 				while (nextMin < minimizerPositions.size() && minimizerPositions[nextMin] - minimizerPositions[i] < pairingMinDistance + kmerSize) nextMin += 1;
-				if (nextMin == minimizerPositions.size()) continue;
-				if (minimizerPositions[nextMin] - minimizerPositions[i] < pairingMinDistance + kmerSize) continue;
-				size_t nextMid = nextMin;
+				assert(nextMin < minimizerPositions.size());
+				// if (nextMin == minimizerPositions.size()) break;
+				if (nextMid <= nextMin) nextMid = nextMin+1;
 				while (nextMid < minimizerPositions.size() && minimizerPositions[nextMid] - minimizerPositions[i] < pairingMidDistance + kmerSize) nextMid += 1;
-				if (nextMid == minimizerPositions.size()) continue;
-				if (minimizerPositions[nextMid] - minimizerPositions[i] < pairingMidDistance + kmerSize) continue;
-				size_t nextMax = nextMid;
+				assert(nextMid < minimizerPositions.size());
+				// if (nextMid == minimizerPositions.size()) break;
+				if (nextMax <= nextMid) nextMax = nextMid+1;
 				while (nextMax < minimizerPositions.size() && minimizerPositions[nextMax] - minimizerPositions[i] < pairingMaxDistance + kmerSize) nextMax += 1;
-				if (nextMax == minimizerPositions.size()) continue;
-				if (minimizerPositions[nextMax] - minimizerPositions[i] < pairingMaxDistance + kmerSize) continue;
+				// if (nextMax == minimizerPositions.size()) break;
+				assert(nextMax < minimizerPositions.size());
 				assert(nextMin < nextMid);
 				assert(nextMid < nextMax);
+				assert(nextMin > i);
+				assert(minimizerPositions[nextMin] - minimizerPositions[i] >= pairingMinDistance + kmerSize);
+				assert(minimizerPositions[nextMin-1] - minimizerPositions[i] < pairingMinDistance + kmerSize);
+				assert(minimizerPositions[nextMid] - minimizerPositions[i] >= pairingMidDistance + kmerSize);
+				assert(minimizerPositions[nextMid-1] - minimizerPositions[i] < pairingMidDistance + kmerSize);
+				assert(minimizerPositions[nextMax] - minimizerPositions[i] >= pairingMaxDistance + kmerSize);
+				assert(minimizerPositions[nextMax-1] - minimizerPositions[i] < pairingMaxDistance + kmerSize);
+
 				size_t next = nextMin;
 				size_t next2 = nextMid;
 				for (size_t j = nextMin; j < nextMid; j++)
