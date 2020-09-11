@@ -1015,6 +1015,7 @@ std::unordered_set<uint64_t> collectMinimizerHashes(const std::string& sequence,
 
 HashList loadReadsAsPairedHashes(const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool collapseRunLengths, const size_t pairingMinDistance, const size_t pairingMaxDistance)
 {
+	const size_t pairingMidDistance = (pairingMinDistance + pairingMaxDistance) / 2;
 	std::unordered_set<uint64_t> collectedMinimizerHashes;
 	for (const std::string& filename : files)
 	{
@@ -1041,7 +1042,7 @@ HashList loadReadsAsPairedHashes(const std::vector<std::string>& files, const si
 	for (const std::string& filename : files)
 	{
 		std::cerr << "Reading sequences from " << filename << std::endl;
-		FastQ::streamFastqFromFile(filename, false, [&paired, &totalNodes, &collectedMinimizerHashes, kmerSize, windowSize, hpc, pairingMinDistance, pairingMaxDistance](const FastQ& read){
+		FastQ::streamFastqFromFile(filename, false, [&paired, &totalNodes, &collectedMinimizerHashes, kmerSize, windowSize, hpc, pairingMinDistance, pairingMaxDistance, pairingMidDistance](const FastQ& read){
 			if (read.sequence.size() == 0) return;
 			std::string seq;
 			std::vector<uint16_t> lens;
@@ -1069,11 +1070,13 @@ HashList loadReadsAsPairedHashes(const std::vector<std::string>& files, const si
 				size_t previousMax = i-1;
 				while (previousMax > 0 && minimizerPositions[i] - minimizerPositions[previousMax] < pairingMinDistance + kmerSize) previousMax -= 1;
 				if (minimizerPositions[i] - minimizerPositions[previousMax] < pairingMinDistance + kmerSize) continue;
-				size_t previousMin = previousMax;
+				size_t previousMid = previousMax;
+				while (previousMid > 0 && minimizerPositions[i] - minimizerPositions[previousMid] < pairingMidDistance + kmerSize) previousMid -= 1;
+				if (minimizerPositions[i] - minimizerPositions[previousMid] < pairingMidDistance + kmerSize) continue;
+				size_t previousMin = previousMid;
 				while (previousMin > 0 && minimizerPositions[i] - minimizerPositions[previousMin] < pairingMaxDistance + kmerSize) previousMin -= 1;
 				if (minimizerPositions[i] - minimizerPositions[previousMin] < pairingMaxDistance + kmerSize) continue;
-				assert(previousMax >= previousMin + 2);
-				size_t previousMid = (previousMax + previousMin) / 2;
+				assert(previousMin < previousMid);
 				assert(previousMid < previousMax);
 				size_t previous = previousMin + 1;
 				size_t previous2 = previousMid + 1;
@@ -1090,12 +1093,15 @@ HashList loadReadsAsPairedHashes(const std::vector<std::string>& files, const si
 				while (nextMin < minimizerPositions.size() && minimizerPositions[nextMin] - minimizerPositions[i] < pairingMinDistance + kmerSize) nextMin += 1;
 				if (nextMin == minimizerPositions.size()) continue;
 				if (minimizerPositions[nextMin] - minimizerPositions[i] < pairingMinDistance + kmerSize) continue;
-				size_t nextMax = nextMin;
+				size_t nextMid = nextMin;
+				while (nextMid < minimizerPositions.size() && minimizerPositions[nextMid] - minimizerPositions[i] < pairingMidDistance + kmerSize) nextMid += 1;
+				if (nextMid == minimizerPositions.size()) continue;
+				if (minimizerPositions[nextMid] - minimizerPositions[i] < pairingMidDistance + kmerSize) continue;
+				size_t nextMax = nextMid;
 				while (nextMax < minimizerPositions.size() && minimizerPositions[nextMax] - minimizerPositions[i] < pairingMaxDistance + kmerSize) nextMax += 1;
 				if (nextMax == minimizerPositions.size()) continue;
 				if (minimizerPositions[nextMax] - minimizerPositions[i] < pairingMaxDistance + kmerSize) continue;
-				size_t nextMid = (nextMin + nextMax) / 2;
-				assert(nextMid > nextMin);
+				assert(nextMin < nextMid);
 				assert(nextMid < nextMax);
 				size_t next = nextMin;
 				size_t next2 = nextMid;
