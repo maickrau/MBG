@@ -37,7 +37,3 @@ Other options:
 - `--collapse-hpc`: disable homopolymer run length consensus and collapse runs to one bp. Recommended if the reads are already homopolymer compressed, otherwise not
 
 k and w can be arbitrarily large but at some point the error rate and limited read length will cause the graph to be fragmented. Runtime stays approximately the same if the ratio k/w is kept constant. All repeats shorter than k are separated, all repeats longer than k+w are collapsed, and repeats in between may be separated or collapsed depending on if a minimizer was selected from within the repeat.
-
-#### Runtime
-
-Approximately O(s k / w + s / w) where s is amount of sequence in base pairs, k is k-mer size and w is window size. Runtime is dominated by reading & winnowing sequences and the graph construction is trivial.
