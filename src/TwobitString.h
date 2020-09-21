@@ -47,4 +47,6 @@ private:
 	const size_t end;
 };
 
+TwobitString revCompRLE(const TwobitString& original);
+
 #endif

@@ -114,3 +114,15 @@ std::string TwobitView::toSubstring(size_t substrStart) const
 	}
 	return result;
 }
+
+TwobitString revCompRLE(const TwobitString& original)
+{
+	static char mapping[5] { 0, 4, 3, 2, 1 };
+	TwobitString result;
+	result.resize(original.size());
+	for (size_t i = 0; i < result.size(); i++)
+	{
+		result.set(i, mapping[(int)original.get(original.size()-1-i)]);
+	}
+	return result;
+}
