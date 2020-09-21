@@ -649,11 +649,11 @@ void writeGraph(const BluntGraph& graph, const std::string& filename)
 	file << "H\tVN:Z:1.0" << std::endl;
 	for (size_t i = 0; i < graph.nodes.size(); i++)
 	{
-		file << "S\t" << i << "\t" << graph.nodes[i] << "\tll:f:" << graph.nodeAvgCoverage[i] << "\tFC:f:" << (graph.nodes[i].size() * graph.nodeAvgCoverage[i]) << std::endl;
+		file << "S\t" << (i+1) << "\t" << graph.nodes[i] << "\tll:f:" << graph.nodeAvgCoverage[i] << "\tFC:f:" << (graph.nodes[i].size() * graph.nodeAvgCoverage[i]) << std::endl;
 	}
 	for (auto edge : graph.edges)
 	{
-		file << "L\t" << std::get<0>(edge) << "\t" << (std::get<1>(edge) ? "+" : "-") << "\t" << std::get<2>(edge) << "\t" << (std::get<3>(edge) ? "+" : "-") << "\t0M\tec:i:" << std::get<4>(edge) << std::endl;
+		file << "L\t" << (std::get<0>(edge)+1) << "\t" << (std::get<1>(edge) ? "+" : "-") << "\t" << (std::get<2>(edge)+1) << "\t" << (std::get<3>(edge) ? "+" : "-") << "\t0M\tec:i:" << std::get<4>(edge) << std::endl;
 	}
 }
 
@@ -663,7 +663,7 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 	file << "H\tVN:Z:1.0" << std::endl;
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
-		file << "S\t" << i << "\t";
+		file << "S\t" << (i+1) << "\t";
 		size_t length = 0;
 		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
 		{
@@ -712,7 +712,7 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 				first = reverse(unitigs.unitigs[to.first].back());
 			}
 			size_t overlap = getOverlapFromRLE(hashlist, last, first);
-			file << "L\t" << fw.first << "\t" << (fw.second ? "+" : "-") << "\t" << to.first << "\t" << (to.second ? "+" : "-") << "\t" << overlap << "M\tec:i:" << unitigs.edgeCoverage(fw, to) << std::endl;
+			file << "L\t" << (fw.first+1) << "\t" << (fw.second ? "+" : "-") << "\t" << (to.first+1) << "\t" << (to.second ? "+" : "-") << "\t" << overlap << "M\tec:i:" << unitigs.edgeCoverage(fw, to) << std::endl;
 		}
 		for (auto to : unitigs.edges[bw])
 		{
@@ -727,7 +727,7 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 				first = reverse(unitigs.unitigs[to.first].back());
 			}
 			size_t overlap = getOverlapFromRLE(hashlist, last, first);
-			file << "L\t" << bw.first << "\t" << (bw.second ? "+" : "-") << "\t" << to.first << "\t" << (to.second ? "+" : "-") << "\t" << overlap << "M\tec:i:" << unitigs.edgeCoverage(bw, to) << std::endl;
+			file << "L\t" << (bw.first+1) << "\t" << (bw.second ? "+" : "-") << "\t" << (to.first+1) << "\t" << (to.second ? "+" : "-") << "\t" << overlap << "M\tec:i:" << unitigs.edgeCoverage(bw, to) << std::endl;
 		}
 	}
 }
