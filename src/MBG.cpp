@@ -256,6 +256,45 @@ public:
 	{
 		hashSequencesRevComp = hashSequences.getReverseComplementStorage();
 	}
+	std::pair<size_t, bool> getNodeOrNull(std::string_view sequence) const
+	{
+		HashType fwHash = hash(sequence);
+		auto found = hashToNode.find(fwHash);
+		if (found == hashToNode.end())
+		{
+			return std::pair<size_t, bool> { std::numeric_limits<size_t>::max(), true };
+		}
+		return found->second;
+	}
+	std::pair<std::pair<size_t, bool>, HashType> addNode( std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t fakeFwHash, uint64_t fakeBwHash)
+	{
+		HashType fwHash = hash(sequence);
+		auto found = hashToNode.find(fwHash);
+		if (found != hashToNode.end())
+		{
+			addHashCharacterLength(sequenceCharacterLength, found->second.second, seqCharLenStart, seqCharLenEnd, found->second.first);
+			return std::make_pair(found->second, fwHash);
+		}
+		assert(found == hashToNode.end());
+		HashType bwHash = hash(reverse);
+		assert(hashToNode.find(bwHash) == hashToNode.end());
+		size_t fwNode = size();
+		hashToNode[fwHash] = std::make_pair(fwNode, true);
+		hashToNode[bwHash] = std::make_pair(fwNode, false);
+		addHashSequenceRLE(sequence, fwHash, previousHash, overlap);
+		addHashCharacterLength(sequenceCharacterLength, seqCharLenStart, seqCharLenEnd, fwHash, previousHash, overlap);
+		assert(coverage.size() == fwNode);
+		coverage.emplace_back(0);
+		assert(edgeCoverage.size() == fwNode);
+		edgeCoverage.emplace_back();
+		assert(sequenceOverlap.size() == fwNode);
+		sequenceOverlap.emplace_back();
+		assert(fakeFwHashes.size() == fwNode);
+		fakeFwHashes.emplace_back(fakeFwHash);
+		assert(fakeBwHashes.size() == fwNode);
+		fakeBwHashes.emplace_back(fakeBwHash);
+		return std::make_pair(std::make_pair(fwNode, true), fwHash);
+	}
 private:
 	AdjacentLengthList hashCharacterLengths;
 	std::vector<std::pair<size_t, size_t>> hashCharacterLengthPtr;
@@ -267,16 +306,6 @@ private:
 	const bool collapseRunLengths;
 };
 
-std::pair<size_t, bool> getNodeOrNull(const HashList& list, std::string_view sequence)
-{
-	HashType fwHash = hash(sequence);
-	auto found = list.hashToNode.find(fwHash);
-	if (found == list.hashToNode.end())
-	{
-		return std::pair<size_t, bool> { std::numeric_limits<size_t>::max(), true };
-	}
-	return found->second;
-}
 
 class LazyString
 {
@@ -369,7 +398,7 @@ private:
 			size_t hash = fwkmerHasher.hash();
 			if (minimizerPrefixes.count(hash) == 1)
 			{
-				auto here = getNodeOrNull(list, seq.view(i, kmerSize));
+				auto here = list.getNodeOrNull(seq.view(i, kmerSize));
 				if (here.first == std::numeric_limits<size_t>::max())
 				{
 					continue;
@@ -547,36 +576,6 @@ std::string strFromRevComp(const std::string& revComp)
 	return result;
 }
 
-std::pair<std::pair<size_t, bool>, HashType> addNode(HashList& list, std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t fakeFwHash, uint64_t fakeBwHash)
-{
-	HashType fwHash = hash(sequence);
-	auto found = list.hashToNode.find(fwHash);
-	if (found != list.hashToNode.end())
-	{
-		list.addHashCharacterLength(sequenceCharacterLength, found->second.second, seqCharLenStart, seqCharLenEnd, found->second.first);
-		return std::make_pair(found->second, fwHash);
-	}
-	assert(found == list.hashToNode.end());
-	HashType bwHash = hash(reverse);
-	assert(list.hashToNode.find(bwHash) == list.hashToNode.end());
-	size_t fwNode = list.size();
-	list.hashToNode[fwHash] = std::make_pair(fwNode, true);
-	list.hashToNode[bwHash] = std::make_pair(fwNode, false);
-	list.addHashSequenceRLE(sequence, fwHash, previousHash, overlap);
-	list.addHashCharacterLength(sequenceCharacterLength, seqCharLenStart, seqCharLenEnd, fwHash, previousHash, overlap);
-	assert(list.coverage.size() == fwNode);
-	list.coverage.emplace_back(0);
-	assert(list.edgeCoverage.size() == fwNode);
-	list.edgeCoverage.emplace_back();
-	assert(list.sequenceOverlap.size() == fwNode);
-	list.sequenceOverlap.emplace_back();
-	assert(list.fakeFwHashes.size() == fwNode);
-	list.fakeFwHashes.emplace_back(fakeFwHash);
-	assert(list.fakeBwHashes.size() == fwNode);
-	list.fakeBwHashes.emplace_back(fakeBwHash);
-	return std::make_pair(std::make_pair(fwNode, true), fwHash);
-}
-
 template <typename F>
 void findMinimizerPositions(const std::string& sequence, size_t kmerSize, size_t windowSize, F callback)
 {
@@ -733,7 +732,7 @@ HashList loadReadsAsHashes(const std::vector<std::string>& files, const size_t k
 				std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
 				std::pair<size_t, bool> current;
 				size_t overlap = lastMinimizerPosition + kmerSize - pos;
-				std::tie(current, lastHash) = addNode(result, minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, fwHash, bwHash);
+				std::tie(current, lastHash) = result.addNode(minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, fwHash, bwHash);
 				if (last.first != std::numeric_limits<size_t>::max() && pos - lastMinimizerPosition < kmerSize)
 				{
 					assert(lastMinimizerPosition + kmerSize >= pos);
