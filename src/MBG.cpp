@@ -858,6 +858,17 @@ public:
 		}
 		return result;
 	}
+	UnitigGraph filterUnitigsByCoverage(const double filter)
+	{
+		std::vector<bool> kept;
+		kept.resize(unitigs.size(), true);
+		for (size_t i = 0; i < unitigs.size(); i++)
+		{
+			if (averageCoverage(i) < filter) kept[i] = false;
+		}
+		UnitigGraph filtered = filterNodes(kept);
+		return filtered;
+	}
 };
 
 void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, bool> start, const VectorWithDirection<std::unordered_set<std::pair<size_t, bool>>>& edges, std::vector<std::pair<size_t, bool>>& belongsToUnitig)
@@ -1321,18 +1332,6 @@ std::string formatTime(std::chrono::steady_clock::time_point start, std::chrono:
 	return std::to_string(milliseconds / 1000) + "," + std::to_string(milliseconds % 1000) + " s";
 }
 
-UnitigGraph filterUnitigsByCoverage(const UnitigGraph& graph, const double filter)
-{
-	std::vector<bool> kept;
-	kept.resize(graph.unitigs.size(), true);
-	for (size_t i = 0; i < graph.unitigs.size(); i++)
-	{
-		if (graph.averageCoverage(i) < filter) kept[i] = false;
-	}
-	UnitigGraph filtered = graph.filterNodes(kept);
-	return filtered;
-}
-
 std::pair<size_t, size_t> getSizeAndN50(const HashList& hashlist, const UnitigGraph& graph)
 {
 	size_t total = 0;
@@ -1386,7 +1385,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	auto beforeUnitigs = getTime();
 	auto unitigs = getUnitigGraph(reads, minCoverage);
 	auto beforeFilter = getTime();
-	if (minUnitigCoverage > minCoverage) unitigs = getUnitigs(filterUnitigsByCoverage(unitigs, minUnitigCoverage));
+	if (minUnitigCoverage > minCoverage) unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage));
 	auto beforeWrite = getTime();
 	writeGraph(unitigs, outputGraph, reads);
 	auto beforeStats = getTime();
