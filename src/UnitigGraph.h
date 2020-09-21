@@ -4,6 +4,7 @@
 #include <vector>
 #include <tuple>
 #include "VectorWithDirection.h"
+#include "HashList.h"
 
 class UnitigGraph
 {
@@ -21,6 +22,7 @@ public:
 	size_t numNodes() const;
 	size_t numEdges() const;
 	UnitigGraph filterUnitigsByCoverage(const double filter);
+	std::pair<std::string, std::vector<uint16_t>> getSequenceAndLength(size_t unitig, const HashList& hashlist) const;
 };
 
 #endif

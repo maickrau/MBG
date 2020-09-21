@@ -21,17 +21,7 @@
 #include "HashList.h"
 #include "TransitiveCleaner.h"
 #include "UnitigGraph.h"
-
-std::string revCompRLE(const std::string& original)
-{
-	static char mapping[5] { 0, 4, 3, 2, 1 };
-	std::string result { original.rbegin(), original.rend() };
-	for (size_t i = 0; i < result.size(); i++)
-	{
-		result[i] = mapping[(int)result[i]];
-	}
-	return result;
-}
+#include "BluntGraph.h"
 
 std::pair<std::string, std::vector<uint16_t>> runLengthEncode(const std::string& original)
 {
@@ -653,6 +643,20 @@ size_t getOverlapFromRLE(const HashList& hashlist, std::pair<size_t, bool> from,
 	return RLEoverlap;
 }
 
+void writeGraph(const BluntGraph& graph, const std::string& filename)
+{
+	std::ofstream file { filename };
+	file << "H\tVN:Z:1.0" << std::endl;
+	for (size_t i = 0; i < graph.nodes.size(); i++)
+	{
+		file << "S\t" << i << "\t" << graph.nodes[i] << "\tll:f:" << graph.nodeAvgCoverage[i] << "\tFC:f:" << (graph.nodes[i].size() * graph.nodeAvgCoverage[i]) << std::endl;
+	}
+	for (auto edge : graph.edges)
+	{
+		file << "L\t" << std::get<0>(edge) << "\t" << (std::get<1>(edge) ? "+" : "-") << "\t" << std::get<2>(edge) << "\t" << (std::get<3>(edge) ? "+" : "-") << "\t0M\tec:i:" << std::get<4>(edge) << std::endl;
+	}
+}
+
 void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const HashList& hashlist)
 {
 	std::ofstream file { filename };
@@ -739,7 +743,46 @@ std::string formatTime(std::chrono::steady_clock::time_point start, std::chrono:
 	return std::to_string(milliseconds / 1000) + "," + std::to_string(milliseconds % 1000) + " s";
 }
 
-std::pair<size_t, size_t> getSizeAndN50(const HashList& hashlist, const UnitigGraph& graph)
+struct AssemblyStats
+{
+public:
+	size_t nodes;
+	size_t edges;
+	size_t size;
+	size_t N50;
+	size_t approxKmers;
+};
+
+AssemblyStats getSizeAndN50(const BluntGraph& graph)
+{
+	AssemblyStats result;
+	result.nodes = graph.nodes.size();
+	result.edges = graph.edges.size();
+	std::vector<size_t> sizes;
+	size_t totalSize = 0;
+	for (size_t i = 0; i < graph.nodes.size(); i++)
+	{
+		sizes.push_back(graph.nodes[i].size());
+		totalSize += graph.nodes[i].size();
+	}
+	result.size = totalSize;
+	result.approxKmers = 0;
+	std::sort(sizes.begin(), sizes.end());
+	result.N50 = 0;
+	size_t partialSum = 0;
+	for (size_t i = sizes.size()-1; i < sizes.size(); i--)
+	{
+		partialSum += sizes[i];
+		if (partialSum >= totalSize * 0.5)
+		{
+			result.N50 = sizes[i];
+			break;
+		}
+	}
+	return result;
+}
+
+AssemblyStats getSizeAndN50(const HashList& hashlist, const UnitigGraph& graph, const size_t kmerSize, const size_t windowSize)
 {
 	size_t total = 0;
 	std::vector<size_t> sizes;
@@ -775,15 +818,26 @@ std::pair<size_t, size_t> getSizeAndN50(const HashList& hashlist, const UnitigGr
 	}
 	std::sort(sizes.begin(), sizes.end());
 	size_t partialSum = 0;
+	size_t N50 = 0;
 	for (size_t i = sizes.size()-1; i < sizes.size(); i--)
 	{
 		partialSum += sizes[i];
-		if (partialSum >= total * 0.5) return std::make_pair(total, sizes[i]);
+		if (partialSum >= total * 0.5)
+		{
+			N50 = sizes[i];
+			break;
+		}
 	}
-	return std::make_pair(total, 0);
+	AssemblyStats result;
+	result.nodes = graph.numNodes();
+	result.edges = graph.numEdges();
+	result.size = total;
+	result.N50 = N50;
+	result.approxKmers = total - graph.numNodes() * (kmerSize - windowSize/2 - 1);
+	return result;
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc, const bool collapseRunLengths)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc, const bool collapseRunLengths, const bool blunt)
 {
 	auto beforeReading = getTime();
 	auto reads = loadReadsAsHashes(inputReads, kmerSize, windowSize, hpc, collapseRunLengths);
@@ -794,18 +848,32 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	auto beforeFilter = getTime();
 	if (minUnitigCoverage > minCoverage) unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage));
 	auto beforeWrite = getTime();
-	writeGraph(unitigs, outputGraph, reads);
-	auto beforeStats = getTime();
-	auto unitigStats = getSizeAndN50(reads, unitigs);
-	auto afterStats = getTime();
+	AssemblyStats stats;
+	if (blunt)
+	{
+		BluntGraph blunt { reads, unitigs };
+		writeGraph(blunt, outputGraph);
+		stats = getSizeAndN50(blunt);
+	}
+	else
+	{
+		writeGraph(unitigs, outputGraph, reads);
+		stats = getSizeAndN50(reads, unitigs, kmerSize, windowSize);
+	}
+	auto afterWrite = getTime();
 	std::cerr << "reading and hashing sequences took " << formatTime(beforeReading, beforeCleaning) << std::endl;
 	std::cerr << "cleaning transitive edges took " << formatTime(beforeCleaning, beforeUnitigs) << std::endl;
 	std::cerr << "unitigifying took " << formatTime(beforeUnitigs, beforeFilter) << std::endl;
 	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforeWrite) << std::endl;
-	std::cerr << "writing the graph took " << formatTime(beforeWrite, beforeStats) << std::endl;
-	std::cerr << "calculating stats took " << formatTime(beforeStats, afterStats) << std::endl;
-	std::cerr << "nodes: " << unitigs.numNodes() << std::endl;
-	std::cerr << "edges: " << unitigs.numEdges() << std::endl;
-	std::cerr << "assembly size " << unitigStats.first << " bp, N50 " << unitigStats.second << std::endl;
-	std::cerr << "approximate number of k-mers ~ " << (unitigStats.first - unitigs.numNodes() * (kmerSize - windowSize/2 - 1)) << std::endl;
+	std::cerr << "writing the graph and calculating stats took " << formatTime(beforeWrite, afterWrite) << std::endl;
+	std::cerr << "nodes: " << stats.nodes << std::endl;
+	std::cerr << "edges: " << stats.edges << std::endl;
+	std::cerr << "assembly size " << stats.size << " bp, N50 " << stats.N50 << std::endl;
+	if (stats.approxKmers > 0) std::cerr << "approximate number of k-mers ~ " << stats.approxKmers << std::endl;
+	if (blunt && stats.nodes > 1 && stats.edges >= 2)
+	{
+		std::cerr << std::endl << "The output graph has redundant nodes and edges." << std::endl;
+		std::cerr << "It is recommended to clean the graph using vg (https://github.com/vgteam/vg) with the command:" << std::endl << std::endl;
+		std::cerr << "vg view -Fv " << outputGraph << " | vg mod -n -U 100 - | vg view - > cleaned." << outputGraph << std::endl << std::endl;
+	}
 }

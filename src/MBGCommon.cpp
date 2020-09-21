@@ -58,3 +58,14 @@ std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> canon(std::pair<size
 	}
 	return std::make_pair(from, to);
 }
+
+std::string revCompRLE(const std::string& original)
+{
+	static char mapping[5] { 0, 4, 3, 2, 1 };
+	std::string result { original.rbegin(), original.rend() };
+	for (size_t i = 0; i < result.size(); i++)
+	{
+		result[i] = mapping[(int)result[i]];
+	}
+	return result;
+}

@@ -113,3 +113,35 @@ UnitigGraph UnitigGraph::filterUnitigsByCoverage(const double filter)
 	UnitigGraph filtered = filterNodes(kept);
 	return filtered;
 }
+
+std::pair<std::string, std::vector<uint16_t>> UnitigGraph::getSequenceAndLength(size_t unitig, const HashList& hashlist) const
+{
+	std::string sequenceRLE;
+	std::vector<uint16_t> sequenceCharacterLength;
+	for (size_t j = 0; j < unitigs[unitig].size(); j++)
+	{
+		auto to = unitigs[unitig][j];
+		std::string sequenceRLEHere;
+		std::vector<uint16_t> sequenceCharacterLengthHere = hashlist.getHashCharacterLength(to.first);
+		if (to.second)
+		{
+			sequenceRLEHere = hashlist.getHashSequenceRLE(to.first).toString();
+		}
+		else
+		{
+			sequenceRLEHere = hashlist.getRevCompHashSequenceRLE(to.first).toString();
+			std::reverse(sequenceCharacterLengthHere.begin(), sequenceCharacterLengthHere.end());
+		}
+		if (j > 0)
+		{
+			auto from = unitigs[unitig][j-1];
+			size_t overlap = hashlist.getOverlap(from, to);
+			assert(overlap < sequenceRLEHere.size());
+			sequenceRLEHere = sequenceRLEHere.substr(overlap);
+			sequenceCharacterLengthHere.erase(sequenceCharacterLengthHere.begin(), sequenceCharacterLengthHere.begin() + overlap);
+		}
+		sequenceRLE.insert(sequenceRLE.end(), sequenceRLEHere.begin(), sequenceRLEHere.end());
+		sequenceCharacterLength.insert(sequenceCharacterLength.end(), sequenceCharacterLengthHere.begin(), sequenceCharacterLengthHere.end());
+	}
+	return std::make_pair(sequenceRLE, sequenceCharacterLength);
+}
