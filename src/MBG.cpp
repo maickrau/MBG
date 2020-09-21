@@ -1117,54 +1117,6 @@ UnitigGraph getUnitigGraph(const HashList& hashlist, size_t minCoverage)
 	return result;
 }
 
-UnitigGraph getNodeGraph(const HashList& hashlist, size_t minCoverage)
-{
-	UnitigGraph result;
-	std::vector<size_t> newIndex;
-	newIndex.resize(hashlist.coverage.size(), std::numeric_limits<size_t>::max());
-	for (size_t i = 0; i < hashlist.coverage.size(); i++)
-	{
-		if (hashlist.coverage[i] < minCoverage) continue;
-		newIndex[i] = result.unitigs.size();
-		result.unitigs.emplace_back();
-		result.unitigs.back().emplace_back(i, true);
-		result.unitigCoverage.emplace_back();
-		result.unitigCoverage.back().emplace_back(hashlist.coverage[i]);
-	}
-	result.edges.resize(result.unitigs.size());
-	result.edgeCov.resize(result.unitigs.size());
-	for (size_t i = 0; i < hashlist.edgeCoverage.size(); i++)
-	{
-		std::pair<size_t, bool> fw { i, true };
-		std::pair<size_t, bool> bw { i, false };
-		for (auto pair : hashlist.edgeCoverage[fw])
-		{
-			if (pair.second < minCoverage) continue;
-			assert(hashlist.coverage[i] >= minCoverage);
-			assert(hashlist.coverage[pair.first.first] >= minCoverage);
-			assert(newIndex[i] != std::numeric_limits<size_t>::max());
-			std::pair<size_t, bool> from { newIndex[fw.first], true };
-			std::pair<size_t, bool> to { newIndex[pair.first.first], pair.first.second };
-			result.edges[from].emplace(to);
-			result.edges[reverse(to)].emplace(reverse(from));
-			result.edgeCoverage(from, to) = pair.second;
-		}
-		for (auto pair : hashlist.edgeCoverage[bw])
-		{
-			if (pair.second < minCoverage) continue;
-			assert(hashlist.coverage[i] >= minCoverage);
-			assert(hashlist.coverage[pair.first.first] >= minCoverage);
-			assert(newIndex[i] != std::numeric_limits<size_t>::max());
-			std::pair<size_t, bool> from { newIndex[bw.first], false };
-			std::pair<size_t, bool> to { newIndex[pair.first.first], pair.first.second };
-			result.edges[from].emplace(to);
-			result.edges[reverse(to)].emplace(reverse(from));
-			result.edgeCoverage(from, to) = pair.second;
-		}
-	}
-	return result;
-}
-
 UnitigGraph getUnitigs(const UnitigGraph& oldgraph)
 {
 	UnitigGraph result;
