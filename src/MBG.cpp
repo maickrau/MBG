@@ -23,11 +23,12 @@
 #include "UnitigGraph.h"
 #include "BluntGraph.h"
 
-std::pair<std::string, std::vector<uint16_t>> runLengthEncode(const std::string& original)
+std::vector<std::pair<std::string, std::vector<uint16_t>>> runLengthEncode(const std::string& original)
 {
 	assert(original.size() > 0);
 	std::string resultStr;
 	std::vector<uint16_t> lens;
+	std::vector<std::pair<std::string, std::vector<uint16_t>>> result;
 	resultStr.reserve(original.size());
 	lens.reserve(original.size());
 	lens.push_back(1);
@@ -50,7 +51,7 @@ std::pair<std::string, std::vector<uint16_t>> runLengthEncode(const std::string&
 			resultStr.push_back(4);
 			break;
 		default:
-			assert(false);
+			break;
 	}
 	for (size_t i = 1; i < original.size(); i++)
 	{
@@ -79,15 +80,24 @@ std::pair<std::string, std::vector<uint16_t>> runLengthEncode(const std::string&
 				resultStr.push_back(4);
 				break;
 			default:
-				assert(false);
+				if (resultStr.size() == 0) continue;
+				result.emplace_back(std::move(resultStr), std::move(lens));
+				resultStr.clear();
+				lens.clear();
+				break;
 		}
 	}
-	return std::make_pair(resultStr, lens);
+	if (resultStr.size() > 0)
+	{
+		result.emplace_back(std::move(resultStr), std::move(lens));
+	}
+	return result;
 }
 
-std::pair<std::string, std::vector<uint16_t>> noRunLengthEncode(const std::string& original)
+std::vector<std::pair<std::string, std::vector<uint16_t>>> noRunLengthEncode(const std::string& original)
 {
 	assert(original.size() > 0);
+	std::vector<std::pair<std::string, std::vector<uint16_t>>> result;
 	std::string resultStr;
 	resultStr.reserve(original.size());
 	for (size_t i = 0; i < original.size(); i++)
@@ -111,13 +121,17 @@ std::pair<std::string, std::vector<uint16_t>> noRunLengthEncode(const std::strin
 				resultStr.push_back(4);
 				break;
 			default:
-				assert(false);
+				if (resultStr.size() == 0) continue;
+				result.emplace_back(std::move(resultStr), std::vector<uint16_t>{});
+				resultStr.clear();
 		}
 	}
-	std::vector<uint16_t> lens;
-	lens.resize(original.size(), 1);
-	assert(lens.size() == resultStr.size());
-	return std::make_pair(resultStr, lens);
+	if (resultStr.size() > 0) result.emplace_back(std::move(resultStr), std::vector<uint16_t>{});
+	for (size_t i = 0; i < result.size(); i++)
+	{
+		result[i].second.resize(result[i].first.size(), 1);
+	}
+	return result;
 }
 
 std::string strFromRevComp(const std::string& revComp)
@@ -262,44 +276,48 @@ HashList loadReadsAsHashes(const std::vector<std::string>& files, const size_t k
 		std::cerr << "Reading sequences from " << filename << std::endl;
 		FastQ::streamFastqFromFile(filename, false, [&result, &totalNodes, kmerSize, windowSize, hpc](const FastQ& read){
 			if (read.sequence.size() == 0) return;
-			std::string seq;
-			std::vector<uint16_t> lens;
+			std::vector<std::pair<std::string, std::vector<uint16_t>>> parts;
 			if (hpc)
 			{
-				std::tie(seq, lens) = runLengthEncode(read.sequence);
+				parts = runLengthEncode(read.sequence);
 			}
 			else
 			{
-				std::tie(seq, lens) = noRunLengthEncode(read.sequence);
+				parts = noRunLengthEncode(read.sequence);
 			}
-			if (seq.size() <= kmerSize + windowSize) return;
-			std::string revSeq = revCompRLE(seq);
-			size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
-			std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
-			HashType lastHash = 0;
-			findMinimizerPositions(seq, kmerSize, windowSize, [kmerSize, windowSize, &lastHash, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos, uint64_t fwHash, uint64_t bwHash)
+			for (size_t i = 0; i < parts.size(); i++)
 			{
-				assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
-				assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= windowSize);
-				assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
-				std::string_view minimizerSequence { seq.data() + pos, kmerSize };
-				size_t revPos = seq.size() - (pos + kmerSize);
-				std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
-				std::pair<size_t, bool> current;
-				size_t overlap = lastMinimizerPosition + kmerSize - pos;
-				std::tie(current, lastHash) = result.addNode(minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, fwHash, bwHash);
-				if (last.first != std::numeric_limits<size_t>::max() && pos - lastMinimizerPosition < kmerSize)
+				std::string& seq = parts[i].first;
+				std::vector<uint16_t>& lens = parts[i].second;
+				if (seq.size() <= kmerSize + windowSize) return;
+				std::string revSeq = revCompRLE(seq);
+				size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
+				std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
+				HashType lastHash = 0;
+				findMinimizerPositions(seq, kmerSize, windowSize, [kmerSize, windowSize, &lastHash, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos, uint64_t fwHash, uint64_t bwHash)
 				{
-					assert(lastMinimizerPosition + kmerSize >= pos);
-					result.addSequenceOverlap(last, current, overlap);
-					auto pair = canon(last, current);
-					result.edgeCoverage[pair.first][pair.second] += 1;
-				}
-				lastMinimizerPosition = pos;
-				result.coverage[current.first] += 1;
-				last = current;
-				totalNodes += 1;
-			});
+					assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
+					assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= windowSize);
+					assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
+					std::string_view minimizerSequence { seq.data() + pos, kmerSize };
+					size_t revPos = seq.size() - (pos + kmerSize);
+					std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
+					std::pair<size_t, bool> current;
+					size_t overlap = lastMinimizerPosition + kmerSize - pos;
+					std::tie(current, lastHash) = result.addNode(minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, fwHash, bwHash);
+					if (last.first != std::numeric_limits<size_t>::max() && pos - lastMinimizerPosition < kmerSize)
+					{
+						assert(lastMinimizerPosition + kmerSize >= pos);
+						result.addSequenceOverlap(last, current, overlap);
+						auto pair = canon(last, current);
+						result.edgeCoverage[pair.first][pair.second] += 1;
+					}
+					lastMinimizerPosition = pos;
+					result.coverage[current.first] += 1;
+					last = current;
+					totalNodes += 1;
+				});
+			}
 		});
 	}
 	result.buildReverseCompHashSequences();
