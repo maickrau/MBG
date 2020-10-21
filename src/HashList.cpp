@@ -223,7 +223,7 @@ std::pair<size_t, bool> HashList::getNodeOrNull(std::string_view sequence) const
 	return found->second;
 }
 
-std::pair<std::pair<size_t, bool>, HashType> HashList::addNode( std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t fakeFwHash, uint64_t fakeBwHash)
+std::pair<std::pair<size_t, bool>, HashType> HashList::addNode( std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap)
 {
 	HashType fwHash = hash(sequence);
 	auto found = hashToNode.find(fwHash);
@@ -246,9 +246,5 @@ std::pair<std::pair<size_t, bool>, HashType> HashList::addNode( std::string_view
 	edgeCoverage.emplace_back();
 	assert(sequenceOverlap.size() == fwNode);
 	sequenceOverlap.emplace_back();
-	assert(fakeFwHashes.size() == fwNode);
-	fakeFwHashes.emplace_back(fakeFwHash);
-	assert(fakeBwHashes.size() == fwNode);
-	fakeBwHashes.emplace_back(fakeBwHash);
 	return std::make_pair(std::make_pair(fwNode, true), fwHash);
 }

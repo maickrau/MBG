@@ -40,8 +40,6 @@ class HashList
 public:
 	HashList(size_t kmerSize, bool collapseRunLengths);
 	std::vector<size_t> coverage;
-	std::vector<uint64_t> fakeFwHashes;
-	std::vector<uint64_t> fakeBwHashes;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> sequenceOverlap;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> edgeCoverage;
 	phmap::flat_hash_map<HashType, std::pair<size_t, bool>> hashToNode;
@@ -58,7 +56,7 @@ public:
 	void addHashSequenceRLE(std::string_view seq, HashType currentHash, HashType previousHash, size_t overlap);
 	void buildReverseCompHashSequences();
 	std::pair<size_t, bool> getNodeOrNull(std::string_view sequence) const;
-	std::pair<std::pair<size_t, bool>, HashType> addNode( std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t fakeFwHash, uint64_t fakeBwHash);
+	std::pair<std::pair<size_t, bool>, HashType> addNode(std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap);
 private:
 	AdjacentLengthList hashCharacterLengths;
 	std::vector<std::pair<size_t, size_t>> hashCharacterLengthPtr;

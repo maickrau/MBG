@@ -19,7 +19,6 @@
 #include "FastHasher.h"
 #include "SparseEdgeContainer.h"
 #include "HashList.h"
-#include "TransitiveCleaner.h"
 #include "UnitigGraph.h"
 #include "BluntGraph.h"
 
@@ -237,79 +236,6 @@ void findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t s
 	}
 }
 
-void cleanTransitiveEdges(HashList& result, size_t kmerSize)
-{
-	TransitiveCleaner cleaner { kmerSize, result };
-	std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t>> addEdgeCoverage;
-	std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t>> removeEdgeCoverage;
-
-	size_t transitiveEdgesBroken = 0;
-	for (size_t node = 0; node < result.edgeCoverage.size(); node++)
-	{
-		std::pair<size_t, bool> fw { node, true };
-		for (auto target : result.edgeCoverage[fw])
-		{
-			std::vector<std::pair<size_t, bool>> vec;
-			vec.push_back(fw);
-			vec.push_back(target.first);
-			vec = cleaner.insertMiddles(vec);
-			if (vec.size() == 2) continue;
-			transitiveEdgesBroken += 1;
-			std::pair<size_t, bool> canonFrom;
-			std::pair<size_t, bool> canonTo;
-			std::tie(canonFrom, canonTo) = canon(vec[0], vec.back());
-			removeEdgeCoverage.emplace_back(canonFrom, canonTo, target.second);
-			for (size_t i = 1; i < vec.size(); i++)
-			{
-				std::tie(canonFrom, canonTo) = canon(vec[i-1], vec[i]);
-				addEdgeCoverage.emplace_back(canonFrom, canonTo, target.second);
-			}
-			for (size_t i = 1; i < vec.size()-1; i++)
-			{
-				result.coverage[vec[i].first] += target.second;
-			}
-		}
-		std::pair<size_t, bool> bw { node, false };
-		for (auto target : result.edgeCoverage[bw])
-		{
-			std::vector<std::pair<size_t, bool>> vec;
-			vec.push_back(bw);
-			vec.push_back(target.first);
-			vec = cleaner.insertMiddles(vec);
-			if (vec.size() == 2) continue;
-			transitiveEdgesBroken += 1;
-			std::pair<size_t, bool> canonFrom;
-			std::pair<size_t, bool> canonTo;
-			std::tie(canonFrom, canonTo) = canon(vec[0], vec.back());
-			removeEdgeCoverage.emplace_back(canonFrom, canonTo, target.second);
-			for (size_t i = 1; i < vec.size(); i++)
-			{
-				std::tie(canonFrom, canonTo) = canon(vec[i-1], vec[i]);
-				addEdgeCoverage.emplace_back(canonFrom, canonTo, target.second);
-			}
-			for (size_t i = 1; i < vec.size()-1; i++)
-			{
-				result.coverage[vec[i].first] += target.second;
-			}
-		}
-	}
-	for (auto t : cleaner.newSequenceOverlaps)
-	{
-		result.sequenceOverlap[std::get<0>(t)][std::get<1>(t)] = std::get<2>(t);
-	}
-	for (auto t : addEdgeCoverage)
-	{
-		result.edgeCoverage[std::get<0>(t)][std::get<1>(t)] += std::get<2>(t);
-	}
-	for (auto t : removeEdgeCoverage)
-	{
-		assert(result.edgeCoverage.at(std::get<0>(t)).count(std::get<1>(t)) == 1);
-		assert(result.edgeCoverage.at(std::get<0>(t)).at(std::get<1>(t)) >= std::get<2>(t));
-		result.edgeCoverage[std::get<0>(t)][std::get<1>(t)] -= std::get<2>(t);
-	}
-	std::cerr << transitiveEdgesBroken << " transitive edges cleaned" << std::endl;
-}
-
 HashList loadReadsAsHashes(const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool collapseRunLengths)
 {
 	HashList result { kmerSize, collapseRunLengths };
@@ -347,7 +273,7 @@ HashList loadReadsAsHashes(const std::vector<std::string>& files, const size_t k
 					std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
 					std::pair<size_t, bool> current;
 					size_t overlap = lastMinimizerPosition + kmerSize - pos;
-					std::tie(current, lastHash) = result.addNode(minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, 0, 0);
+					std::tie(current, lastHash) = result.addNode(minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap);
 					if (last.first != std::numeric_limits<size_t>::max() && pos - lastMinimizerPosition < kmerSize)
 					{
 						assert(lastMinimizerPosition + kmerSize >= pos);
@@ -902,8 +828,6 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 {
 	auto beforeReading = getTime();
 	auto reads = loadReadsAsHashes(inputReads, kmerSize, windowSize, hpc, collapseRunLengths);
-	auto beforeCleaning = getTime();
-	// cleanTransitiveEdges(reads, kmerSize);
 	auto beforeUnitigs = getTime();
 	auto unitigs = getUnitigGraph(reads, minCoverage);
 	auto beforeFilter = getTime();
@@ -922,8 +846,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		stats = getSizeAndN50(reads, unitigs, kmerSize, windowSize);
 	}
 	auto afterWrite = getTime();
-	std::cerr << "reading and hashing sequences took " << formatTime(beforeReading, beforeCleaning) << std::endl;
-	std::cerr << "cleaning transitive edges took " << formatTime(beforeCleaning, beforeUnitigs) << std::endl;
+	std::cerr << "reading and hashing sequences took " << formatTime(beforeReading, beforeUnitigs) << std::endl;
 	std::cerr << "unitigifying took " << formatTime(beforeUnitigs, beforeFilter) << std::endl;
 	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforeWrite) << std::endl;
 	std::cerr << "writing the graph and calculating stats took " << formatTime(beforeWrite, afterWrite) << std::endl;
