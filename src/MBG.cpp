@@ -194,6 +194,49 @@ void findMinimizerPositions(const std::string& sequence, size_t kmerSize, size_t
 	}
 }
 
+template <typename F>
+void findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t smerSize, F callback)
+{
+	if (sequence.size() < kmerSize) return;
+	assert(smerSize < kmerSize);
+	size_t windowSize = kmerSize - smerSize + 1;
+	assert(windowSize >= 1);
+	FastHasher fwkmerHasher { smerSize };
+	for (size_t i = 0; i < smerSize; i++)
+	{
+		fwkmerHasher.addChar(sequence[i]);
+	}
+	std::deque<std::tuple<size_t, uint64_t>> smerOrder;
+	smerOrder.emplace_back(0, fwkmerHasher.hash());
+	for (size_t i = 1; i < windowSize; i++)
+	{
+		size_t seqPos = smerSize+i-1;
+		fwkmerHasher.addChar(sequence[seqPos]);
+		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
+		size_t hash = fwkmerHasher.hash();
+		while (smerOrder.size() > 0 && std::get<1>(smerOrder.back()) > hash) smerOrder.pop_back();
+		smerOrder.emplace_back(i, hash);
+	}
+	if ((std::get<0>(smerOrder.front()) == 0) || (std::get<1>(smerOrder.back()) == std::get<1>(smerOrder.front()) && std::get<0>(smerOrder.back()) == windowSize-1))
+	{
+		callback(0);
+	}
+	for (size_t i = windowSize; smerSize+i-1 < sequence.size(); i++)
+	{
+		size_t seqPos = smerSize+i-1;
+		fwkmerHasher.addChar(sequence[seqPos]);
+		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
+		size_t hash = fwkmerHasher.hash();
+		while (smerOrder.size() > 0 && std::get<0>(smerOrder.front()) <= i - windowSize) smerOrder.pop_front();
+		while (smerOrder.size() > 0 && std::get<1>(smerOrder.back()) > hash) smerOrder.pop_back();
+		smerOrder.emplace_back(i, hash);
+		if ((std::get<0>(smerOrder.front()) == i-windowSize+1) || (std::get<1>(smerOrder.back()) == std::get<1>(smerOrder.front()) && std::get<0>(smerOrder.back()) == i))
+		{
+			callback(i-windowSize+1);
+		}
+	}
+}
+
 void cleanTransitiveEdges(HashList& result, size_t kmerSize)
 {
 	TransitiveCleaner cleaner { kmerSize, result };
@@ -294,7 +337,7 @@ HashList loadReadsAsHashes(const std::vector<std::string>& files, const size_t k
 				size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 				std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
 				HashType lastHash = 0;
-				findMinimizerPositions(seq, kmerSize, windowSize, [kmerSize, windowSize, &lastHash, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos, uint64_t fwHash, uint64_t bwHash)
+				findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, [kmerSize, windowSize, &lastHash, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos)
 				{
 					assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
 					assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= windowSize);
@@ -304,7 +347,7 @@ HashList loadReadsAsHashes(const std::vector<std::string>& files, const size_t k
 					std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
 					std::pair<size_t, bool> current;
 					size_t overlap = lastMinimizerPosition + kmerSize - pos;
-					std::tie(current, lastHash) = result.addNode(minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, fwHash, bwHash);
+					std::tie(current, lastHash) = result.addNode(minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, 0, 0);
 					if (last.first != std::numeric_limits<size_t>::max() && pos - lastMinimizerPosition < kmerSize)
 					{
 						assert(lastMinimizerPosition + kmerSize >= pos);
@@ -860,7 +903,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	auto beforeReading = getTime();
 	auto reads = loadReadsAsHashes(inputReads, kmerSize, windowSize, hpc, collapseRunLengths);
 	auto beforeCleaning = getTime();
-	cleanTransitiveEdges(reads, kmerSize);
+	// cleanTransitiveEdges(reads, kmerSize);
 	auto beforeUnitigs = getTime();
 	auto unitigs = getUnitigGraph(reads, minCoverage);
 	auto beforeFilter = getTime();
