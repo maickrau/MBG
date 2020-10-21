@@ -12,8 +12,8 @@ int main(int argc, char** argv)
 		("v,version", "Print version")
 		("i,in", "Input reads. Multiple files can be input with -i file1.fa -i file2.fa etc (required)", cxxopts::value<std::vector<std::string>>())
 		("o,out", "Output graph (required)", cxxopts::value<std::string>())
-		("k", "K-mer size (required)", cxxopts::value<size_t>())
-		("w", "Window size (required)", cxxopts::value<size_t>())
+		("k", "K-mer size. Must be odd and >=31 (required)", cxxopts::value<size_t>())
+		("w", "Window size. Must be 1 <= w <= k-30 (required)", cxxopts::value<size_t>())
 		("a,kmer-abundance", "Minimum k-mer abundance", cxxopts::value<size_t>()->default_value("1"))
 		("u,unitig-abundance", "Minimum average unitig abundace and edge abundance", cxxopts::value<double>()->default_value("2"))
 		("no-hpc", "Don't use homopolymer compression")
@@ -76,14 +76,19 @@ int main(int argc, char** argv)
 		std::cerr << "Window size must be >0" << std::endl;
 		paramError = true;
 	}
-	if (kmerSize == 0)
-	{
-		std::cerr << "K-mer size must be >0" << std::endl;
-		paramError = true;
-	}
 	if (kmerSize % 2 == 0)
 	{
 		std::cerr << "K-mer size must be odd" << std::endl;
+		paramError = true;
+	}
+	if (kmerSize < 31)
+	{
+		std::cerr << "Minimum k-mer size is 31" << std::endl;
+		paramError = true;
+	}
+	if (windowSize > kmerSize - 30)
+	{
+		std::cerr << "Window size must be <= k-30. With current k (" << kmerSize << ") maximum w is " << kmerSize - 30 << std::endl;
 		paramError = true;
 	}
 	if (paramError) std::abort();
