@@ -55,36 +55,55 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> runLengthEncode(const
 	}
 	for (size_t i = 1; i < original.size(); i++)
 	{
-		if (original[i] == original[i-1])
-		{
-			lens.back() += 1;
-			continue;
-		}
-		lens.push_back(1);
 		switch(original[i])
 		{
 			case 'a':
 			case 'A':
-				resultStr.push_back(1);
-				break;
 			case 'c':
 			case 'C':
-				resultStr.push_back(2);
-				break;
 			case 'g':
 			case 'G':
-				resultStr.push_back(3);
-				break;
 			case 't':
 			case 'T':
-				resultStr.push_back(4);
+			{
+				if (original[i] == original[i-1])
+				{
+					lens.back() += 1;
+					continue;
+				}
+				lens.push_back(1);
+				switch(original[i])
+				{
+					case 'a':
+					case 'A':
+						resultStr.push_back(1);
+						break;
+					case 'c':
+					case 'C':
+						resultStr.push_back(2);
+						break;
+					case 'g':
+					case 'G':
+						resultStr.push_back(3);
+						break;
+					case 't':
+					case 'T':
+						resultStr.push_back(4);
+						break;
+					default:
+						assert(false);
+						break;
+				}
 				break;
+			}
 			default:
+			{
 				if (resultStr.size() == 0) continue;
 				result.emplace_back(std::move(resultStr), std::move(lens));
 				resultStr.clear();
 				lens.clear();
 				break;
+			}
 		}
 	}
 	if (resultStr.size() > 0)
