@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <string>
+#include <mutex>
 #include <phmap.h>
 #include "MBGCommon.h"
 #include "TwobitString.h"
@@ -47,17 +48,19 @@ public:
 	size_t getEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to) const;
 	size_t getOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to) const;
 	void addSequenceOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, const size_t overlap);
+	void addEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to);
 	size_t size() const;
 	std::vector<uint16_t> getHashCharacterLength(size_t index) const;
-	void addHashCharacterLength(const std::vector<uint16_t>& data, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap);
 	void addHashCharacterLength(const std::vector<uint16_t>& data, bool fw, size_t start, size_t end, size_t node);
 	TwobitView getHashSequenceRLE(size_t index) const;
 	TwobitView getRevCompHashSequenceRLE(size_t index) const;
-	void addHashSequenceRLE(std::string_view seq, HashType currentHash, HashType previousHash, size_t overlap);
 	void buildReverseCompHashSequences();
 	std::pair<size_t, bool> getNodeOrNull(std::string_view sequence) const;
 	std::pair<std::pair<size_t, bool>, HashType> addNode(std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap);
 private:
+	std::mutex indexMutex;
+	std::mutex sequenceMutex;
+	std::mutex lengthMutex;
 	AdjacentLengthList hashCharacterLengths;
 	std::vector<std::pair<size_t, size_t>> hashCharacterLengthPtr;
 	std::vector<size_t> hashCharacterCounts;

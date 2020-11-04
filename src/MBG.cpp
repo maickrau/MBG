@@ -257,10 +257,8 @@ void findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t s
 	}
 }
 
-HashList loadReadsAsHashesMultithread(const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool collapseRunLengths, const size_t numThreads)
+void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool collapseRunLengths, const size_t numThreads)
 {
-	HashList result { kmerSize, collapseRunLengths };
-	std::mutex resultMutex;
 	std::atomic<size_t> totalNodes = 0;
 	std::atomic<bool> readDone;
 	readDone = false;
@@ -268,7 +266,7 @@ HashList loadReadsAsHashesMultithread(const std::vector<std::string>& files, con
 	moodycamel::ConcurrentQueue<std::shared_ptr<FastQ>> sequenceQueue;
 	for (size_t i = 0; i < numThreads; i++)
 	{
-		threads.emplace_back([&readDone, &result, &sequenceQueue, &resultMutex, &totalNodes, hpc, kmerSize, windowSize, collapseRunLengths]()
+		threads.emplace_back([&readDone, &result, &sequenceQueue, &totalNodes, hpc, kmerSize, windowSize, collapseRunLengths]()
 		{
 			while (true)
 			{
@@ -303,7 +301,7 @@ HashList loadReadsAsHashesMultithread(const std::vector<std::string>& files, con
 					size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 					std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
 					HashType lastHash = 0;
-					findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, [kmerSize, windowSize, &lastHash, &resultMutex, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos)
+					findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, [kmerSize, windowSize, &lastHash, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos)
 					{
 						assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
 						assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= windowSize);
@@ -313,17 +311,14 @@ HashList loadReadsAsHashesMultithread(const std::vector<std::string>& files, con
 						std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
 						std::pair<size_t, bool> current;
 						size_t overlap = lastMinimizerPosition + kmerSize - pos;
+						std::tie(current, lastHash) = result.addNode(minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap);
+						assert(pos - lastMinimizerPosition < kmerSize);
+						if (last.first != std::numeric_limits<size_t>::max())
 						{
-							std::lock_guard<std::mutex> lock { resultMutex };
-							std::tie(current, lastHash) = result.addNode(minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap);
-							if (last.first != std::numeric_limits<size_t>::max() && pos - lastMinimizerPosition < kmerSize)
-							{
-								assert(lastMinimizerPosition + kmerSize >= pos);
-								result.addSequenceOverlap(last, current, overlap);
-								auto pair = canon(last, current);
-								result.edgeCoverage[pair.first][pair.second] += 1;
-							}
-							result.coverage[current.first] += 1;
+							assert(lastMinimizerPosition + kmerSize >= pos);
+							result.addSequenceOverlap(last, current, overlap);
+							auto pair = canon(last, current);
+							result.addEdgeCoverage(pair.first, pair.second);
 						}
 						lastMinimizerPosition = pos;
 						last = current;
@@ -351,66 +346,6 @@ HashList loadReadsAsHashesMultithread(const std::vector<std::string>& files, con
 	result.buildReverseCompHashSequences();
 	std::cerr << totalNodes << " nodes" << std::endl;
 	std::cerr << result.size() << " distinct fw/bw sequence nodes" << std::endl;
-	return result;
-}
-
-HashList loadReadsAsHashes(const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool collapseRunLengths)
-{
-	HashList result { kmerSize, collapseRunLengths };
-	size_t totalNodes = 0;
-	for (const std::string& filename : files)
-	{
-		std::cerr << "Reading sequences from " << filename << std::endl;
-		FastQ::streamFastqFromFile(filename, false, [&result, &totalNodes, kmerSize, windowSize, hpc](const FastQ& read){
-			if (read.sequence.size() == 0) return;
-			std::vector<std::pair<std::string, std::vector<uint16_t>>> parts;
-			if (hpc)
-			{
-				parts = runLengthEncode(read.sequence);
-			}
-			else
-			{
-				parts = noRunLengthEncode(read.sequence);
-			}
-			for (size_t i = 0; i < parts.size(); i++)
-			{
-				std::string& seq = parts[i].first;
-				std::vector<uint16_t>& lens = parts[i].second;
-				if (seq.size() <= kmerSize + windowSize) return;
-				std::string revSeq = revCompRLE(seq);
-				size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
-				std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
-				HashType lastHash = 0;
-				findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, [kmerSize, windowSize, &lastHash, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos)
-				{
-					assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
-					assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= windowSize);
-					assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
-					std::string_view minimizerSequence { seq.data() + pos, kmerSize };
-					size_t revPos = seq.size() - (pos + kmerSize);
-					std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
-					std::pair<size_t, bool> current;
-					size_t overlap = lastMinimizerPosition + kmerSize - pos;
-					std::tie(current, lastHash) = result.addNode(minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap);
-					if (last.first != std::numeric_limits<size_t>::max() && pos - lastMinimizerPosition < kmerSize)
-					{
-						assert(lastMinimizerPosition + kmerSize >= pos);
-						result.addSequenceOverlap(last, current, overlap);
-						auto pair = canon(last, current);
-						result.edgeCoverage[pair.first][pair.second] += 1;
-					}
-					lastMinimizerPosition = pos;
-					result.coverage[current.first] += 1;
-					last = current;
-					totalNodes += 1;
-				});
-			}
-		});
-	}
-	result.buildReverseCompHashSequences();
-	std::cerr << totalNodes << " nodes" << std::endl;
-	std::cerr << result.size() << " distinct fw/bw sequence nodes" << std::endl;
-	return result;
 }
 
 void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, bool> start, const VectorWithDirection<std::unordered_set<std::pair<size_t, bool>>>& edges, std::vector<std::pair<size_t, bool>>& belongsToUnitig)
@@ -945,7 +880,8 @@ AssemblyStats getSizeAndN50(const HashList& hashlist, const UnitigGraph& graph, 
 void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc, const bool collapseRunLengths, const bool blunt, const size_t numThreads)
 {
 	auto beforeReading = getTime();
-	HashList reads { numThreads == 1 ? loadReadsAsHashes(inputReads, kmerSize, windowSize, hpc, collapseRunLengths) : loadReadsAsHashesMultithread(inputReads, kmerSize, windowSize, hpc, collapseRunLengths, numThreads) };
+	HashList reads { kmerSize, collapseRunLengths };
+	loadReadsAsHashesMultithread(reads, inputReads, kmerSize, windowSize, hpc, collapseRunLengths, numThreads);
 	auto beforeUnitigs = getTime();
 	auto unitigs = getUnitigGraph(reads, minCoverage);
 	auto beforeFilter = getTime();

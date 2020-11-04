@@ -160,6 +160,7 @@ size_t HashList::getOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool
 void HashList::addSequenceOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, const size_t overlap)
 {
 	std::tie(from, to) = canon(from, to);
+	std::lock_guard<std::mutex> lock { indexMutex };
 	if (sequenceOverlap[from].count(to) == 1) return;
 	sequenceOverlap[from][to] = overlap;
 }
@@ -180,17 +181,13 @@ std::vector<uint16_t> HashList::getHashCharacterLength(size_t index) const
 	return hashCharacterLengths.getData(hashCharacterLengthPtr[index].first, hashCharacterLengthPtr[index].second, kmerSize);
 }
 
-void HashList::addHashCharacterLength(const std::vector<uint16_t>& data, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap)
-{
-	if (collapseRunLengths) return;
-	hashCharacterLengthPtr.push_back(hashCharacterLengths.addData(data, start, end, currentHash, previousHash, overlap));
-}
-
 void HashList::addHashCharacterLength(const std::vector<uint16_t>& data, bool fw, size_t start, size_t end, size_t node)
 {
 	if (collapseRunLengths) return;
+	std::lock_guard<std::mutex> lock { lengthMutex };
 	hashCharacterLengths.addCounts(data, fw, start, end, hashCharacterLengthPtr[node].first, hashCharacterLengthPtr[node].second);
 }
+
 TwobitView HashList::getHashSequenceRLE(size_t index) const
 {
 	return hashSequences.getView(hashSeqPtr[index].first, hashSeqPtr[index].second, kmerSize);
@@ -200,11 +197,6 @@ TwobitView HashList::getRevCompHashSequenceRLE(size_t index) const
 {
 	auto pos = hashSequences.getRevCompLocation(hashSeqPtr[index].first, hashSeqPtr[index].second, kmerSize);
 	return hashSequencesRevComp.getView(pos.first, pos.second, kmerSize);
-}
-
-void HashList::addHashSequenceRLE(std::string_view seq, HashType currentHash, HashType previousHash, size_t overlap)
-{
-	hashSeqPtr.push_back(hashSequences.addString(seq, currentHash, previousHash, overlap));
 }
 
 void HashList::buildReverseCompHashSequences()
@@ -223,28 +215,58 @@ std::pair<size_t, bool> HashList::getNodeOrNull(std::string_view sequence) const
 	return found->second;
 }
 
-std::pair<std::pair<size_t, bool>, HashType> HashList::addNode( std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap)
+void HashList::addEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to)
+{
+	std::lock_guard<std::mutex> lock { indexMutex };
+	edgeCoverage[from][to] += 1;
+}
+
+std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap)
 {
 	HashType fwHash = hash(sequence);
-	auto found = hashToNode.find(fwHash);
-	if (found != hashToNode.end())
+	size_t fwNode;
 	{
-		addHashCharacterLength(sequenceCharacterLength, found->second.second, seqCharLenStart, seqCharLenEnd, found->second.first);
-		return std::make_pair(found->second, fwHash);
+		std::lock_guard<std::mutex> lock { indexMutex };
+		auto found = hashToNode.find(fwHash);
+		if (found != hashToNode.end())
+		{
+			coverage[found->second.first] += 1;
+			addHashCharacterLength(sequenceCharacterLength, found->second.second, seqCharLenStart, seqCharLenEnd, found->second.first);
+			return std::make_pair(found->second, fwHash);
+		}
+		assert(found == hashToNode.end());
+		HashType bwHash = hash(reverse);
+		found = hashToNode.find(bwHash);
+		assert(hashToNode.find(bwHash) == hashToNode.end());
+		fwNode = size();
+		hashToNode[fwHash] = std::make_pair(fwNode, true);
+		hashToNode[bwHash] = std::make_pair(fwNode, false);
+		assert(coverage.size() == fwNode);
+		assert(edgeCoverage.size() == fwNode);
+		assert(sequenceOverlap.size() == fwNode);
+		assert(hashSeqPtr.size() == fwNode);
+		assert(collapseRunLengths || hashCharacterLengthPtr.size() == fwNode);
+		coverage.emplace_back(1);
+		edgeCoverage.emplace_back();
+		sequenceOverlap.emplace_back();
+		hashSeqPtr.emplace_back();
+		if (!collapseRunLengths) hashCharacterLengthPtr.emplace_back();
 	}
-	assert(found == hashToNode.end());
-	HashType bwHash = hash(reverse);
-	assert(hashToNode.find(bwHash) == hashToNode.end());
-	size_t fwNode = size();
-	hashToNode[fwHash] = std::make_pair(fwNode, true);
-	hashToNode[bwHash] = std::make_pair(fwNode, false);
-	addHashSequenceRLE(sequence, fwHash, previousHash, overlap);
-	addHashCharacterLength(sequenceCharacterLength, seqCharLenStart, seqCharLenEnd, fwHash, previousHash, overlap);
-	assert(coverage.size() == fwNode);
-	coverage.emplace_back(0);
-	assert(edgeCoverage.size() == fwNode);
-	edgeCoverage.emplace_back();
-	assert(sequenceOverlap.size() == fwNode);
-	sequenceOverlap.emplace_back();
+	std::pair<size_t, size_t> seqResult;
+	std::pair<size_t, size_t> lengthResult;
+	{
+		std::lock_guard<std::mutex> lock { sequenceMutex };
+		seqResult = hashSequences.addString(sequence, fwHash, previousHash, overlap);
+	}
+	if (!collapseRunLengths)
+	{
+		std::lock_guard<std::mutex> lock { lengthMutex };
+		lengthResult = hashCharacterLengths.addData(sequenceCharacterLength, seqCharLenStart, seqCharLenEnd, fwHash, previousHash, overlap);
+	}
+	{
+		std::lock_guard<std::mutex> lock { indexMutex };
+		hashSeqPtr[fwNode] = seqResult;
+		if (!collapseRunLengths) hashCharacterLengthPtr[fwNode] = lengthResult;
+	}
 	return std::make_pair(std::make_pair(fwNode, true), fwHash);
 }
