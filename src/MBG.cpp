@@ -215,7 +215,7 @@ void findMinimizerPositions(const std::string& sequence, size_t kmerSize, size_t
 }
 
 template <typename F>
-void findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t smerSize, F callback)
+void findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, F callback)
 {
 	if (sequence.size() < kmerSize) return;
 	assert(smerSize <= kmerSize);
@@ -226,7 +226,6 @@ void findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t s
 	{
 		fwkmerHasher.addChar(sequence[i]);
 	}
-	std::deque<std::tuple<size_t, uint64_t>> smerOrder;
 	smerOrder.emplace_back(0, fwkmerHasher.hash());
 	for (size_t i = 1; i < windowSize; i++)
 	{
@@ -247,7 +246,11 @@ void findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t s
 		fwkmerHasher.addChar(sequence[seqPos]);
 		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
 		size_t hash = fwkmerHasher.hash();
-		while (smerOrder.size() > 0 && std::get<0>(smerOrder.front()) <= i - windowSize) smerOrder.pop_front();
+		// even though pop_front is used it turns out std::vector is faster than std::deque ?!
+		// because pop_front is O(w), but it is only called in O(1/w) fraction of loops
+		// so the performace penalty of pop_front does not scale with w!
+		// and std::vector's speed in normal, non-popfront operation outweighs the slow pop_front
+		while (smerOrder.size() > 0 && std::get<0>(smerOrder.front()) <= i - windowSize) smerOrder.erase(smerOrder.begin());
 		while (smerOrder.size() > 0 && std::get<1>(smerOrder.back()) > hash) smerOrder.pop_back();
 		smerOrder.emplace_back(i, hash);
 		if ((std::get<0>(smerOrder.front()) == i-windowSize+1) || (std::get<1>(smerOrder.back()) == std::get<1>(smerOrder.front()) && std::get<0>(smerOrder.back()) == i))
@@ -268,6 +271,9 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 	{
 		threads.emplace_back([&readDone, &result, &sequenceQueue, &totalNodes, hpc, kmerSize, windowSize, collapseRunLengths]()
 		{
+			// keep the same smerOrder to reduce mallocs which destroy multithreading performance
+			std::vector<std::tuple<size_t, uint64_t>> smerOrder;
+			smerOrder.reserve(windowSize);
 			while (true)
 			{
 				std::shared_ptr<FastQ> read;
@@ -301,7 +307,8 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 					size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 					std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
 					HashType lastHash = 0;
-					findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, [kmerSize, windowSize, &lastHash, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos)
+					smerOrder.resize(0);
+					findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [kmerSize, windowSize, &lastHash, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos)
 					{
 						assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
 						assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= windowSize);
