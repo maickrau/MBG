@@ -216,7 +216,7 @@ template <typename F>
 void findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t smerSize, F callback)
 {
 	if (sequence.size() < kmerSize) return;
-	assert(smerSize < kmerSize);
+	assert(smerSize <= kmerSize);
 	size_t windowSize = kmerSize - smerSize + 1;
 	assert(windowSize >= 1);
 	FastHasher fwkmerHasher { smerSize };
