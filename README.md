@@ -1,6 +1,6 @@
 ## MBG
 
-<strong>M</strong>inimizer based sparse de <strong>B</strong>ruijn <strong>G</strong>raph constructor. Homopolymer compress input sequences, winnow minimizers from hpc-compressed sequences, connect minimizers with an edge if they are adjacent in a read, unitigify. Suggested input is PacBio HiFi/CCS reads. May or may not work with Illumina reads. Algorithmic details: https://www.biorxiv.org/content/10.1101/2020.09.18.303156v1
+<strong>M</strong>inimizer based sparse de <strong>B</strong>ruijn <strong>G</strong>raph constructor. Homopolymer compress input sequences, pick syncmers from hpc-compressed sequences, connect syncmers with an edge if they are adjacent in a read, unitigify. Suggested input is PacBio HiFi/CCS reads. May or may not work with Illumina reads. Algorithmic details: https://www.biorxiv.org/content/10.1101/2020.09.18.303156v1
 
 #### Installation
 
@@ -17,15 +17,15 @@ Bioconda: `conda install -c bioconda mbg`
 
 `MBG -i input_reads.fa -o output_graph.gfa -k kmer_size -w window_size -a kmer_min_abundance -u unitig_min_abundance`
 
-eg `MBG -i reads.fa -o graph.gfa -k 1501 -w 1500 -a 1 -u 3`
+eg `MBG -i reads.fa -o graph.gfa -k 1501 -w 1450 -a 1 -u 3`
 
 Multiple read files can be inputted with "-i file1.fa -i file2.fa" etc. Input read type can be .fa / .fq / .fa.gz / .fq.gz.
 
 #### Parameters
 
-- `-k`: k-mer size for minimizer winnowing
-- `-w`: window size for minimizer winnowing. Cannot be greater than k
-- `-a`: minimum k-mer abundance. Discard minimizers whose coverage is less than this
+- `-k`: k-mer size
+- `-w`: window size. Cannot be greater than k-30
+- `-a`: minimum k-mer abundance. Discard k-mers whose coverage is less than this
 - `-u`: minimum unitig abundance. Discard unitigs whose average coverage is less than this, and discard edges whose coverage is less than this
 
 Other options:
@@ -37,4 +37,4 @@ Other options:
 - `--no-hpc`: don't homopolymer compress the reads. Not recommended outside testing purposes
 - `--collapse-hpc`: disable homopolymer run length consensus and collapse runs to one bp. Recommended if the reads are already homopolymer compressed, otherwise not
 
-k and w can be arbitrarily large but at some point the error rate and limited read length will cause the graph to be fragmented. Runtime stays approximately the same if the ratio k/w is kept constant. All repeats shorter than k are separated, all repeats longer than k+w are collapsed, and repeats in between may be separated or collapsed depending on if a minimizer was selected from within the repeat. When using `--blunt`, you should clean the graph afterwards with [vg](https://github.com/vgteam/vg). `--blunt` uses an extension of an algorithm invented by Hassan Nikaein (personal communication).
+k and w can be arbitrarily large but at some point the error rate and limited read length will cause the graph to be fragmented. Runtime stays approximately the same if the ratio k/w is kept constant. All repeats shorter than k are separated, all repeats longer than k+w are collapsed, and repeats in between may be separated or collapsed depending on if a k-mer was selected from within the repeat. When using `--blunt`, you should clean the graph afterwards with [vg](https://github.com/vgteam/vg). `--blunt` uses an extension of an algorithm invented by Hassan Nikaein (personal communication).
