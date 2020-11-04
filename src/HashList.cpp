@@ -1,18 +1,18 @@
 #include <algorithm>
 #include "HashList.h"
 
-AdjacentMinimizerList::AdjacentMinimizerList() :
+AdjacentMinimizerBucket::AdjacentMinimizerBucket() :
 	data(),
 	lastHash(0)
 {
 }
 
-TwobitView AdjacentMinimizerList::getView(size_t coord1, size_t coord2, size_t size) const
+TwobitView AdjacentMinimizerBucket::getView(size_t coord1, size_t coord2, size_t size) const
 {
 	return TwobitView { data[coord1], coord2, coord2+size };
 }
 
-std::pair<size_t, size_t> AdjacentMinimizerList::addString(std::string_view str, HashType currentHash, HashType previousHash, size_t overlap)
+std::pair<size_t, size_t> AdjacentMinimizerBucket::addString(std::string_view str, HashType currentHash, HashType previousHash, size_t overlap)
 {
 	if (data.size() == 0 || lastHash == 0 || previousHash == 0 || previousHash != lastHash)
 	{
@@ -27,9 +27,9 @@ std::pair<size_t, size_t> AdjacentMinimizerList::addString(std::string_view str,
 	return std::make_pair(data.size()-1, data.back().size() - str.size());
 }
 
-AdjacentMinimizerList AdjacentMinimizerList::getReverseComplementStorage() const
+AdjacentMinimizerBucket AdjacentMinimizerBucket::getReverseComplementStorage() const
 {
-	AdjacentMinimizerList result;
+	AdjacentMinimizerBucket result;
 	result.data.resize(data.size());
 	for (size_t i = 0; i < data.size(); i++)
 	{
@@ -38,20 +38,20 @@ AdjacentMinimizerList AdjacentMinimizerList::getReverseComplementStorage() const
 	return result;
 }
 
-std::pair<size_t, size_t> AdjacentMinimizerList::getRevCompLocation(size_t coord1, size_t coord2, size_t size) const
+std::pair<size_t, size_t> AdjacentMinimizerBucket::getRevCompLocation(size_t coord1, size_t coord2, size_t size) const
 {
 	assert(data[coord1].size() >= coord2 + size);
 	return std::make_pair(coord1, data[coord1].size() - size - coord2);
 }
 
-AdjacentLengthList::AdjacentLengthList() :
+AdjacentLengthBucket::AdjacentLengthBucket() :
 	sums(),
 	counts(),
 	lastHash(0)
 {
 }
 
-std::vector<uint16_t> AdjacentLengthList::getData(size_t coord1, size_t coord2, size_t size) const
+std::vector<uint16_t> AdjacentLengthBucket::getData(size_t coord1, size_t coord2, size_t size) const
 {
 	std::vector<uint16_t> result;
 	result.resize(size, 0);
@@ -64,7 +64,7 @@ std::vector<uint16_t> AdjacentLengthList::getData(size_t coord1, size_t coord2, 
 	return result;
 }
 
-std::pair<size_t, size_t> AdjacentLengthList::addData(const std::vector<uint16_t>& lens, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap)
+std::pair<size_t, size_t> AdjacentLengthBucket::addData(const std::vector<uint16_t>& lens, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap)
 {
 	assert(end > start);
 	assert(end <= lens.size());
@@ -87,7 +87,7 @@ std::pair<size_t, size_t> AdjacentLengthList::addData(const std::vector<uint16_t
 	return std::make_pair(sums.size()-1, sums.back().size() - (end - start));
 }
 
-void AdjacentLengthList::addCounts(const std::vector<uint16_t>& lens, bool fw, size_t start, size_t end, size_t coord1, size_t coord2)
+void AdjacentLengthBucket::addCounts(const std::vector<uint16_t>& lens, bool fw, size_t start, size_t end, size_t coord1, size_t coord2)
 {
 	assert(coord1 < sums.size());
 	assert(sums.size() == counts.size());
@@ -118,7 +118,7 @@ void AdjacentLengthList::addCounts(const std::vector<uint16_t>& lens, bool fw, s
 	}
 }
 
-size_t AdjacentLengthList::size() const
+size_t AdjacentLengthBucket::size() const
 {
 	size_t total = 0;
 	for (size_t i = 0; i < sums.size(); i++)
@@ -128,9 +128,89 @@ size_t AdjacentLengthList::size() const
 	return total;
 }
 
-HashList::HashList(size_t kmerSize, bool collapseRunLengths) :
+AdjacentMinimizerList::AdjacentMinimizerList(size_t numBuckets) :
+buckets(numBuckets),
+bucketMutexes(numBuckets)
+{
+}
+
+TwobitView AdjacentMinimizerList::getView(size_t bucket, std::pair<size_t, size_t> coords, size_t size) const
+{
+	return buckets[bucket].getView(coords.first, coords.second, size);
+}
+
+size_t AdjacentMinimizerList::hashToBucket(HashType hash) const
+{
+	return hash % buckets.size();
+}
+
+std::pair<size_t, std::pair<size_t, size_t>> AdjacentMinimizerList::addString(std::string_view str, HashType currentHash, HashType previousHash, size_t overlap)
+{
+	size_t bucket = hashToBucket(currentHash);
+	std::lock_guard<std::mutex> lock { bucketMutexes[bucket] };
+	return std::make_pair(bucket, buckets[bucket].addString(str, currentHash, previousHash, overlap));
+}
+
+AdjacentMinimizerList AdjacentMinimizerList::getReverseComplementStorage() const
+{
+	AdjacentMinimizerList result { buckets.size() };
+	for (size_t i = 0; i < buckets.size(); i++)
+	{
+		result.buckets[i] = buckets[i].getReverseComplementStorage();
+	}
+	return result;
+}
+
+std::pair<size_t, std::pair<size_t, size_t>> AdjacentMinimizerList::getRevCompLocation(size_t bucket, std::pair<size_t, size_t> coords, size_t size) const
+{
+	return std::make_pair(bucket, buckets[bucket].getRevCompLocation(coords.first, coords.second, size));
+}
+
+AdjacentLengthList::AdjacentLengthList(size_t numBuckets) :
+buckets(numBuckets),
+bucketMutexes(numBuckets)
+{
+}
+
+std::vector<uint16_t> AdjacentLengthList::getData(size_t bucket, std::pair<size_t, size_t> coords, size_t size) const
+{
+	return buckets[bucket].getData(coords.first, coords.second, size);
+}
+
+std::pair<size_t, std::pair<size_t, size_t>> AdjacentLengthList::addData(const std::vector<uint16_t>& lens, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap)
+{
+	size_t bucket = hashToBucket(currentHash);
+	std::lock_guard<std::mutex> lock { bucketMutexes[bucket] };
+	return std::make_pair(bucket, buckets[bucket].addData(lens, start, end, currentHash, previousHash, overlap));
+}
+
+void AdjacentLengthList::addCounts(const std::vector<uint16_t>& lens, bool fw, size_t start, size_t end, size_t bucket, std::pair<size_t, size_t> coords)
+{
+	std::lock_guard<std::mutex> lock { bucketMutexes[bucket] };
+	buckets[bucket].addCounts(lens, fw, start, end, coords.first, coords.second);
+}
+
+size_t AdjacentLengthList::size() const
+{
+	size_t sum = 0;
+	for (size_t i = 0; i < buckets.size(); i++)
+	{
+		sum += buckets[i].size();
+	}
+	return sum;
+}
+
+size_t AdjacentLengthList::hashToBucket(HashType hash) const
+{
+	return hash % buckets.size();
+}
+
+HashList::HashList(size_t kmerSize, bool collapseRunLengths, size_t numBuckets) :
 	kmerSize(kmerSize),
-	collapseRunLengths(collapseRunLengths)
+	collapseRunLengths(collapseRunLengths),
+	hashCharacterLengths(numBuckets),
+	hashSequences(numBuckets),
+	hashSequencesRevComp(numBuckets)
 {}
 
 size_t HashList::numSequenceOverlaps() const
@@ -184,7 +264,6 @@ std::vector<uint16_t> HashList::getHashCharacterLength(size_t index) const
 void HashList::addHashCharacterLength(const std::vector<uint16_t>& data, bool fw, size_t start, size_t end, size_t node)
 {
 	if (collapseRunLengths) return;
-	std::lock_guard<std::mutex> lock { lengthMutex };
 	hashCharacterLengths.addCounts(data, fw, start, end, hashCharacterLengthPtr[node].first, hashCharacterLengthPtr[node].second);
 }
 
@@ -252,15 +331,11 @@ std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(std::string_view 
 		hashSeqPtr.emplace_back();
 		if (!collapseRunLengths) hashCharacterLengthPtr.emplace_back();
 	}
-	std::pair<size_t, size_t> seqResult;
-	std::pair<size_t, size_t> lengthResult;
-	{
-		std::lock_guard<std::mutex> lock { sequenceMutex };
-		seqResult = hashSequences.addString(sequence, fwHash, previousHash, overlap);
-	}
+	std::pair<size_t, std::pair<size_t, size_t>> seqResult;
+	std::pair<size_t, std::pair<size_t, size_t>> lengthResult;
+	seqResult = hashSequences.addString(sequence, fwHash, previousHash, overlap);
 	if (!collapseRunLengths)
 	{
-		std::lock_guard<std::mutex> lock { lengthMutex };
 		lengthResult = hashCharacterLengths.addData(sequenceCharacterLength, seqCharLenStart, seqCharLenEnd, fwHash, previousHash, overlap);
 	}
 	{

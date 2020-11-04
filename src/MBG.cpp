@@ -880,7 +880,7 @@ AssemblyStats getSizeAndN50(const HashList& hashlist, const UnitigGraph& graph, 
 void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc, const bool collapseRunLengths, const bool blunt, const size_t numThreads)
 {
 	auto beforeReading = getTime();
-	HashList reads { kmerSize, collapseRunLengths };
+	HashList reads { kmerSize, collapseRunLengths, numThreads };
 	loadReadsAsHashesMultithread(reads, inputReads, kmerSize, windowSize, hpc, collapseRunLengths, numThreads);
 	auto beforeUnitigs = getTime();
 	auto unitigs = getUnitigGraph(reads, minCoverage);

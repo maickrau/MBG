@@ -9,23 +9,24 @@
 #include "TwobitString.h"
 #include "VectorWithDirection.h"
 
-class AdjacentMinimizerList
+class AdjacentMinimizerBucket
 {
 public:
-	AdjacentMinimizerList();
+	AdjacentMinimizerBucket();
 	TwobitView getView(size_t coord1, size_t coord2, size_t size) const;
 	std::pair<size_t, size_t> addString(std::string_view str, HashType currentHash, HashType previousHash, size_t overlap);
-	AdjacentMinimizerList getReverseComplementStorage() const;
+	AdjacentMinimizerBucket getReverseComplementStorage() const;
 	std::pair<size_t, size_t> getRevCompLocation(size_t coord1, size_t coord2, size_t size) const;
 private:
 	std::vector<TwobitString> data;
 	HashType lastHash;
+	friend class AdjacentMinimizerList;
 };
 
-class AdjacentLengthList
+class AdjacentLengthBucket
 {
 public:
-	AdjacentLengthList();
+	AdjacentLengthBucket();
 	std::vector<uint16_t> getData(size_t coord1, size_t coord2, size_t size) const;
 	std::pair<size_t, size_t> addData(const std::vector<uint16_t>& lens, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap);
 	void addCounts(const std::vector<uint16_t>& lens, bool fw, size_t start, size_t end, size_t coord1, size_t coord2);
@@ -34,12 +35,41 @@ private:
 	std::vector<std::vector<uint16_t>> sums;
 	std::vector<std::vector<uint8_t>> counts;
 	HashType lastHash;
+	friend class AdjacentLengthList;
+};
+
+class AdjacentMinimizerList
+{
+public:
+	AdjacentMinimizerList(size_t numBuckets);
+	TwobitView getView(size_t bucket, std::pair<size_t, size_t> coords, size_t size) const;
+	std::pair<size_t, std::pair<size_t, size_t>> addString(std::string_view str, HashType currentHash, HashType previousHash, size_t overlap);
+	AdjacentMinimizerList getReverseComplementStorage() const;
+	std::pair<size_t, std::pair<size_t, size_t>> getRevCompLocation(size_t bucket, std::pair<size_t, size_t> coords, size_t size) const;
+private:
+	size_t hashToBucket(HashType hash) const;
+	std::vector<AdjacentMinimizerBucket> buckets;
+	std::vector<std::mutex> bucketMutexes;
+};
+
+class AdjacentLengthList
+{
+public:
+	AdjacentLengthList(size_t numBuckets);
+	std::vector<uint16_t> getData(size_t bucket, std::pair<size_t, size_t> coords, size_t size) const;
+	std::pair<size_t, std::pair<size_t, size_t>> addData(const std::vector<uint16_t>& lens, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap);
+	void addCounts(const std::vector<uint16_t>& lens, bool fw, size_t start, size_t end, size_t bucket, std::pair<size_t, size_t> coords);
+	size_t size() const;
+private:
+	size_t hashToBucket(HashType hash) const;
+	std::vector<AdjacentLengthBucket> buckets;
+	std::vector<std::mutex> bucketMutexes;
 };
 
 class HashList
 {
 public:
-	HashList(size_t kmerSize, bool collapseRunLengths);
+	HashList(size_t kmerSize, bool collapseRunLengths, size_t numBuckets);
 	std::vector<size_t> coverage;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> sequenceOverlap;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> edgeCoverage;
@@ -59,13 +89,10 @@ public:
 	std::pair<std::pair<size_t, bool>, HashType> addNode(std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap);
 private:
 	std::mutex indexMutex;
-	std::mutex sequenceMutex;
-	std::mutex lengthMutex;
 	AdjacentLengthList hashCharacterLengths;
-	std::vector<std::pair<size_t, size_t>> hashCharacterLengthPtr;
-	std::vector<size_t> hashCharacterCounts;
+	std::vector<std::pair<size_t, std::pair<size_t, size_t>>> hashCharacterLengthPtr;
 	AdjacentMinimizerList hashSequences;
-	std::vector<std::pair<size_t, size_t>> hashSeqPtr;
+	std::vector<std::pair<size_t, std::pair<size_t, size_t>>> hashSeqPtr;
 	AdjacentMinimizerList hashSequencesRevComp;
 	const size_t kmerSize;
 	const bool collapseRunLengths;
