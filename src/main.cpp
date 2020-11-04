@@ -12,6 +12,7 @@ int main(int argc, char** argv)
 		("v,version", "Print version")
 		("i,in", "Input reads. Multiple files can be input with -i file1.fa -i file2.fa etc (required)", cxxopts::value<std::vector<std::string>>())
 		("o,out", "Output graph (required)", cxxopts::value<std::string>())
+		("t", "Number of threads", cxxopts::value<size_t>()->default_value("1"))
 		("k", "K-mer size. Must be odd and >=31 (required)", cxxopts::value<size_t>())
 		("w", "Window size. Must be 1 <= w <= k-30 (required)", cxxopts::value<size_t>())
 		("a,kmer-abundance", "Minimum k-mer abundance", cxxopts::value<size_t>()->default_value("1"))
@@ -59,6 +60,7 @@ int main(int argc, char** argv)
 	size_t windowSize = params["w"].as<size_t>();
 	size_t minCoverage = params["a"].as<size_t>();
 	size_t minUnitigCoverage = params["u"].as<double>();
+	size_t numThreads = params["t"].as<size_t>();
 	bool hpc = true;
 	bool collapseRunLengths = false;
 	bool blunt = false;
@@ -66,6 +68,11 @@ int main(int argc, char** argv)
 	if (params.count("no-hpc") == 1) hpc = false;
 	if (params.count("collapse-hpc") == 1) collapseRunLengths = true;
 
+	if (numThreads == 0)
+	{
+		std::cerr << "Number of threads cannot be 0" << std::endl;
+		paramError = true;
+	}
 	if (windowSize > kmerSize)
 	{
 		std::cerr << "Window size cannot be greater than k-mer size" << std::endl;
@@ -98,9 +105,10 @@ int main(int argc, char** argv)
 	std::cerr << "w=" << windowSize << ",";
 	std::cerr << "a=" << minCoverage << ",";
 	std::cerr << "u=" << minUnitigCoverage << ",";
+	std::cerr << "t=" << numThreads << ",";
 	std::cerr << "hpc=" << (hpc ? "yes" : "no") << ",";
 	std::cerr << "collapse=" << (collapseRunLengths ? "yes" : "no") << ",";
 	std::cerr << "blunt=" << (blunt ? "yes" : "no") << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, hpc, collapseRunLengths, blunt);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, hpc, collapseRunLengths, blunt, numThreads);
 }
