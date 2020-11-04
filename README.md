@@ -27,6 +27,7 @@ Multiple read files can be inputted with "-i file1.fa -i file2.fa" etc. Input re
 - `-w`: window size. Cannot be greater than k-30
 - `-a`: minimum k-mer abundance. Discard k-mers whose coverage is less than this
 - `-u`: minimum unitig abundance. Discard unitigs whose average coverage is less than this, and discard edges whose coverage is less than this
+- `-t`: number of threads
 
 Other options:
 - `-i`: input read files. Can use multiple times to input multiple files
