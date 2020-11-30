@@ -215,17 +215,19 @@ void findMinimizerPositions(const std::string& sequence, size_t kmerSize, size_t
 }
 
 template <typename F>
-void findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, F callback)
+uint64_t findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, F callback)
 {
-	if (sequence.size() < kmerSize) return;
+	if (sequence.size() < kmerSize) return 0;
 	assert(smerSize <= kmerSize);
 	size_t windowSize = kmerSize - smerSize + 1;
 	assert(windowSize >= 1);
+	uint64_t minHash = std::numeric_limits<uint64_t>::max();
 	FastHasher fwkmerHasher { smerSize };
 	for (size_t i = 0; i < smerSize; i++)
 	{
 		fwkmerHasher.addChar(sequence[i]);
 	}
+	minHash = std::min(minHash, fwkmerHasher.hash());
 	smerOrder.emplace_back(0, fwkmerHasher.hash());
 	for (size_t i = 1; i < windowSize; i++)
 	{
@@ -235,6 +237,7 @@ void findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t s
 		size_t hash = fwkmerHasher.hash();
 		while (smerOrder.size() > 0 && std::get<1>(smerOrder.back()) > hash) smerOrder.pop_back();
 		smerOrder.emplace_back(i, hash);
+		minHash = std::min(minHash, hash);
 	}
 	if ((std::get<0>(smerOrder.front()) == 0) || (std::get<1>(smerOrder.back()) == std::get<1>(smerOrder.front()) && std::get<0>(smerOrder.back()) == windowSize-1))
 	{
@@ -257,7 +260,9 @@ void findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t s
 		{
 			callback(i-windowSize+1);
 		}
+		minHash = std::min(minHash, hash);
 	}
+	return minHash;
 }
 
 void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool collapseRunLengths, const size_t numThreads)
@@ -308,7 +313,12 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 					std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
 					HashType lastHash = 0;
 					smerOrder.resize(0);
-					findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [kmerSize, windowSize, &lastHash, &last, &lens, &seq, &revSeq, &result, &lastMinimizerPosition, &totalNodes](size_t pos)
+					std::vector<size_t> positions;
+					uint64_t minHash = findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [&positions](size_t pos)
+					{
+						positions.push_back(pos);
+					});
+					for (auto pos : positions)
 					{
 						assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
 						assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= windowSize);
@@ -318,7 +328,7 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 						std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
 						std::pair<size_t, bool> current;
 						size_t overlap = lastMinimizerPosition + kmerSize - pos;
-						std::tie(current, lastHash) = result.addNode(minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap);
+						std::tie(current, lastHash) = result.addNode(minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, minHash);
 						assert(pos - lastMinimizerPosition < kmerSize);
 						if (last.first != std::numeric_limits<size_t>::max())
 						{
@@ -330,7 +340,7 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 						lastMinimizerPosition = pos;
 						last = current;
 						totalNodes += 1;
-					});
+					};
 				}
 			}
 		});

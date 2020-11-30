@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <thread>
+#include <chrono>
 #include "HashList.h"
 
 AdjacentMinimizerBucket::AdjacentMinimizerBucket() :
@@ -144,9 +146,9 @@ size_t AdjacentMinimizerList::hashToBucket(HashType hash) const
 	return hash % buckets.size();
 }
 
-std::pair<size_t, std::pair<size_t, size_t>> AdjacentMinimizerList::addString(std::string_view str, HashType currentHash, HashType previousHash, size_t overlap)
+std::pair<size_t, std::pair<size_t, size_t>> AdjacentMinimizerList::addString(std::string_view str, HashType currentHash, HashType previousHash, size_t overlap, uint64_t bucketHash)
 {
-	size_t bucket = hashToBucket(currentHash);
+	size_t bucket = hashToBucket(bucketHash);
 	std::lock_guard<std::mutex> lock { bucketMutexes[bucket] };
 	return std::make_pair(bucket, buckets[bucket].addString(str, currentHash, previousHash, overlap));
 }
@@ -177,9 +179,9 @@ std::vector<uint16_t> AdjacentLengthList::getData(size_t bucket, std::pair<size_
 	return buckets[bucket].getData(coords.first, coords.second, size);
 }
 
-std::pair<size_t, std::pair<size_t, size_t>> AdjacentLengthList::addData(const std::vector<uint16_t>& lens, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap)
+std::pair<size_t, std::pair<size_t, size_t>> AdjacentLengthList::addData(const std::vector<uint16_t>& lens, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap, uint64_t bucketHash)
 {
-	size_t bucket = hashToBucket(currentHash);
+	size_t bucket = hashToBucket(bucketHash);
 	std::lock_guard<std::mutex> lock { bucketMutexes[bucket] };
 	return std::make_pair(bucket, buckets[bucket].addData(lens, start, end, currentHash, previousHash, overlap));
 }
@@ -206,11 +208,11 @@ size_t AdjacentLengthList::hashToBucket(HashType hash) const
 }
 
 HashList::HashList(size_t kmerSize, bool collapseRunLengths, size_t numBuckets) :
-	kmerSize(kmerSize),
-	collapseRunLengths(collapseRunLengths),
 	hashCharacterLengths(numBuckets),
 	hashSequences(numBuckets),
-	hashSequencesRevComp(numBuckets)
+	hashSequencesRevComp(numBuckets),
+	kmerSize(kmerSize),
+	collapseRunLengths(collapseRunLengths)
 {}
 
 size_t HashList::numSequenceOverlaps() const
@@ -261,10 +263,10 @@ std::vector<uint16_t> HashList::getHashCharacterLength(size_t index) const
 	return hashCharacterLengths.getData(hashCharacterLengthPtr[index].first, hashCharacterLengthPtr[index].second, kmerSize);
 }
 
-void HashList::addHashCharacterLength(const std::vector<uint16_t>& data, bool fw, size_t start, size_t end, size_t node)
+void HashList::addHashCharacterLength(const std::vector<uint16_t>& data, bool fw, size_t start, size_t end, size_t node, std::pair<size_t, std::pair<size_t, size_t>> position)
 {
 	if (collapseRunLengths) return;
-	hashCharacterLengths.addCounts(data, fw, start, end, hashCharacterLengthPtr[node].first, hashCharacterLengthPtr[node].second);
+	hashCharacterLengths.addCounts(data, fw, start, end, position.first, position.second);
 }
 
 TwobitView HashList::getHashSequenceRLE(size_t index) const
@@ -300,19 +302,44 @@ void HashList::addEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, b
 	edgeCoverage[from][to] += 1;
 }
 
-std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap)
+std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t bucketHash)
 {
 	HashType fwHash = hash(sequence);
+	start_without_sleep:
+	if (false)
+	{
+		start_with_sleep: // ehhh just a bit gnarly
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	std::pair<size_t, bool> index { std::numeric_limits<size_t>::max(), false };
+	std::pair<size_t, std::pair<size_t, size_t>> position;
 	size_t fwNode;
 	{
 		std::lock_guard<std::mutex> lock { indexMutex };
 		auto found = hashToNode.find(fwHash);
 		if (found != hashToNode.end())
 		{
+			index = found->second;
+			if (!collapseRunLengths)
+			{
+				position = hashCharacterLengthPtr[index.first];
+				if (position.first == std::numeric_limits<size_t>::max())
+				{
+					goto start_with_sleep;
+				}
+			}
 			coverage[found->second.first] += 1;
-			addHashCharacterLength(sequenceCharacterLength, found->second.second, seqCharLenStart, seqCharLenEnd, found->second.first);
-			return std::make_pair(found->second, fwHash);
 		}
+	}
+	if (index.first != std::numeric_limits<size_t>::max())
+	{
+		if (!collapseRunLengths) addHashCharacterLength(sequenceCharacterLength, index.second, seqCharLenStart, seqCharLenEnd, index.first, position);
+		return std::make_pair(index, fwHash);
+	}
+	{
+		std::lock_guard<std::mutex> lock { indexMutex };
+		auto found = hashToNode.find(fwHash);
+		if (found != hashToNode.end()) goto start_without_sleep;
 		assert(found == hashToNode.end());
 		HashType bwHash = hash(reverse);
 		found = hashToNode.find(bwHash);
@@ -329,14 +356,18 @@ std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(std::string_view 
 		edgeCoverage.emplace_back();
 		sequenceOverlap.emplace_back();
 		hashSeqPtr.emplace_back();
-		if (!collapseRunLengths) hashCharacterLengthPtr.emplace_back();
+		if (!collapseRunLengths)
+		{
+			hashCharacterLengthPtr.emplace_back();
+			hashCharacterLengthPtr.back().first = std::numeric_limits<size_t>::max();
+		}
 	}
 	std::pair<size_t, std::pair<size_t, size_t>> seqResult;
 	std::pair<size_t, std::pair<size_t, size_t>> lengthResult;
-	seqResult = hashSequences.addString(sequence, fwHash, previousHash, overlap);
+	seqResult = hashSequences.addString(sequence, fwHash, previousHash, overlap, bucketHash);
 	if (!collapseRunLengths)
 	{
-		lengthResult = hashCharacterLengths.addData(sequenceCharacterLength, seqCharLenStart, seqCharLenEnd, fwHash, previousHash, overlap);
+		lengthResult = hashCharacterLengths.addData(sequenceCharacterLength, seqCharLenStart, seqCharLenEnd, fwHash, previousHash, overlap, bucketHash);
 	}
 	{
 		std::lock_guard<std::mutex> lock { indexMutex };
