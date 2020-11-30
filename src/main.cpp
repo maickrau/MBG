@@ -59,7 +59,7 @@ int main(int argc, char** argv)
 	size_t kmerSize = params["k"].as<size_t>();
 	size_t windowSize = params["w"].as<size_t>();
 	size_t minCoverage = params["a"].as<size_t>();
-	size_t minUnitigCoverage = params["u"].as<double>();
+	double minUnitigCoverage = params["u"].as<double>();
 	size_t numThreads = params["t"].as<size_t>();
 	bool hpc = true;
 	bool collapseRunLengths = false;
