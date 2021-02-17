@@ -1,6 +1,6 @@
 ## MBG
 
-<strong>M</strong>inimizer based sparse de <strong>B</strong>ruijn <strong>G</strong>raph constructor. Homopolymer compress input sequences, pick syncmers from hpc-compressed sequences, connect syncmers with an edge if they are adjacent in a read, unitigify. Suggested input is PacBio HiFi/CCS reads. May or may not work with Illumina reads. Algorithmic details: https://www.biorxiv.org/content/10.1101/2020.09.18.303156v1
+<strong>M</strong>inimizer based sparse de <strong>B</strong>ruijn <strong>G</strong>raph constructor. Homopolymer compress input sequences, pick syncmers from hpc-compressed sequences, connect syncmers with an edge if they are adjacent in a read, unitigify. Suggested input is PacBio HiFi/CCS reads. May or may not work with Illumina reads. Algorithmic details and citation: https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/btab004/6104877
 
 #### Installation
 
