@@ -20,25 +20,25 @@ kmerSize(kmerSize % 64)
 
 char FastHasher::complement(char c) const
 {
-	static std::vector<char> comp { 0, 4, 3, 2, 1 };
-	return comp[c];
+	static char mapping[30] { 0, 4, 3, 2, 1, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 25, 22, 19, 28, 21, 18, 27, 24, 17, 26, 23, 20, 29 };
+	return mapping[(int)c];
 }
 
 void FastHasher::precalcRots()
 {
-	for (int i = 0; i < 5; i++)
+	for (int i = 0; i < 30; i++)
 	{
 		fwAdd[i] = charHashes[i];
 	}
-	for (int i = 0; i < 5; i++)
+	for (int i = 0; i < 30; i++)
 	{
 		fwRemove[i] = rotlk(charHashes[i]);
 	}
-	for (int i = 0; i < 5; i++)
+	for (int i = 0; i < 30; i++)
 	{
 		bwAdd[i] = rotlkmin1(charHashes[(int)complement(i)]);
 	}
-	for (int i = 0; i < 5; i++)
+	for (int i = 0; i < 30; i++)
 	{
 		bwRemove[i] = rotrone(charHashes[(int)complement(i)]);
 	}

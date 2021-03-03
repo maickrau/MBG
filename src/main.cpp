@@ -18,6 +18,7 @@ int main(int argc, char** argv)
 		("a,kmer-abundance", "Minimum k-mer abundance", cxxopts::value<size_t>()->default_value("1"))
 		("u,unitig-abundance", "Minimum average unitig abundace and edge abundance", cxxopts::value<double>()->default_value("2"))
 		("no-hpc", "Don't use homopolymer compression")
+		("no-dinuc-rle", "Don't use dimer compression")
 		("collapse-hpc", "Collapse homopolymer runs to one character instead of taking consensus")
 		("blunt", "Output a bluntified graph without edge overlaps")
 	;
@@ -64,8 +65,10 @@ int main(int argc, char** argv)
 	bool hpc = true;
 	bool collapseRunLengths = false;
 	bool blunt = false;
+	bool dinucRle = true;
 	if (params.count("blunt") == 1) blunt = true;
 	if (params.count("no-hpc") == 1) hpc = false;
+	if (params.count("no-dinuc-rle") == 1) dinucRle = false;
 	if (params.count("collapse-hpc") == 1) collapseRunLengths = true;
 
 	if (numThreads == 0)
@@ -107,8 +110,9 @@ int main(int argc, char** argv)
 	std::cerr << "u=" << minUnitigCoverage << ",";
 	std::cerr << "t=" << numThreads << ",";
 	std::cerr << "hpc=" << (hpc ? "yes" : "no") << ",";
+	std::cerr << "dinucrle=" << (dinucRle ? "yes" : "no") << ",";
 	std::cerr << "collapse=" << (collapseRunLengths ? "yes" : "no") << ",";
 	std::cerr << "blunt=" << (blunt ? "yes" : "no") << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, hpc, collapseRunLengths, blunt, numThreads);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, hpc, collapseRunLengths, blunt, numThreads, dinucRle);
 }

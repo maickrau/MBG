@@ -28,8 +28,9 @@ public:
 		}
 	}
 private:
-	std::vector<unsigned char> data;
-	size_t realSize;
+	std::string data8bit;
+	// std::vector<unsigned char> data;
+	// size_t realSize;
 };
 
 

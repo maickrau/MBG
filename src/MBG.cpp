@@ -24,6 +24,118 @@
 #include "UnitigGraph.h"
 #include "BluntGraph.h"
 
+std::string getSequence(const std::string& rle, const std::vector<uint16_t>& characterLength)
+{
+	std::string result;
+	assert(rle.size() == characterLength.size());
+	for (size_t i = 0; i < rle.size(); i++)
+	{
+		if ((int)rle[i] >= 0 && (int)rle[i] <= 4)
+		{
+			for (size_t j = 0; j < characterLength[i]; j++)
+			{
+				result += "-ACGT"[(int)rle[i]];
+			}
+			continue;
+		}
+		switch(rle[i])
+		{
+			case 5: // ACA
+				result += 'A';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "CA";
+				break;
+			case 6: // AGA
+				result += 'A';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "GA";
+				break;
+			case 7: // ATA
+				result += 'A';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "TA";
+				break;
+			case 8: // CAC
+				result += 'C';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "AC";
+				break;
+			case 9: // CGC
+				result += 'C';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "GC";
+				break;
+			case 10: // CTC
+				result += 'C';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "TC";
+				break;
+			case 11: // GAG
+				result += 'G';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "AG";
+				break;
+			case 12: // GCG
+				result += 'G';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "CG";
+				break;
+			case 13: // GTG
+				result += 'G';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "TG";
+				break;
+			case 14: // TAT
+				result += 'T';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "AT";
+				break;
+			case 15: // TCT
+				result += 'T';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "CT";
+				break;
+			case 16: // TGT
+				result += 'T';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "GT";
+				break;
+			case 17: // AC
+				for (size_t j = 0; j < characterLength[i]; j++) result += "AC";
+				break;
+			case 18: // AG
+				for (size_t j = 0; j < characterLength[i]; j++) result += "AG";
+				break;
+			case 19: // AT
+				for (size_t j = 0; j < characterLength[i]; j++) result += "AT";
+				break;
+			case 20: // CA
+				for (size_t j = 0; j < characterLength[i]; j++) result += "CA";
+				break;
+			case 21: // CG
+				for (size_t j = 0; j < characterLength[i]; j++) result += "CG";
+				break;
+			case 22: // CT
+				for (size_t j = 0; j < characterLength[i]; j++) result += "CT";
+				break;
+			case 23: // GA
+				for (size_t j = 0; j < characterLength[i]; j++) result += "GA";
+				break;
+			case 24: // GC
+				for (size_t j = 0; j < characterLength[i]; j++) result += "GC";
+				break;
+			case 25: // GT
+				for (size_t j = 0; j < characterLength[i]; j++) result += "GT";
+				break;
+			case 26: // TA
+				for (size_t j = 0; j < characterLength[i]; j++) result += "TA";
+				break;
+			case 27: // TC
+				for (size_t j = 0; j < characterLength[i]; j++) result += "TC";
+				break;
+			case 28: // TG
+				for (size_t j = 0; j < characterLength[i]; j++) result += "TG";
+				break;
+			case 29: // shared bp
+				assert(result.size() > 0);
+				result.pop_back();
+				break;
+			default:
+				assert(false);
+				break;
+		}
+	}
+	return result;
+}
+
 std::vector<std::pair<std::string, std::vector<uint16_t>>> runLengthEncode(const std::string& original)
 {
 	assert(original.size() > 0);
@@ -112,6 +224,85 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> runLengthEncode(const
 		result.emplace_back(std::move(resultStr), std::move(lens));
 	}
 	return result;
+}
+
+std::pair<std::string, std::vector<uint16_t>> dinucRunLengthEncode(const std::string& rleString, const std::vector<uint16_t>& runLengths)
+{
+	// how to preserve the run lengths of the nucleotides inside the run length of a dinucleotide?
+	// no solution yet, so remove the run lengths of the nucleotides outside dinucs as well so everywhere is equally biased
+	std::string result;
+	std::vector<uint16_t> lens;
+	size_t i = 0;
+	for (; i <= rleString.size() - 4; i++)
+	{
+		if (rleString[i] != rleString[i+2] || rleString[i+1] != rleString[i+3])
+		{
+			result.push_back(rleString[i]);
+			lens.push_back(1);
+			continue;
+		}
+		size_t rleEnd = i+4;
+		while (rleEnd < rleString.size() && rleString[rleEnd] == rleString[rleEnd-2]) rleEnd += 1;
+		size_t rleLen = rleEnd - i;
+		char firstChar = rleString[i];
+		char secondChar = rleString[i+1];
+		assert(firstChar != secondChar);
+		assert(firstChar >= 1 && firstChar <= 4);
+		assert(secondChar >= 1 && secondChar <= 4);
+		// odd length, type ATATA
+		if (rleLen % 2 == 1)
+		{
+			if (firstChar == 1 && secondChar == 2) result.push_back(5); // ACA
+			if (firstChar == 1 && secondChar == 3) result.push_back(6); // AGA
+			if (firstChar == 1 && secondChar == 4) result.push_back(7); // ATA
+			if (firstChar == 2 && secondChar == 1) result.push_back(8); // CAC
+			if (firstChar == 2 && secondChar == 3) result.push_back(9); // CGC
+			if (firstChar == 2 && secondChar == 4) result.push_back(10); // CTC
+			if (firstChar == 3 && secondChar == 1) result.push_back(11); // GAG
+			if (firstChar == 3 && secondChar == 2) result.push_back(12); // GCG
+			if (firstChar == 3 && secondChar == 4) result.push_back(13); // GTG
+			if (firstChar == 4 && secondChar == 1) result.push_back(14); // TAT
+			if (firstChar == 4 && secondChar == 2) result.push_back(15); // TCT
+			if (firstChar == 4 && secondChar == 3) result.push_back(16); // TGT
+			lens.push_back((rleLen - 1) / 2);
+		}
+		// even length, type ATAT
+		else
+		{
+			if (firstChar == 1 && secondChar == 2) result.push_back(17); // AC
+			if (firstChar == 1 && secondChar == 3) result.push_back(18); // AG
+			if (firstChar == 1 && secondChar == 4) result.push_back(19); // AT
+			if (firstChar == 2 && secondChar == 1) result.push_back(20); // CA
+			if (firstChar == 2 && secondChar == 3) result.push_back(21); // CG
+			if (firstChar == 2 && secondChar == 4) result.push_back(22); // CT
+			if (firstChar == 3 && secondChar == 1) result.push_back(23); // GA
+			if (firstChar == 3 && secondChar == 2) result.push_back(24); // GC
+			if (firstChar == 3 && secondChar == 4) result.push_back(25); // GT
+			if (firstChar == 4 && secondChar == 1) result.push_back(26); // TA
+			if (firstChar == 4 && secondChar == 2) result.push_back(27); // TC
+			if (firstChar == 4 && secondChar == 3) result.push_back(28); // TG
+			lens.push_back(rleLen / 2);
+		}
+		assert(result.size() == lens.size());
+		i = rleEnd - 1;
+		if (i <= rleString.size()-4 && rleString[i] == rleString[i+2] && rleString[i+1] == rleString[i+3])
+		{
+			// two adjacent dimers share one bp
+			// add extra shared-bp marker
+			result.push_back(29);
+			lens.push_back(1);
+			i -= 1;
+		}
+	}
+	assert(result.size() == lens.size());
+	for (; i < rleString.size(); i++)
+	{
+		result.push_back(rleString[i]);
+		lens.push_back(1);
+	}
+	assert(result.size() == lens.size());
+	assert(getSequence(result, lens) == getSequence(rleString, runLengths));
+	return std::make_pair(result, lens);
 }
 
 std::vector<std::pair<std::string, std::vector<uint16_t>>> noRunLengthEncode(const std::string& original)
@@ -205,7 +396,7 @@ uint64_t findSyncmerPositions(const std::string& sequence, size_t kmerSize, size
 	return minHash;
 }
 
-void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool collapseRunLengths, const size_t numThreads)
+void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool collapseRunLengths, const size_t numThreads, const bool dinucRle)
 {
 	std::atomic<size_t> totalNodes = 0;
 	std::atomic<bool> readDone;
@@ -214,7 +405,7 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 	moodycamel::ConcurrentQueue<std::shared_ptr<FastQ>> sequenceQueue;
 	for (size_t i = 0; i < numThreads; i++)
 	{
-		threads.emplace_back([&readDone, &result, &sequenceQueue, &totalNodes, hpc, kmerSize, windowSize, collapseRunLengths]()
+		threads.emplace_back([&readDone, &result, &sequenceQueue, &totalNodes, hpc, dinucRle, kmerSize, windowSize, collapseRunLengths]()
 		{
 			// keep the same smerOrder to reduce mallocs which destroy multithreading performance
 			std::vector<std::tuple<size_t, uint64_t>> smerOrder;
@@ -238,6 +429,16 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 				if (hpc)
 				{
 					parts = runLengthEncode(read->sequence);
+					if (dinucRle)
+					{
+						for (size_t i = 0; i < parts.size(); i++)
+						{
+							auto test = dinucRunLengthEncode(revCompRLE(parts[i].first), parts[i].second);
+							auto newparts = dinucRunLengthEncode(parts[i].first, parts[i].second);
+							assert(test.first.size() == newparts.first.size());
+							parts[i] = newparts;
+						}
+					}
 				}
 				else
 				{
@@ -249,6 +450,8 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 					std::vector<uint16_t>& lens = parts[i].second;
 					if (seq.size() <= kmerSize + windowSize) continue;
 					std::string revSeq = revCompRLE(seq);
+					std::string doublerevSeq = revCompRLE(revSeq);
+					assert(doublerevSeq == seq);
 					size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 					std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
 					HashType lastHash = 0;
@@ -603,20 +806,6 @@ UnitigGraph getUnitigs(const UnitigGraph& oldgraph)
 	return result;
 }
 
-std::string getSequence(const std::string& rle, const std::vector<uint16_t>& characterLength)
-{
-	std::string result;
-	assert(rle.size() == characterLength.size());
-	for (size_t i = 0; i < rle.size(); i++)
-	{
-		for (size_t j = 0; j < characterLength[i]; j++)
-		{
-			result += "-ACGT"[(int)rle[i]];
-		}
-	}
-	return result;
-}
-
 size_t getOverlapFromRLE(const HashList& hashlist, std::pair<size_t, bool> from, std::pair<size_t, bool> to)
 {
 	size_t overlap = hashlist.getOverlap(from, to);
@@ -833,11 +1022,11 @@ AssemblyStats getSizeAndN50(const HashList& hashlist, const UnitigGraph& graph, 
 	return result;
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc, const bool collapseRunLengths, const bool blunt, const size_t numThreads)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc, const bool collapseRunLengths, const bool blunt, const size_t numThreads, const bool dinucRle)
 {
 	auto beforeReading = getTime();
 	HashList reads { kmerSize, collapseRunLengths, numThreads };
-	loadReadsAsHashesMultithread(reads, inputReads, kmerSize, windowSize, hpc, collapseRunLengths, numThreads);
+	loadReadsAsHashesMultithread(reads, inputReads, kmerSize, windowSize, hpc, collapseRunLengths, numThreads, dinucRle);
 	auto beforeUnitigs = getTime();
 	auto unitigs = getUnitigGraph(reads, minCoverage);
 	auto beforeFilter = getTime();
