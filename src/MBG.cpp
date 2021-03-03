@@ -154,66 +154,6 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> noRunLengthEncode(con
 	return result;
 }
 
-std::string strFromRevComp(const std::string& revComp)
-{
-	std::string result;
-	result.reserve(revComp.size());
-	for (size_t i = 0; i < revComp.size(); i++)
-	{
-		result.push_back("-ACGT"[revComp[i]]);
-	}
-	return result;
-}
-
-template <typename F>
-void findMinimizerPositions(const std::string& sequence, size_t kmerSize, size_t windowSize, F callback)
-{
-	if (sequence.size() < kmerSize + windowSize) return;
-	FastHasher fwkmerHasher { kmerSize };
-	for (size_t i = 0; i < kmerSize; i++)
-	{
-		fwkmerHasher.addChar(sequence[i]);
-	}
-	std::deque<std::tuple<size_t, uint64_t, uint64_t, uint64_t>> minimizerOrder;
-	minimizerOrder.emplace_back(0, fwkmerHasher.hash(), fwkmerHasher.getFwHash(), fwkmerHasher.getBwHash());
-	for (size_t i = 0; i < windowSize-1; i++)
-	{
-		size_t seqPos = kmerSize+i;
-		fwkmerHasher.addChar(sequence[seqPos]);
-		fwkmerHasher.removeChar(sequence[seqPos-kmerSize]);
-		size_t hash = fwkmerHasher.hash();
-		while (minimizerOrder.size() > 0 && std::get<1>(minimizerOrder.back()) > hash) minimizerOrder.pop_back();
-		minimizerOrder.emplace_back(i+1, hash, fwkmerHasher.getFwHash(), fwkmerHasher.getBwHash());
-	}
-	auto pos = minimizerOrder.begin();
-	while (pos != minimizerOrder.end() && std::get<1>(*pos) == std::get<1>(minimizerOrder.front()))
-	{
-		callback(std::get<0>(*pos), std::get<2>(*pos), std::get<3>(*pos));
-		++pos;
-	}
-	for (size_t i = windowSize-1; kmerSize+i < sequence.size(); i++)
-	{
-		size_t seqPos = kmerSize+i;
-		fwkmerHasher.addChar(sequence[seqPos]);
-		fwkmerHasher.removeChar(sequence[seqPos-kmerSize]);
-		auto oldMinimizer = std::get<1>(minimizerOrder.front());
-		size_t hash = fwkmerHasher.hash();
-		while (minimizerOrder.size() > 0 && std::get<0>(minimizerOrder.front()) <= i + 1 - windowSize) minimizerOrder.pop_front();
-		while (minimizerOrder.size() > 0 && std::get<1>(minimizerOrder.back()) > hash) minimizerOrder.pop_back();
-		if (minimizerOrder.size() > 0 && oldMinimizer != std::get<1>(minimizerOrder.front()))
-		{
-			auto pos = minimizerOrder.begin();
-			while (pos != minimizerOrder.end() && std::get<1>(*pos) == std::get<1>(minimizerOrder.front()))
-			{
-				callback(std::get<0>(*pos), std::get<2>(*pos), std::get<3>(*pos));
-				++pos;
-			}
-		}
-		if (minimizerOrder.size() == 0 || hash == std::get<1>(minimizerOrder.front())) callback(i+1, fwkmerHasher.getFwHash(), fwkmerHasher.getBwHash());
-		minimizerOrder.emplace_back(i+1, hash, fwkmerHasher.getFwHash(), fwkmerHasher.getBwHash());
-	}
-}
-
 template <typename F>
 uint64_t findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, F callback)
 {
@@ -431,7 +371,6 @@ void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, 
 
 void startUnitig(UnitigGraph& result, std::pair<size_t, bool> start, const SparseEdgeContainer& edges, std::vector<bool>& belongsToUnitig, const HashList& hashlist, size_t minCoverage)
 {
-	size_t currentUnitig = result.unitigs.size();
 	result.unitigs.emplace_back();
 	result.unitigCoverage.emplace_back();
 	result.edges.emplace_back();
