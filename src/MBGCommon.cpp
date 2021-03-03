@@ -62,12 +62,12 @@ std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> canon(std::pair<size
 
 std::string revCompRLE(const std::string& original)
 {
-	static char mapping[30] { 0, 4, 3, 2, 1, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 25, 22, 19, 28, 21, 18, 27, 24, 17, 26, 23, 20, 29 };
+	static char mapping[29] { 0, 4, 3, 2, 1, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 25, 22, 19, 28, 21, 18, 27, 24, 17, 26, 23, 20 };
 	std::string result { original.rbegin(), original.rend() };
 	for (size_t i = 0; i < result.size(); i++)
 	{
 		assert((int)result[i] >= 1);
-		assert((int)result[i] <= 29);
+		assert((int)result[i] <= 28);
 		result[i] = mapping[(int)result[i]];
 	}
 	return result;

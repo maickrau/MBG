@@ -124,10 +124,6 @@ std::string getSequence(const std::string& rle, const std::vector<uint16_t>& cha
 			case 28: // TG
 				for (size_t j = 0; j < characterLength[i]; j++) result += "TG";
 				break;
-			case 29: // shared bp
-				assert(result.size() > 0);
-				result.pop_back();
-				break;
 			default:
 				assert(false);
 				break;
@@ -233,15 +229,18 @@ std::pair<std::string, std::vector<uint16_t>> dinucRunLengthEncode(const std::st
 	std::string result;
 	std::vector<uint16_t> lens;
 	size_t i = 0;
+	bool boundaryStart = false;
 	for (; i <= rleString.size() - 4; i++)
 	{
 		if (rleString[i] != rleString[i+2] || rleString[i+1] != rleString[i+3])
 		{
 			result.push_back(rleString[i]);
 			lens.push_back(1);
+			boundaryStart = false;
 			continue;
 		}
 		size_t rleEnd = i+4;
+		if (boundaryStart) i += 1;
 		while (rleEnd < rleString.size() && rleString[rleEnd] == rleString[rleEnd-2]) rleEnd += 1;
 		size_t rleLen = rleEnd - i;
 		char firstChar = rleString[i];
@@ -249,6 +248,19 @@ std::pair<std::string, std::vector<uint16_t>> dinucRunLengthEncode(const std::st
 		assert(firstChar != secondChar);
 		assert(firstChar >= 1 && firstChar <= 4);
 		assert(secondChar >= 1 && secondChar <= 4);
+		boundaryStart = false;
+		i = rleEnd - 1;
+		char boundaryChar = 0;
+		if (i <= rleString.size()-4 && rleString[i] == rleString[i+2] && rleString[i+1] == rleString[i+3])
+		{
+			// two adjacent dimers share one bp
+			// split the shared bp apart
+			// but add it after the dimer
+			boundaryChar = rleString[i];
+			boundaryStart = true;
+			i -= 1;
+			rleLen -= 1;
+		}
 		// odd length, type ATATA
 		if (rleLen % 2 == 1)
 		{
@@ -283,16 +295,12 @@ std::pair<std::string, std::vector<uint16_t>> dinucRunLengthEncode(const std::st
 			if (firstChar == 4 && secondChar == 3) result.push_back(28); // TG
 			lens.push_back(rleLen / 2);
 		}
-		assert(result.size() == lens.size());
-		i = rleEnd - 1;
-		if (i <= rleString.size()-4 && rleString[i] == rleString[i+2] && rleString[i+1] == rleString[i+3])
+		if (boundaryChar != 0)
 		{
-			// two adjacent dimers share one bp
-			// add extra shared-bp marker
-			result.push_back(29);
+			result.push_back(boundaryChar);
 			lens.push_back(1);
-			i -= 1;
 		}
+		assert(result.size() == lens.size());
 	}
 	assert(result.size() == lens.size());
 	for (; i < rleString.size(); i++)
@@ -301,7 +309,7 @@ std::pair<std::string, std::vector<uint16_t>> dinucRunLengthEncode(const std::st
 		lens.push_back(1);
 	}
 	assert(result.size() == lens.size());
-	assert(getSequence(result, lens) == getSequence(rleString, runLengths));
+	assert(oldseq.size() == newseq.size());
 	return std::make_pair(result, lens);
 }
 
