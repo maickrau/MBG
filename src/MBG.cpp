@@ -309,7 +309,6 @@ std::pair<std::string, std::vector<uint16_t>> dinucRunLengthEncode(const std::st
 		lens.push_back(1);
 	}
 	assert(result.size() == lens.size());
-	assert(oldseq.size() == newseq.size());
 	return std::make_pair(result, lens);
 }
 
