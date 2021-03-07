@@ -818,6 +818,7 @@ size_t getOverlapFromRLE(const HashList& hashlist, std::pair<size_t, bool> from,
 	size_t overlap = hashlist.getOverlap(from, to);
 	size_t RLEoverlap = 0;
 	auto lens = hashlist.getHashCharacterLength(to.first);
+	auto seq = hashlist.getHashSequenceRLE(to.first);
 	assert(lens.size() > overlap);
 	for (size_t offset = 0; offset < overlap; offset++)
 	{
@@ -830,7 +831,19 @@ size_t getOverlapFromRLE(const HashList& hashlist, std::pair<size_t, bool> from,
 		{
 			i = lens.size()-offset-1;
 		}
-		RLEoverlap += lens[i];
+		if (seq[i] >= 1 && seq[i] <= 4)
+		{
+			RLEoverlap += lens[i];
+		}
+		else if (seq[i] >= 5 && seq[i] <= 16)
+		{
+			RLEoverlap += lens[i] * 2 + 1;
+		}
+		else
+		{
+			assert(seq[i] >= 17 && seq[i] <= 28);
+			RLEoverlap += lens[i] * 2;
+		}
 	}
 	return RLEoverlap;
 }
