@@ -207,6 +207,16 @@ uint64_t findSyncmerPositions(const std::string& sequence, size_t kmerSize, size
 
 void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool collapseRunLengths, const size_t numThreads)
 {
+	// check that all files actually exist
+	for (const std::string& name : files)
+	{
+		std::ifstream file { name };
+		if (!file.good())
+		{
+			std::cerr << "Input file " << name << " can't be read!" << std::endl;
+			std::exit(1);
+		}
+	}
 	std::atomic<size_t> totalNodes = 0;
 	std::atomic<bool> readDone;
 	readDone = false;
