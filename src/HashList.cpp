@@ -66,6 +66,12 @@ std::vector<uint16_t> AdjacentLengthBucket::getData(size_t coord1, size_t coord2
 	return result;
 }
 
+void AdjacentLengthBucket::setData(size_t coord1, size_t coord2, size_t value)
+{
+	sums[coord1][coord2] = value;
+	counts[coord1][coord2] = 1;
+}
+
 std::pair<size_t, size_t> AdjacentLengthBucket::addData(const std::vector<uint16_t>& lens, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap)
 {
 	assert(end > start);
@@ -177,6 +183,11 @@ bucketMutexes(numBuckets)
 std::vector<uint16_t> AdjacentLengthList::getData(size_t bucket, std::pair<size_t, size_t> coords, size_t size) const
 {
 	return buckets[bucket].getData(coords.first, coords.second, size);
+}
+
+void AdjacentLengthList::setData(size_t bucket, std::pair<size_t, size_t> coords, size_t value)
+{
+	buckets[bucket].setData(coords.first, coords.second, value);
 }
 
 std::pair<size_t, std::pair<size_t, size_t>> AdjacentLengthList::addData(const std::vector<uint16_t>& lens, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap, uint64_t bucketHash)
@@ -375,4 +386,18 @@ std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(std::string_view 
 		if (!collapseRunLengths) hashCharacterLengthPtr[fwNode] = lengthResult;
 	}
 	return std::make_pair(std::make_pair(fwNode, true), fwHash);
+}
+
+size_t HashList::getRunLength(size_t index, size_t offset) const
+{
+	auto coords = hashCharacterLengthPtr[index].second;
+	coords.second += offset;
+	return hashCharacterLengths.getData(hashCharacterLengthPtr[index].first, coords, 1)[0];
+}
+
+void HashList::setRunLength(size_t index, size_t offset, size_t length)
+{
+	auto coords = hashCharacterLengthPtr[index].second;
+	coords.second += offset;
+	hashCharacterLengths.setData(hashCharacterLengthPtr[index].first, coords, length);
 }
