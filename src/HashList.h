@@ -28,6 +28,7 @@ class AdjacentLengthBucket
 public:
 	AdjacentLengthBucket();
 	std::vector<uint16_t> getData(size_t coord1, size_t coord2, size_t size) const;
+	void setData(size_t coord1, size_t coord2, size_t value);
 	std::pair<size_t, size_t> addData(const std::vector<uint16_t>& lens, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap);
 	void addCounts(const std::vector<uint16_t>& lens, bool fw, size_t start, size_t end, size_t coord1, size_t coord2);
 	size_t size() const;
@@ -57,6 +58,7 @@ class AdjacentLengthList
 public:
 	AdjacentLengthList(size_t numBuckets);
 	std::vector<uint16_t> getData(size_t bucket, std::pair<size_t, size_t> coords, size_t size) const;
+	void setData(size_t bucket, std::pair<size_t, size_t> coords, size_t value);
 	std::pair<size_t, std::pair<size_t, size_t>> addData(const std::vector<uint16_t>& lens, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap, uint64_t bucketHash);
 	void addCounts(const std::vector<uint16_t>& lens, bool fw, size_t start, size_t end, size_t bucket, std::pair<size_t, size_t> coords);
 	size_t size() const;
@@ -85,6 +87,8 @@ public:
 	TwobitView getHashSequenceRLE(size_t index) const;
 	TwobitView getRevCompHashSequenceRLE(size_t index) const;
 	void buildReverseCompHashSequences();
+	size_t getRunLength(size_t index, size_t offset) const;
+	void setRunLength(size_t index, size_t offset, size_t runLength);
 	std::pair<size_t, bool> getNodeOrNull(std::string_view sequence) const;
 	std::pair<std::pair<size_t, bool>, HashType> addNode(std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t bucketHash);
 private:

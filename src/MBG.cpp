@@ -843,6 +843,131 @@ AssemblyStats getSizeAndN50(const HashList& hashlist, const UnitigGraph& graph, 
 	return result;
 }
 
+std::pair<NodeType, size_t> find(std::unordered_map<std::pair<NodeType, size_t>, std::pair<NodeType, size_t>>& parent, std::pair<NodeType, size_t> key)
+{
+	while (true)
+	{
+		assert(parent.count(key) == 1);
+		assert(parent.count(parent[key]) == 1);
+		parent[key] = parent[parent[key]];
+		if (parent[key] == parent[parent[key]]) return parent[key];
+	}
+}
+
+void merge(std::unordered_map<std::pair<NodeType, size_t>, std::pair<NodeType, size_t>>& parent, std::unordered_map<std::pair<NodeType, size_t>, size_t>& rank, std::pair<NodeType, size_t> left, std::pair<NodeType, size_t> right)
+{
+	left = find(parent, left);
+	right = find(parent, right);
+	assert(rank.count(left) == 1);
+	assert(rank.count(right) == 1);
+	if (rank[right] > rank[left]) std::swap(left, right);
+	parent[right] = left;
+	assert(rank[right] <= rank[left]);
+	if (rank[right] == rank[left]) rank[left] += 1;
+}
+
+void merge(std::unordered_map<std::pair<NodeType, size_t>, std::pair<NodeType, size_t>>& parent, std::unordered_map<std::pair<NodeType, size_t>, size_t>& rank, NodeType leftNode, size_t leftOffset, NodeType rightNode, size_t rightOffset)
+{
+	merge(parent, rank, std::make_pair(leftNode, leftOffset), std::make_pair(rightNode, rightOffset));
+}
+
+void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, const size_t kmerSize)
+{
+	std::unordered_map<std::pair<NodeType, size_t>, std::pair<NodeType, size_t>> parent;
+	std::unordered_map<std::pair<NodeType, size_t>, size_t> rank;
+	for (const auto& unitig : unitigs.unitigs)
+	{
+		assert(unitig.size() > 0);
+		for (size_t i = 0; i < kmerSize; i++)
+		{
+			parent[std::make_pair(unitig[0].first, i)] = std::make_pair(unitig[0].first, i);
+			rank[std::make_pair(unitig[0].first, i)] = 1;
+			parent[std::make_pair(unitig.back().first, i)] = std::make_pair(unitig.back().first, i);
+			rank[std::make_pair(unitig.back().first, i)] = 1;
+		}
+		if (unitig.size() == 1) continue;
+		size_t firstToLastOverlap = kmerSize;
+		for (size_t i = 1; i < unitig.size(); i++)
+		{
+			size_t overlap = hashlist.getOverlap(unitig[i-1], unitig[i]);
+			assert(overlap < kmerSize);
+			size_t removeOverlap = kmerSize - overlap;
+			if (removeOverlap > firstToLastOverlap)
+			{
+				firstToLastOverlap = 0;
+				break;
+			}
+			firstToLastOverlap -= removeOverlap;
+		}
+		if (firstToLastOverlap == 0) continue;
+		assert(firstToLastOverlap < kmerSize);
+		for (size_t i = 0; i < firstToLastOverlap; i++)
+		{
+			size_t firstOffset = kmerSize - firstToLastOverlap + i;
+			assert(firstOffset < kmerSize);
+			if (!unitig[0].second) firstOffset = kmerSize - 1 - firstOffset;
+			assert(firstOffset < kmerSize);
+			size_t secondOffset = i;
+			if (!unitig.back().second) secondOffset = kmerSize - 1 - secondOffset;
+			assert(secondOffset < kmerSize);
+			merge(parent, rank, unitig[0].first, firstOffset, unitig.back().first, secondOffset);
+		}
+	}
+	for (size_t unitig = 0; unitig < unitigs.edges.size(); unitig++)
+	{
+		std::pair<size_t, bool> fw { unitig, true };
+		std::pair<size_t, bool> bw { unitig, false };
+		for (auto target : unitigs.edges[fw])
+		{
+			std::pair<NodeType, bool> from = unitigs.unitigs[unitig].back();
+			std::pair<NodeType, bool> to = unitigs.unitigs[target.first][0];
+			if (!target.second) to = reverse(unitigs.unitigs[target.first].back());
+			size_t overlap = hashlist.getOverlap(from, to);
+			for (size_t i = 0; i < overlap; i++)
+			{
+				size_t firstOffset = kmerSize - overlap + i;
+				assert(firstOffset < kmerSize);
+				if (!from.second) firstOffset = kmerSize - 1 - firstOffset;
+				assert(firstOffset < kmerSize);
+				size_t secondOffset = i;
+				if (!to.second) secondOffset = kmerSize - 1 - secondOffset;
+				assert(secondOffset < kmerSize);
+				merge(parent, rank, from.first, firstOffset, to.first, secondOffset);
+			}
+		}
+		for (auto target : unitigs.edges[bw])
+		{
+			std::pair<NodeType, bool> from = reverse(unitigs.unitigs[unitig][0]);
+			std::pair<NodeType, bool> to = unitigs.unitigs[target.first][0];
+			if (!target.second) to = reverse(unitigs.unitigs[target.first].back());
+			size_t overlap = hashlist.getOverlap(from, to);
+			for (size_t i = 0; i < overlap; i++)
+			{
+				size_t firstOffset = kmerSize - overlap + i;
+				assert(firstOffset < kmerSize);
+				if (!from.second) firstOffset = kmerSize - 1 - firstOffset;
+				assert(firstOffset < kmerSize);
+				size_t secondOffset = i;
+				if (!to.second) secondOffset = kmerSize - 1 - secondOffset;
+				assert(secondOffset < kmerSize);
+				merge(parent, rank, from.first, firstOffset, to.first, secondOffset);
+			}
+		}
+	}
+	std::unordered_set<std::pair<NodeType, size_t>> keys;
+	for (auto pair : rank)
+	{
+		keys.emplace(pair.first);
+	}
+	for (auto key : keys)
+	{
+		auto found = find(parent, key);
+		size_t length = hashlist.getRunLength(found.first, found.second);
+		assert(length > 0);
+		hashlist.setRunLength(key.first, key.second, length);
+	}
+}
+
 void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc, const bool collapseRunLengths, const bool blunt, const size_t numThreads)
 {
 	auto beforeReading = getTime();
@@ -852,6 +977,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	auto unitigs = getUnitigGraph(reads, minCoverage);
 	auto beforeFilter = getTime();
 	if (minUnitigCoverage > minCoverage) unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage));
+	auto beforeConsistency = getTime();
 	auto beforeWrite = getTime();
 	AssemblyStats stats;
 	if (blunt)
@@ -862,6 +988,8 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	}
 	else
 	{
+		if (!collapseRunLengths) forceEdgeConsistency(unitigs, reads, kmerSize);
+		beforeWrite = getTime();
 		writeGraph(unitigs, outputGraph, reads);
 		stats = getSizeAndN50(reads, unitigs, kmerSize, windowSize);
 	}
@@ -869,6 +997,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	std::cerr << "reading and hashing sequences took " << formatTime(beforeReading, beforeUnitigs) << std::endl;
 	std::cerr << "unitigifying took " << formatTime(beforeUnitigs, beforeFilter) << std::endl;
 	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforeWrite) << std::endl;
+	if (!blunt && !collapseRunLengths) std::cerr << "forcing edge consistency took " << formatTime(beforeConsistency, beforeWrite) << std::endl;
 	std::cerr << "writing the graph and calculating stats took " << formatTime(beforeWrite, afterWrite) << std::endl;
 	std::cerr << "nodes: " << stats.nodes << std::endl;
 	std::cerr << "edges: " << stats.edges << std::endl;
