@@ -843,47 +843,55 @@ AssemblyStats getSizeAndN50(const HashList& hashlist, const UnitigGraph& graph, 
 	return result;
 }
 
-std::pair<NodeType, size_t> find(std::unordered_map<std::pair<NodeType, size_t>, std::pair<NodeType, size_t>>& parent, std::pair<NodeType, size_t> key)
+std::pair<NodeType, size_t> find(std::unordered_map<NodeType, std::vector<std::pair<NodeType, size_t>>>& parent, std::pair<NodeType, size_t> key)
 {
 	while (true)
 	{
-		assert(parent.count(key) == 1);
-		assert(parent.count(parent[key]) == 1);
-		parent[key] = parent[parent[key]];
-		if (parent[key] == parent[parent[key]]) return parent[key];
+		assert(parent.count(key.first) == 1);
+		auto foundParent = parent[key.first][key.second];
+		assert(parent.count(foundParent.first) == 1);
+		parent[key.first][key.second] = parent[foundParent.first][foundParent.second];
+		if (parent[key.first][key.second] == parent[foundParent.first][foundParent.second]) return parent[key.first][key.second];
 	}
 }
 
-void merge(std::unordered_map<std::pair<NodeType, size_t>, std::pair<NodeType, size_t>>& parent, std::unordered_map<std::pair<NodeType, size_t>, size_t>& rank, std::pair<NodeType, size_t> left, std::pair<NodeType, size_t> right)
+void merge(std::unordered_map<NodeType, std::vector<std::pair<NodeType, size_t>>>& parent, std::unordered_map<NodeType, std::vector<size_t>>& rank, std::pair<NodeType, size_t> left, std::pair<NodeType, size_t> right)
 {
 	left = find(parent, left);
 	right = find(parent, right);
-	assert(rank.count(left) == 1);
-	assert(rank.count(right) == 1);
-	if (rank[right] > rank[left]) std::swap(left, right);
-	parent[right] = left;
-	assert(rank[right] <= rank[left]);
-	if (rank[right] == rank[left]) rank[left] += 1;
+	assert(rank.count(left.first) == 1);
+	assert(rank.count(right.first) == 1);
+	if (rank[right.first][right.second] > rank[left.first][left.second]) std::swap(left, right);
+	parent[right.first][right.second] = left;
+	assert(rank[right.first][right.second] <= rank[left.first][left.second]);
+	if (rank[right.first][right.second] == rank[left.first][left.second]) rank[left.first][left.second] += 1;
 }
 
-void merge(std::unordered_map<std::pair<NodeType, size_t>, std::pair<NodeType, size_t>>& parent, std::unordered_map<std::pair<NodeType, size_t>, size_t>& rank, NodeType leftNode, size_t leftOffset, NodeType rightNode, size_t rightOffset)
+void merge(std::unordered_map<NodeType, std::vector<std::pair<NodeType, size_t>>>& parent, std::unordered_map<NodeType, std::vector<size_t>>& rank, NodeType leftNode, size_t leftOffset, NodeType rightNode, size_t rightOffset)
 {
 	merge(parent, rank, std::make_pair(leftNode, leftOffset), std::make_pair(rightNode, rightOffset));
 }
 
 void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, const size_t kmerSize)
 {
-	std::unordered_map<std::pair<NodeType, size_t>, std::pair<NodeType, size_t>> parent;
-	std::unordered_map<std::pair<NodeType, size_t>, size_t> rank;
+	std::unordered_map<NodeType, std::vector<std::pair<NodeType, size_t>>> parent;
+	std::unordered_map<NodeType, std::vector<size_t>> rank;
 	for (const auto& unitig : unitigs.unitigs)
 	{
 		assert(unitig.size() > 0);
+		assert(parent.count(unitig[0].first) == 0);
+		assert(parent.count(unitig.back().first) == 0);
+		assert(rank.count(unitig[0].first) == 0);
+		assert(rank.count(unitig.back().first) == 0);
 		for (size_t i = 0; i < kmerSize; i++)
 		{
-			parent[std::make_pair(unitig[0].first, i)] = std::make_pair(unitig[0].first, i);
-			rank[std::make_pair(unitig[0].first, i)] = 1;
-			parent[std::make_pair(unitig.back().first, i)] = std::make_pair(unitig.back().first, i);
-			rank[std::make_pair(unitig.back().first, i)] = 1;
+			parent[unitig[0].first].emplace_back(unitig[0].first, i);
+			rank[unitig[0].first].emplace_back(0);
+			if (unitig.size() > 1)
+			{
+				parent[unitig.back().first].emplace_back(unitig.back().first, i);
+				rank[unitig.back().first].emplace_back(0);
+			}
 		}
 		if (unitig.size() == 1) continue;
 		size_t firstToLastOverlap = kmerSize;
@@ -954,17 +962,20 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, const 
 			}
 		}
 	}
-	std::unordered_set<std::pair<NodeType, size_t>> keys;
-	for (auto pair : rank)
+	std::unordered_set<NodeType> keys;
+	for (auto pair : parent)
 	{
 		keys.emplace(pair.first);
 	}
-	for (auto key : keys)
+	for (auto node : keys)
 	{
-		auto found = find(parent, key);
-		size_t length = hashlist.getRunLength(found.first, found.second);
-		assert(length > 0);
-		hashlist.setRunLength(key.first, key.second, length);
+		for (size_t i = 0; i < kmerSize; i++)
+		{
+			auto found = find(parent, std::make_pair(node, i));
+			size_t length = hashlist.getRunLength(found.first, found.second);
+			assert(length > 0);
+			hashlist.setRunLength(node, i, length);
+		}
 	}
 }
 
