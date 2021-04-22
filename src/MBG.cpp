@@ -315,7 +315,7 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 	std::cerr << result.size() << " distinct fw/bw sequence nodes" << std::endl;
 }
 
-void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, bool> start, const VectorWithDirection<std::unordered_set<std::pair<size_t, bool>>>& edges, std::vector<std::pair<size_t, bool>>& belongsToUnitig)
+void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, bool> start, const VectorWithDirection<std::unordered_set<std::pair<size_t, bool>>>& edges, std::vector<std::pair<size_t, bool>>& belongsToUnitig, VectorWithDirection<bool>& unitigStart, VectorWithDirection<bool>& unitigEnd)
 {
 	size_t currentUnitig = result.unitigs.size();
 	result.unitigs.emplace_back();
@@ -323,6 +323,8 @@ void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, 
 	result.edges.emplace_back();
 	result.edgeCov.emplace_back();
 	std::pair<size_t, bool> pos = start;
+	unitigStart[start] = true;
+	unitigEnd[reverse(start)] = true;
 	assert(belongsToUnitig.at(pos.first).first == std::numeric_limits<size_t>::max());
 	belongsToUnitig[pos.first] = std::make_pair(currentUnitig, pos.second);
 	if (pos.second)
@@ -377,6 +379,8 @@ void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, 
 			}
 		}
 	}
+	unitigEnd[pos] = true;
+	unitigStart[reverse(pos)] = true;
 }
 
 void startUnitig(UnitigGraph& result, std::pair<size_t, bool> start, const SparseEdgeContainer& edges, std::vector<bool>& belongsToUnitig, const HashList& hashlist, size_t minCoverage)
@@ -553,6 +557,10 @@ UnitigGraph getUnitigs(const UnitigGraph& oldgraph)
 	}
 	std::vector<std::pair<size_t, bool>> belongsToUnitig;
 	belongsToUnitig.resize(oldgraph.unitigs.size(), std::make_pair(std::numeric_limits<size_t>::max(), true));
+	VectorWithDirection<bool> unitigStart;
+	VectorWithDirection<bool> unitigEnd;
+	unitigStart.resize(oldgraph.unitigs.size(), false);
+	unitigEnd.resize(oldgraph.unitigs.size(), false);
 	for (size_t node = 0; node < oldgraph.unitigs.size(); node++)
 	{
 		auto fw = std::make_pair(node, true);
@@ -562,52 +570,58 @@ UnitigGraph getUnitigs(const UnitigGraph& oldgraph)
 			for (auto start : edges.at(fw))
 			{
 				if (belongsToUnitig.at(start.first).first != std::numeric_limits<size_t>::max()) continue;
-				startUnitig(result, oldgraph, start, edges, belongsToUnitig);
+				startUnitig(result, oldgraph, start, edges, belongsToUnitig, unitigStart, unitigEnd);
 			}
-			if (belongsToUnitig.at(node).first == std::numeric_limits<size_t>::max()) startUnitig(result, oldgraph, bw, edges, belongsToUnitig);
+			if (belongsToUnitig.at(node).first == std::numeric_limits<size_t>::max()) startUnitig(result, oldgraph, bw, edges, belongsToUnitig, unitigStart, unitigEnd);
 		}
 		if (edges.at(bw).size() != 1)
 		{
 			for (auto start : edges.at(bw))
 			{
 				if (belongsToUnitig.at(start.first).first != std::numeric_limits<size_t>::max()) continue;
-				startUnitig(result, oldgraph, start, edges, belongsToUnitig);
+				startUnitig(result, oldgraph, start, edges, belongsToUnitig, unitigStart, unitigEnd);
 			}
-			if (belongsToUnitig.at(node).first == std::numeric_limits<size_t>::max()) startUnitig(result, oldgraph, fw, edges, belongsToUnitig);
+			if (belongsToUnitig.at(node).first == std::numeric_limits<size_t>::max()) startUnitig(result, oldgraph, fw, edges, belongsToUnitig, unitigStart, unitigEnd);
 		}
 	}
 	for (size_t node = 0; node < oldgraph.unitigs.size(); node++)
 	{
 		auto fw = std::make_pair(node, true);
-		if (belongsToUnitig.at(node).first == std::numeric_limits<size_t>::max()) startUnitig(result, oldgraph, fw, edges, belongsToUnitig);
+		if (belongsToUnitig.at(node).first == std::numeric_limits<size_t>::max()) startUnitig(result, oldgraph, fw, edges, belongsToUnitig, unitigStart, unitigEnd);
 	}
 	for (size_t i = 0; i < oldgraph.edges.size(); i++)
 	{
 		auto fw = std::make_pair(i, true);
-		for (auto curr : oldgraph.edges.at(fw))
+		if (unitigEnd[fw])
 		{
-			auto from = belongsToUnitig.at(fw.first);
-			bool prevFw = fw.second;
-			auto to = belongsToUnitig.at(curr.first);
-			bool currFw = curr.second;
-			if (from.first == to.first) continue;
-			from.second = !(from.second ^ prevFw);
-			to.second = !(to.second ^ currFw);
-			result.edges[from].emplace(to);
-			result.edgeCoverage(from, to) = oldgraph.edgeCoverage(fw, curr);
+			for (auto curr : oldgraph.edges.at(fw))
+			{
+				if (!unitigStart[curr]) continue;
+				auto from = belongsToUnitig.at(fw.first);
+				bool prevFw = fw.second;
+				auto to = belongsToUnitig.at(curr.first);
+				bool currFw = curr.second;
+				from.second = !(from.second ^ prevFw);
+				to.second = !(to.second ^ currFw);
+				result.edges[from].emplace(to);
+				result.edgeCoverage(from, to) = oldgraph.edgeCoverage(fw, curr);
+			}
 		}
 		auto bw = std::make_pair(i, false);
-		for (auto curr : oldgraph.edges.at(bw))
+		if (unitigEnd[bw])
 		{
-			auto from = belongsToUnitig.at(bw.first);
-			bool prevFw = bw.second;
-			auto to = belongsToUnitig.at(curr.first);
-			bool currFw = curr.second;
-			if (from.first == to.first) continue;
-			from.second = !(from.second ^ prevFw);
-			to.second = !(to.second ^ currFw);
-			result.edges[from].emplace(to);
-			result.edgeCoverage(from, to) = oldgraph.edgeCoverage(bw, curr);
+			for (auto curr : oldgraph.edges.at(bw))
+			{
+				if (!unitigStart[curr]) continue;
+				auto from = belongsToUnitig.at(bw.first);
+				bool prevFw = bw.second;
+				auto to = belongsToUnitig.at(curr.first);
+				bool currFw = curr.second;
+				from.second = !(from.second ^ prevFw);
+				to.second = !(to.second ^ currFw);
+				result.edges[from].emplace(to);
+				result.edgeCoverage(from, to) = oldgraph.edgeCoverage(bw, curr);
+			}
 		}
 	}
 	return result;
