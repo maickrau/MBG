@@ -474,8 +474,9 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 					HashType lastHash = 0;
 					smerOrder.resize(0);
 					std::vector<size_t> positions;
-					uint64_t minHash = findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [&positions](size_t pos)
+					uint64_t minHash = findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [&positions, &seq, kmerSize, hpc](size_t pos)
 					{
+						if (hpc && (pos == 0 || pos == seq.size() - kmerSize)) return;
 						positions.push_back(pos);
 					});
 					for (auto pos : positions)
