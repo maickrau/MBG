@@ -1297,7 +1297,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 			if (addJunctionsToHashes(approxJunctionHashes, exactJunctionHashes, belongsToUnitig, reads, unitigs, kmerSize, bw, edge, fromKmer, toKmer))
 			{
 				addedAny = true;
-				removeEdges.emplace(fw, edge);
+				removeEdges.emplace(bw, edge);
 			}
 		}
 		for (auto pair : removeEdges)
