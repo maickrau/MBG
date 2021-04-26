@@ -75,6 +75,16 @@ void TwobitString::push_back(char c)
 	realSize += 1;
 }
 
+std::string TwobitString::toString() const
+{
+	std::string result;
+	result.reserve(size());
+	for (size_t i = 0; i < size(); i++)
+	{
+		result.push_back(get(i));
+	}
+	return result;
+}
 
 TwobitView::TwobitView(const TwobitString& str, const size_t start, const size_t end) :
 str(str),
@@ -111,6 +121,18 @@ std::string TwobitView::toSubstring(size_t substrStart) const
 	for (size_t i = start + substrStart; i < end; i++)
 	{
 		result.push_back(str.get(i));
+	}
+	return result;
+}
+
+TwobitString revCompRLE(const TwobitView& original)
+{
+	static char mapping[5] { 0, 4, 3, 2, 1 };
+	TwobitString result;
+	result.resize(original.size());
+	for (size_t i = 0; i < result.size(); i++)
+	{
+		result.set(i, mapping[(int)original[original.size()-1-i]]);
 	}
 	return result;
 }

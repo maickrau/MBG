@@ -86,7 +86,6 @@ public:
 	void addHashCharacterLength(const std::vector<uint16_t>& data, bool fw, size_t start, size_t end, size_t node, std::pair<size_t, std::pair<size_t, size_t>> position);
 	TwobitView getHashSequenceRLE(size_t index) const;
 	TwobitView getRevCompHashSequenceRLE(size_t index) const;
-	void buildReverseCompHashSequences();
 	size_t getRunLength(size_t index, size_t offset) const;
 	void setRunLength(size_t index, size_t offset, size_t runLength);
 	std::pair<size_t, bool> getNodeOrNull(std::string_view sequence) const;
@@ -97,7 +96,6 @@ private:
 	std::vector<std::pair<size_t, std::pair<size_t, size_t>>> hashCharacterLengthPtr;
 	AdjacentMinimizerList hashSequences;
 	std::vector<std::pair<size_t, std::pair<size_t, size_t>>> hashSeqPtr;
-	AdjacentMinimizerList hashSequencesRevComp;
 	const size_t kmerSize;
 	const bool collapseRunLengths;
 };

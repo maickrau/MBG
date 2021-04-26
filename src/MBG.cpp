@@ -310,7 +310,6 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 	{
 		threads[i].join();
 	}
-	result.buildReverseCompHashSequences();
 	std::cerr << totalNodes << " nodes" << std::endl;
 	std::cerr << result.size() << " distinct fw/bw sequence nodes" << std::endl;
 }
@@ -696,7 +695,7 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 			}
 			else
 			{
-				sequenceRLE = hashlist.getRevCompHashSequenceRLE(to.first).toString();
+				sequenceRLE = revCompRLE(hashlist.getHashSequenceRLE(to.first)).toString();
 				std::reverse(sequenceCharacterLength.begin(), sequenceCharacterLength.end());
 			}
 			if (j > 0)
@@ -820,7 +819,7 @@ AssemblyStats getSizeAndN50(const HashList& hashlist, const UnitigGraph& graph, 
 			}
 			else
 			{
-				sequenceRLE = hashlist.getRevCompHashSequenceRLE(to.first).toString();
+				sequenceRLE = revCompRLE(hashlist.getHashSequenceRLE(to.first)).toString();
 				std::reverse(sequenceCharacterLength.begin() ,sequenceCharacterLength.end());
 			}
 			if (j > 0)
