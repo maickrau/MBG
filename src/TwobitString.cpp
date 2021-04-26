@@ -1,6 +1,8 @@
 #include <cassert>
 #include "TwobitString.h"
 
+char mappingDinuc[29] { 0, 4, 3, 2, 1, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 25, 22, 19, 28, 21, 18, 27, 24, 17, 26, 23, 20 };
+
 TwobitString::TwobitString() :
 data8bit()
 // data(),
@@ -138,20 +140,17 @@ std::string TwobitView::toSubstring(size_t substrStart) const
 
 TwobitString revCompRLE(const TwobitView& original)
 {
-	static char mapping[5] { 0, 4, 3, 2, 1 };
 	TwobitString result;
 	result.resize(original.size());
 	for (size_t i = 0; i < result.size(); i++)
 	{
-		result.set(i, mapping[(int)original[original.size()-1-i]]);
+		result.set(i, mappingDinuc[(int)original[original.size()-1-i]]);
 	}
 	return result;
 }
 
 TwobitString revCompRLE(const TwobitString& original)
 {
-	static char mappingDinuc[29] { 0, 4, 3, 2, 1, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 25, 22, 19, 28, 21, 18, 27, 24, 17, 26, 23, 20 };
-	// static char mapping[5] { 0, 4, 3, 2, 1 };
 	TwobitString result;
 	result.resize(original.size());
 	for (size_t i = 0; i < result.size(); i++)
@@ -159,7 +158,11 @@ TwobitString revCompRLE(const TwobitString& original)
 		assert((int)original.get(original.size()-1-i) >= 1);
 		assert((int)original.get(original.size()-1-i) <= 28);
 		result.set(i, mappingDinuc[(int)original.get(original.size()-1-i)]);
-		// result.set(i, mapping[(int)original.get(original.size()-1-i)]);
 	}
 	return result;
+}
+
+unsigned char revCompRLE(const unsigned char original)
+{
+	return mappingDinuc[original];
 }

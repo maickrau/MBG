@@ -49,6 +49,7 @@ private:
 	const size_t end;
 };
 
+unsigned char revCompRLE(const unsigned char original);
 TwobitString revCompRLE(const TwobitString& original);
 TwobitString revCompRLE(const TwobitView& original);
 
