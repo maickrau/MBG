@@ -15,6 +15,7 @@ public:
 	size_t size() const;
 	TwobitString& operator=(const std::string& str);
 	TwobitString& operator=(const std::string_view& str);
+	std::string toString() const;
 	void resize(size_t size);
 	void push_back(char c);
 	template <typename Iter>
@@ -49,5 +50,6 @@ private:
 };
 
 TwobitString revCompRLE(const TwobitString& original);
+TwobitString revCompRLE(const TwobitView& original);
 
 #endif

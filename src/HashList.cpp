@@ -221,7 +221,6 @@ size_t AdjacentLengthList::hashToBucket(HashType hash) const
 HashList::HashList(size_t kmerSize, bool collapseRunLengths, size_t numBuckets) :
 	hashCharacterLengths(numBuckets),
 	hashSequences(numBuckets),
-	hashSequencesRevComp(numBuckets),
 	kmerSize(kmerSize),
 	collapseRunLengths(collapseRunLengths)
 {}
@@ -283,17 +282,6 @@ void HashList::addHashCharacterLength(const std::vector<uint16_t>& data, bool fw
 TwobitView HashList::getHashSequenceRLE(size_t index) const
 {
 	return hashSequences.getView(hashSeqPtr[index].first, hashSeqPtr[index].second, kmerSize);
-}
-
-TwobitView HashList::getRevCompHashSequenceRLE(size_t index) const
-{
-	auto pos = hashSequences.getRevCompLocation(hashSeqPtr[index].first, hashSeqPtr[index].second, kmerSize);
-	return hashSequencesRevComp.getView(pos.first, pos.second, kmerSize);
-}
-
-void HashList::buildReverseCompHashSequences()
-{
-	hashSequencesRevComp = hashSequences.getReverseComplementStorage();
 }
 
 std::pair<size_t, bool> HashList::getNodeOrNull(std::string_view sequence) const

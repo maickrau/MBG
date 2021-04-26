@@ -129,7 +129,7 @@ std::pair<std::string, std::vector<uint16_t>> UnitigGraph::getSequenceAndLength(
 		}
 		else
 		{
-			sequenceRLEHere = hashlist.getRevCompHashSequenceRLE(to.first).toString();
+			sequenceRLEHere = revCompRLE(hashlist.getHashSequenceRLE(to.first)).toString();
 			std::reverse(sequenceCharacterLengthHere.begin(), sequenceCharacterLengthHere.end());
 		}
 		if (j > 0)
