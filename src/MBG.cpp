@@ -1273,11 +1273,11 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 		}
 	}
 	std::unordered_map<NodeType, std::pair<size_t, bool>> belongsToUnitig;
+	std::set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> removeEdges;
 	for (size_t i = 0; i < unitigs.edges.size(); i++)
 	{
 		std::pair<size_t, bool> fw { i, true };
 		auto fromKmer = unitigs.unitigs[i].back();
-		std::set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> removeEdges;
 		for (auto edge : unitigs.edges[fw])
 		{
 			auto toKmer = unitigs.unitigs[edge.first][0];
@@ -1300,16 +1300,16 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 				removeEdges.emplace(bw, edge);
 			}
 		}
-		for (auto pair : removeEdges)
+	}
+	for (auto pair : removeEdges)
+	{
+		if (unitigs.edges[pair.first].count(pair.second) == 1)
 		{
-			if (unitigs.edges[pair.first].count(pair.second) == 1)
-			{
-				unitigs.edges[pair.first].erase(pair.second);
-			}
-			if (unitigs.edges[reverse(pair.second)].count(reverse(pair.first)) == 1)
-			{
-				unitigs.edges[reverse(pair.second)].erase(reverse(pair.first));
-			}
+			unitigs.edges[pair.first].erase(pair.second);
+		}
+		if (unitigs.edges[reverse(pair.second)].count(reverse(pair.first)) == 1)
+		{
+			unitigs.edges[reverse(pair.second)].erase(reverse(pair.first));
 		}
 	}
 	if (addedAny)
