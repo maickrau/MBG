@@ -148,3 +148,9 @@ TwobitString revCompRLE(const TwobitString& original)
 	}
 	return result;
 }
+
+unsigned char revCompRLE(const unsigned char original)
+{
+	static char mapping[5] { 0, 4, 3, 2, 1 };
+	return mapping[original];
+}
