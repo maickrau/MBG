@@ -1158,7 +1158,7 @@ bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, cons
 		size_t revPos = edgeSequence.size() - (kmerStartPos + kmerSize);
 		std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
 		std::pair<size_t, bool> current;
-		std::tie(current, lastHash) = hashlist.addNode(minimizerSequence, revMinimizerSequence, lens, i - kmerSize, i, lastHash, overlap, minHash);
+		std::tie(current, lastHash) = hashlist.addNode(minimizerSequence, revMinimizerSequence, lens, kmerStartPos, kmerStartPos+kmerSize, lastHash, overlap, minHash);
 		hashlist.addSequenceOverlap(lastKmer, current, overlap);
 		std::pair<size_t, bool> newUnitigPosition { std::numeric_limits<size_t>::max(), true };
 		if (belongsToUnitig.count(current.first) == 0)
