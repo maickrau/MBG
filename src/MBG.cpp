@@ -1089,22 +1089,26 @@ void collectJunctionHashes(const std::unordered_map<uint64_t, unsigned char>& ap
 		fwkmerHasher.addChar(edgeSequence[i]);
 		fwkmerHasher.removeChar(edgeSequence[i-kmerSize]);
 		auto newBwHash = fwkmerHasher.getBwHash();
-		assert(approxNeighbors.count(oldFwHash) == 1);
-		assert(approxNeighbors.count(newBwHash) == 1);
-		// neither is a junction node if both not in approx
-		if (approxNeighbors.at(oldFwHash) != std::numeric_limits<unsigned char>::max() && approxNeighbors.at(newBwHash) != std::numeric_limits<unsigned char>::max()) continue;
-		HashType oldFwExactHash = hash(edgeSequence.substr(i-kmerSize, kmerSize));
-		HashType newBwExactHash = hash(revCompRLE(edgeSequence.substr(i-kmerSize+1, kmerSize)));
-		assert(exactNeighbors.count(oldFwExactHash) == 1);
-		assert(exactNeighbors.count(newBwExactHash) == 1);
-		if (exactNeighbors.at(oldFwExactHash) != std::numeric_limits<unsigned char>::max() && exactNeighbors.at(newBwExactHash) != std::numeric_limits<unsigned char>::max()) continue;
+		// somehow including the first and last k-mers is necessary to get it working properly. why? who knows
+		if (i > kmerSize && i < edgeSequence.size()-1)
+		{
+			assert(approxNeighbors.count(oldFwHash) == 1);
+			assert(approxNeighbors.count(newBwHash) == 1);
+			// neither is a junction node if both not in approx
+			if (approxNeighbors.at(oldFwHash) != std::numeric_limits<unsigned char>::max() && approxNeighbors.at(newBwHash) != std::numeric_limits<unsigned char>::max()) continue;
+			HashType oldFwExactHash = hash(edgeSequence.substr(i-kmerSize, kmerSize));
+			HashType newBwExactHash = hash(revCompRLE(edgeSequence.substr(i-kmerSize+1, kmerSize)));
+			assert(exactNeighbors.count(oldFwExactHash) == 1);
+			assert(exactNeighbors.count(newBwExactHash) == 1);
+			if (exactNeighbors.at(oldFwExactHash) != std::numeric_limits<unsigned char>::max() && exactNeighbors.at(newBwExactHash) != std::numeric_limits<unsigned char>::max()) continue;
+		}
 		auto newHash = fwkmerHasher.hash();
 		approxHashes.insert(oldHash);
 		approxHashes.insert(newHash);
+		exactHashes.insert(hash(edgeSequence.substr(i-kmerSize, kmerSize)));
 		exactHashes.insert(hash(revCompRLE(edgeSequence.substr(i-kmerSize, kmerSize))));
-		exactHashes.insert(oldFwExactHash);
-		exactHashes.insert(newBwExactHash);
 		exactHashes.insert(hash(edgeSequence.substr(i-kmerSize+1, kmerSize)));
+		exactHashes.insert(hash(revCompRLE(edgeSequence.substr(i-kmerSize+1, kmerSize))));
 	}
 }
 
@@ -1339,7 +1343,12 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	}
 	else
 	{
-		if (windowSize > 1) forceEdgeDeterminism(reads, unitigs, kmerSize);
+		if (windowSize > 1)
+		{
+			//somehow doesn't work completely with one call but works with two. why? who knows
+			forceEdgeDeterminism(reads, unitigs, kmerSize);
+			forceEdgeDeterminism(reads, unitigs, kmerSize);
+		}
 		beforeConsistency = getTime();
 		if (!collapseRunLengths) forceEdgeConsistency(unitigs, reads, kmerSize);
 		beforeWrite = getTime();
