@@ -1123,7 +1123,7 @@ void collectExactNeighbors(const std::unordered_map<uint64_t, unsigned char>& ap
 	}
 }
 
-void collectJunctionHashes(const std::unordered_map<uint64_t, unsigned char>& approxNeighbors, const std::unordered_map<HashType, unsigned char>& exactNeighbors, std::unordered_set<uint64_t>& approxHashes, std::unordered_set<HashType>& exactHashes, HashList& hashlist, const size_t kmerSize, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
+void collectJunctionHashes(const std::unordered_map<uint64_t, unsigned char>& approxNeighbors, std::unordered_set<uint64_t>& approxHashes, HashList& hashlist, const size_t kmerSize, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
 {
 	std::string fromSequence = hashlist.getHashSequenceRLE(fromKmer.first).toString();
 	if (!fromKmer.second) fromSequence = revCompRLE(fromSequence);
@@ -1147,30 +1147,17 @@ void collectJunctionHashes(const std::unordered_map<uint64_t, unsigned char>& ap
 		fwkmerHasher.addChar(edgeSequence[i]);
 		fwkmerHasher.removeChar(edgeSequence[i-kmerSize]);
 		auto newBwHash = fwkmerHasher.getBwHash();
-		// somehow including the first and last k-mers is necessary to get it working properly. why? who knows
-		if (i > kmerSize && i < edgeSequence.size()-1)
-		{
-			assert(approxNeighbors.count(oldFwHash) == 1);
-			assert(approxNeighbors.count(newBwHash) == 1);
-			// neither is a junction node if both not in approx
-			if (approxNeighbors.at(oldFwHash) != std::numeric_limits<unsigned char>::max() && approxNeighbors.at(newBwHash) != std::numeric_limits<unsigned char>::max()) continue;
-			HashType oldFwExactHash = hash(edgeSequence.substr(i-kmerSize, kmerSize));
-			HashType newBwExactHash = hash(revCompRLE(edgeSequence.substr(i-kmerSize+1, kmerSize)));
-			assert(exactNeighbors.count(oldFwExactHash) == 1);
-			assert(exactNeighbors.count(newBwExactHash) == 1);
-			if (exactNeighbors.at(oldFwExactHash) != std::numeric_limits<unsigned char>::max() && exactNeighbors.at(newBwExactHash) != std::numeric_limits<unsigned char>::max()) continue;
-		}
+		assert(approxNeighbors.count(oldFwHash) == 1);
+		assert(approxNeighbors.count(newBwHash) == 1);
+		// neither is a junction node if both not in approx
+		if (approxNeighbors.at(oldFwHash) != std::numeric_limits<unsigned char>::max() && approxNeighbors.at(newBwHash) != std::numeric_limits<unsigned char>::max()) continue;
 		auto newHash = fwkmerHasher.hash();
 		approxHashes.insert(oldHash);
 		approxHashes.insert(newHash);
-		exactHashes.insert(hash(edgeSequence.substr(i-kmerSize, kmerSize)));
-		exactHashes.insert(hash(revCompRLE(edgeSequence.substr(i-kmerSize, kmerSize))));
-		exactHashes.insert(hash(edgeSequence.substr(i-kmerSize+1, kmerSize)));
-		exactHashes.insert(hash(revCompRLE(edgeSequence.substr(i-kmerSize+1, kmerSize))));
 	}
 }
 
-bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, const std::unordered_set<HashType>& exactHashes, std::unordered_map<NodeType, std::pair<size_t, bool>>& belongsToUnitig, std::set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>>& addEdges, HashList& hashlist, UnitigGraph& unitigs, const size_t kmerSize, std::pair<size_t, bool> unitigPosition, std::pair<size_t, bool> toUnitigPosition, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
+bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, std::unordered_map<NodeType, std::pair<size_t, bool>>& belongsToUnitig, std::set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>>& addEdges, HashList& hashlist, UnitigGraph& unitigs, const size_t kmerSize, std::pair<size_t, bool> unitigPosition, std::pair<size_t, bool> toUnitigPosition, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
 {
 	std::string fromSequence = hashlist.getHashSequenceRLE(fromKmer.first).toString();
 	if (!fromKmer.second) fromSequence = revCompRLE(fromSequence);
@@ -1208,8 +1195,6 @@ bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, cons
 		fwkmerHasher.removeChar(edgeSequence[i-kmerSize]);
 		if (approxHashes.count(fwkmerHasher.hash()) == 0) continue;
 		size_t kmerStartPos = i - kmerSize + 1;
-		HashType exactHash = hash(edgeSequence.substr(kmerStartPos, kmerSize));
-		if (exactHashes.count(exactHash) == 0) continue;
 
 		size_t overlap = kmerSize - kmerStartPos + lastPosition;
 		assert(overlap < kmerSize);
@@ -1292,30 +1277,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 			collectApproxNeighbors(approxNeighbors, reads, kmerSize, fromKmer, toKmer);
 		}
 	}
-	std::unordered_map<HashType, unsigned char> exactNeighbors;
-	for (size_t i = 0; i < unitigs.edges.size(); i++)
-	{
-		std::pair<size_t, bool> fw { i, true };
-		auto fromKmer = unitigs.unitigs[i].back();
-		for (auto edge : unitigs.edges[fw])
-		{
-			if (canon(fw, edge) != std::make_pair(fw, edge)) continue;
-			auto toKmer = unitigs.unitigs[edge.first][0];
-			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-			collectExactNeighbors(approxNeighbors, exactNeighbors, reads, kmerSize, fromKmer, toKmer);
-		}
-		std::pair<size_t, bool> bw { i, false };
-		fromKmer = reverse(unitigs.unitigs[i][0]);
-		for (auto edge : unitigs.edges[bw])
-		{
-			if (canon(bw, edge) != std::make_pair(bw, edge)) continue;
-			auto toKmer = unitigs.unitigs[edge.first][0];
-			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-			collectExactNeighbors(approxNeighbors, exactNeighbors, reads, kmerSize, fromKmer, toKmer);
-		}
-	}
 	std::unordered_set<uint64_t> approxJunctionHashes;
-	std::unordered_set<HashType> exactJunctionHashes;
 	for (size_t i = 0; i < unitigs.edges.size(); i++)
 	{
 		std::pair<size_t, bool> fw { i, true };
@@ -1325,7 +1287,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 			if (canon(fw, edge) != std::make_pair(fw, edge)) continue;
 			auto toKmer = unitigs.unitigs[edge.first][0];
 			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-			collectJunctionHashes(approxNeighbors, exactNeighbors, approxJunctionHashes, exactJunctionHashes, reads, kmerSize, fromKmer, toKmer);
+			collectJunctionHashes(approxNeighbors, approxJunctionHashes, reads, kmerSize, fromKmer, toKmer);
 		}
 		std::pair<size_t, bool> bw { i, false };
 		fromKmer = reverse(unitigs.unitigs[i][0]);
@@ -1334,7 +1296,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 			if (canon(bw, edge) != std::make_pair(bw, edge)) continue;
 			auto toKmer = unitigs.unitigs[edge.first][0];
 			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-			collectJunctionHashes(approxNeighbors, exactNeighbors, approxJunctionHashes, exactJunctionHashes, reads, kmerSize, fromKmer, toKmer);
+			collectJunctionHashes(approxNeighbors, approxJunctionHashes, reads, kmerSize, fromKmer, toKmer);
 		}
 	}
 	std::unordered_map<NodeType, std::pair<size_t, bool>> belongsToUnitig;
@@ -1349,7 +1311,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 			if (canon(fw, edge) != std::make_pair(fw, edge)) continue;
 			auto toKmer = unitigs.unitigs[edge.first][0];
 			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-			if (addJunctionsToHashes(approxJunctionHashes, exactJunctionHashes, belongsToUnitig, addEdges, reads, unitigs, kmerSize, fw, edge, fromKmer, toKmer))
+			if (addJunctionsToHashes(approxJunctionHashes, belongsToUnitig, addEdges, reads, unitigs, kmerSize, fw, edge, fromKmer, toKmer))
 			{
 				removeEdges.emplace(fw, edge);
 			}
@@ -1361,7 +1323,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 			if (canon(bw, edge) != std::make_pair(bw, edge)) continue;
 			auto toKmer = unitigs.unitigs[edge.first][0];
 			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-			if (addJunctionsToHashes(approxJunctionHashes, exactJunctionHashes, belongsToUnitig, addEdges, reads, unitigs, kmerSize, bw, edge, fromKmer, toKmer))
+			if (addJunctionsToHashes(approxJunctionHashes, belongsToUnitig, addEdges, reads, unitigs, kmerSize, bw, edge, fromKmer, toKmer))
 			{
 				removeEdges.emplace(bw, edge);
 			}
