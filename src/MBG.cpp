@@ -873,8 +873,8 @@ std::pair<NodeType, size_t> find(std::unordered_map<NodeType, std::vector<std::p
 		assert(parent.count(key.first) == 1);
 		auto foundParent = parent[key.first][key.second];
 		assert(parent.count(foundParent.first) == 1);
-		parent[key.first][key.second] = parent[foundParent.first][foundParent.second];
 		if (parent[key.first][key.second] == parent[foundParent.first][foundParent.second]) return parent[key.first][key.second];
+		parent[key.first][key.second] = parent[foundParent.first][foundParent.second];
 	}
 }
 
@@ -882,6 +882,8 @@ void merge(std::unordered_map<NodeType, std::vector<std::pair<NodeType, size_t>>
 {
 	left = find(parent, left);
 	right = find(parent, right);
+	assert(parent[left.first][left.second] == left);
+	assert(parent[right.first][right.second] == right);
 	assert(rank.count(left.first) == 1);
 	assert(rank.count(right.first) == 1);
 	if (rank[right.first][right.second] > rank[left.first][left.second]) std::swap(left, right);
@@ -923,7 +925,7 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, const 
 			size_t overlap = hashlist.getOverlap(unitig[i-1], unitig[i]);
 			assert(overlap < kmerSize);
 			size_t removeOverlap = kmerSize - overlap;
-			if (removeOverlap > firstToLastOverlap)
+			if (removeOverlap >= firstToLastOverlap)
 			{
 				firstToLastOverlap = 0;
 				break;
@@ -970,7 +972,7 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, const 
 			size_t overlap = hashlist.getOverlap(unitig[i], unitig[i+1]);
 			assert(overlap < kmerSize);
 			size_t removeOverlap = kmerSize - overlap;
-			if (removeOverlap > lastToFirstOverlap)
+			if (removeOverlap >= lastToFirstOverlap)
 			{
 				lastToFirstOverlap = 0;
 				break;
