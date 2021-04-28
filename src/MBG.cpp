@@ -686,7 +686,7 @@ void writeGraph(const BluntGraph& graph, const std::string& filename)
 	}
 }
 
-void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const HashList& hashlist)
+void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const HashList& hashlist, const size_t kmerSize)
 {
 	std::ofstream file { filename };
 	file << "H\tVN:Z:1.0" << std::endl;
@@ -694,6 +694,13 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 	{
 		file << "S\t" << (i+1) << "\t";
 		size_t length = 0;
+		size_t printBeforeLast = 0;
+		for (size_t j = 1; j < unitigs.unitigs[i].size(); j++)
+		{
+			size_t overlap = hashlist.getOverlap(unitigs.unitigs[i][j-1], unitigs.unitigs[i][j]);
+			printBeforeLast += kmerSize - overlap;
+		}
+		size_t prunt = 0;
 		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
 		{
 			auto to = unitigs.unitigs[i][j];
@@ -708,7 +715,7 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 				sequenceRLE = revCompRLE(hashlist.getHashSequenceRLE(to.first)).toString();
 				std::reverse(sequenceCharacterLength.begin(), sequenceCharacterLength.end());
 			}
-			if (j > 0)
+			if (j > 0 && j < unitigs.unitigs[i].size()-1)
 			{
 				auto from = unitigs.unitigs[i][j-1];
 				size_t overlap = hashlist.getOverlap(from, to);
@@ -716,10 +723,18 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 				sequenceRLE = sequenceRLE.substr(overlap);
 				sequenceCharacterLength.erase(sequenceCharacterLength.begin(), sequenceCharacterLength.begin() + overlap);
 			}
+			assert(prunt <= printBeforeLast);
+			if (j < unitigs.unitigs[i].size()-1 && sequenceRLE.size() > printBeforeLast - prunt)
+			{
+				sequenceRLE.erase(sequenceRLE.begin() + printBeforeLast - prunt, sequenceRLE.end());
+				sequenceCharacterLength.erase(sequenceCharacterLength.begin() + printBeforeLast - prunt, sequenceCharacterLength.end());
+			}
+			prunt += sequenceRLE.size();
 			std::string sequence = getSequence(sequenceRLE, sequenceCharacterLength);
 			file << sequence;
 			length += sequence.size();
 		}
+		assert(prunt == printBeforeLast + kmerSize);
 		file << "\tll:f:" << unitigs.averageCoverage(i);
 		file << "\tFC:f:" << (unitigs.averageCoverage(i) * length);
 		file << std::endl;
@@ -932,24 +947,6 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, const 
 			}
 			firstToLastOverlap -= removeOverlap;
 			if (i == unitig.size()-1) break;
-			assert(parent.count(unitig[i].first) == 0);
-			assert(rank.count(unitig[i].first) == 0);
-			for (size_t j = 0; j < kmerSize; j++)
-			{
-				parent[unitig[i].first].emplace_back(unitig[i].first, j);
-				rank[unitig[i].first].emplace_back(0);
-			}
-			for (size_t j = 0; j < firstToLastOverlap; j++)
-			{
-				size_t firstOffset = kmerSize - firstToLastOverlap + j;
-				assert(firstOffset < kmerSize);
-				if (!unitig[0].second) firstOffset = kmerSize - 1 - firstOffset;
-				assert(firstOffset < kmerSize);
-				size_t secondOffset = j;
-				if (!unitig[i].second) secondOffset = kmerSize - 1 - secondOffset;
-				assert(secondOffset < kmerSize);
-				merge(parent, rank, unitig[0].first, firstOffset, unitig[i].first, secondOffset);
-			}
 		}
 		if (firstToLastOverlap > 0)
 		{
@@ -964,38 +961,6 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, const 
 				if (!unitig.back().second) secondOffset = kmerSize - 1 - secondOffset;
 				assert(secondOffset < kmerSize);
 				merge(parent, rank, unitig[0].first, firstOffset, unitig.back().first, secondOffset);
-			}
-		}
-		size_t lastToFirstOverlap = kmerSize;
-		for (size_t i = unitig.size()-2; i > 0; i--)
-		{
-			size_t overlap = hashlist.getOverlap(unitig[i], unitig[i+1]);
-			assert(overlap < kmerSize);
-			size_t removeOverlap = kmerSize - overlap;
-			if (removeOverlap >= lastToFirstOverlap)
-			{
-				lastToFirstOverlap = 0;
-				break;
-			}
-			lastToFirstOverlap -= removeOverlap;
-			if (parent.count(unitig[i].first) == 0)
-			{
-				for (size_t j = 0; j < kmerSize; j++)
-				{
-					parent[unitig[i].first].emplace_back(unitig[i].first, j);
-					rank[unitig[i].first].emplace_back(0);
-				}
-			}
-			for (size_t j = 0; j < lastToFirstOverlap; j++)
-			{
-				size_t firstOffset = j;
-				assert(firstOffset < kmerSize);
-				if (!unitig.back().second) firstOffset = kmerSize - 1 - firstOffset;
-				assert(firstOffset < kmerSize);
-				size_t secondOffset = kmerSize - lastToFirstOverlap + j;
-				if (!unitig[i].second) secondOffset = kmerSize - 1 - secondOffset;
-				assert(secondOffset < kmerSize);
-				merge(parent, rank, unitig.back().first, firstOffset, unitig[i].first, secondOffset);
 			}
 		}
 	}
@@ -1378,7 +1343,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		beforeConsistency = getTime();
 		if (!collapseRunLengths) forceEdgeConsistency(unitigs, reads, kmerSize);
 		beforeWrite = getTime();
-		writeGraph(unitigs, outputGraph, reads);
+		writeGraph(unitigs, outputGraph, reads, kmerSize);
 		stats = getSizeAndN50(reads, unitigs, kmerSize, windowSize);
 	}
 	auto afterWrite = getTime();
