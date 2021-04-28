@@ -1129,19 +1129,66 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, const 
 				break;
 			}
 			firstToLastOverlap -= removeOverlap;
+			for (size_t j = 0; j < kmerSize; j++)
+			{
+				parent[unitig[i].first].emplace_back(unitig[i].first, j);
+				rank[unitig[i].first].emplace_back(0);
+			}
+			for (size_t j = 0; j < firstToLastOverlap; j++)
+			{
+				size_t firstOffset = kmerSize - firstToLastOverlap + j;
+				assert(firstOffset < kmerSize);
+				if (!unitig[0].second) firstOffset = kmerSize - 1 - firstOffset;
+				assert(firstOffset < kmerSize);
+				size_t secondOffset = j;
+				if (!unitig[i].second) secondOffset = kmerSize - 1 - secondOffset;
+				assert(secondOffset < kmerSize);
+				merge(parent, rank, unitig[0].first, firstOffset, unitig[i].first, secondOffset);
+			}
 		}
-		if (firstToLastOverlap == 0) continue;
-		assert(firstToLastOverlap < kmerSize);
-		for (size_t i = 0; i < firstToLastOverlap; i++)
+		if (firstToLastOverlap > 0)
 		{
-			size_t firstOffset = kmerSize - firstToLastOverlap + i;
-			assert(firstOffset < kmerSize);
-			if (!unitig[0].second) firstOffset = kmerSize - 1 - firstOffset;
-			assert(firstOffset < kmerSize);
-			size_t secondOffset = i;
-			if (!unitig.back().second) secondOffset = kmerSize - 1 - secondOffset;
-			assert(secondOffset < kmerSize);
-			merge(parent, rank, unitig[0].first, firstOffset, unitig.back().first, secondOffset);
+			assert(firstToLastOverlap < kmerSize);
+			for (size_t i = 0; i < firstToLastOverlap; i++)
+			{
+				size_t firstOffset = kmerSize - firstToLastOverlap + i;
+				assert(firstOffset < kmerSize);
+				if (!unitig[0].second) firstOffset = kmerSize - 1 - firstOffset;
+				assert(firstOffset < kmerSize);
+				size_t secondOffset = i;
+				if (!unitig.back().second) secondOffset = kmerSize - 1 - secondOffset;
+				assert(secondOffset < kmerSize);
+				merge(parent, rank, unitig[0].first, firstOffset, unitig.back().first, secondOffset);
+			}
+		}
+		size_t lastToFirstOverlap = kmerSize;
+		for (size_t i = unitig.size()-2; i > 0; i--)
+		{
+			size_t overlap = hashlist.getOverlap(unitig[i], unitig[i+1]);
+			assert(overlap < kmerSize);
+			size_t removeOverlap = kmerSize - overlap;
+			if (removeOverlap > lastToFirstOverlap)
+			{
+				lastToFirstOverlap = 0;
+				break;
+			}
+			lastToFirstOverlap -= removeOverlap;
+			for (size_t j = 0; j < kmerSize; j++)
+			{
+				parent[unitig[i].first].emplace_back(unitig[i].first, j);
+				rank[unitig[i].first].emplace_back(0);
+			}
+			for (size_t j = 0; j < lastToFirstOverlap; j++)
+			{
+				size_t firstOffset = j;
+				assert(firstOffset < kmerSize);
+				if (!unitig.back().second) firstOffset = kmerSize - 1 - firstOffset;
+				assert(firstOffset < kmerSize);
+				size_t secondOffset = kmerSize - lastToFirstOverlap + j;
+				if (!unitig[i].second) secondOffset = kmerSize - 1 - secondOffset;
+				assert(secondOffset < kmerSize);
+				merge(parent, rank, unitig.back().first, firstOffset, unitig[i].first, secondOffset);
+			}
 		}
 	}
 	for (size_t unitig = 0; unitig < unitigs.edges.size(); unitig++)
@@ -1289,22 +1336,26 @@ void collectJunctionHashes(const std::unordered_map<uint64_t, unsigned char>& ap
 		fwkmerHasher.addChar(edgeSequence[i]);
 		fwkmerHasher.removeChar(edgeSequence[i-kmerSize]);
 		auto newBwHash = fwkmerHasher.getBwHash();
-		assert(approxNeighbors.count(oldFwHash) == 1);
-		assert(approxNeighbors.count(newBwHash) == 1);
-		// neither is a junction node if both not in approx
-		if (approxNeighbors.at(oldFwHash) != std::numeric_limits<unsigned char>::max() && approxNeighbors.at(newBwHash) != std::numeric_limits<unsigned char>::max()) continue;
-		HashType oldFwExactHash = hash(edgeSequence.substr(i-kmerSize, kmerSize));
-		HashType newBwExactHash = hash(revCompRLE(edgeSequence.substr(i-kmerSize+1, kmerSize)));
-		assert(exactNeighbors.count(oldFwExactHash) == 1);
-		assert(exactNeighbors.count(newBwExactHash) == 1);
-		if (exactNeighbors.at(oldFwExactHash) != std::numeric_limits<unsigned char>::max() && exactNeighbors.at(newBwExactHash) != std::numeric_limits<unsigned char>::max()) continue;
+		// somehow including the first and last k-mers is necessary to get it working properly. why? who knows
+		if (i > kmerSize && i < edgeSequence.size()-1)
+		{
+			assert(approxNeighbors.count(oldFwHash) == 1);
+			assert(approxNeighbors.count(newBwHash) == 1);
+			// neither is a junction node if both not in approx
+			if (approxNeighbors.at(oldFwHash) != std::numeric_limits<unsigned char>::max() && approxNeighbors.at(newBwHash) != std::numeric_limits<unsigned char>::max()) continue;
+			HashType oldFwExactHash = hash(edgeSequence.substr(i-kmerSize, kmerSize));
+			HashType newBwExactHash = hash(revCompRLE(edgeSequence.substr(i-kmerSize+1, kmerSize)));
+			assert(exactNeighbors.count(oldFwExactHash) == 1);
+			assert(exactNeighbors.count(newBwExactHash) == 1);
+			if (exactNeighbors.at(oldFwExactHash) != std::numeric_limits<unsigned char>::max() && exactNeighbors.at(newBwExactHash) != std::numeric_limits<unsigned char>::max()) continue;
+		}
 		auto newHash = fwkmerHasher.hash();
 		approxHashes.insert(oldHash);
 		approxHashes.insert(newHash);
+		exactHashes.insert(hash(edgeSequence.substr(i-kmerSize, kmerSize)));
 		exactHashes.insert(hash(revCompRLE(edgeSequence.substr(i-kmerSize, kmerSize))));
-		exactHashes.insert(oldFwExactHash);
-		exactHashes.insert(newBwExactHash);
 		exactHashes.insert(hash(edgeSequence.substr(i-kmerSize+1, kmerSize)));
+		exactHashes.insert(hash(revCompRLE(edgeSequence.substr(i-kmerSize+1, kmerSize))));
 	}
 }
 
@@ -1539,7 +1590,12 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	}
 	else
 	{
-		if (windowSize > 1) forceEdgeDeterminism(reads, unitigs, kmerSize);
+		if (windowSize > 1)
+		{
+			//somehow doesn't work completely with one call but works with two. why? who knows
+			forceEdgeDeterminism(reads, unitigs, kmerSize);
+			forceEdgeDeterminism(reads, unitigs, kmerSize);
+		}
 		beforeConsistency = getTime();
 		if (!collapseRunLengths) forceEdgeConsistency(unitigs, reads, kmerSize);
 		beforeWrite = getTime();
