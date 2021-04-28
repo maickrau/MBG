@@ -929,6 +929,9 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, const 
 				break;
 			}
 			firstToLastOverlap -= removeOverlap;
+			if (i == unitig.size()-1) break;
+			assert(parent.count(unitig[i].first) == 0);
+			assert(rank.count(unitig[i].first) == 0);
 			for (size_t j = 0; j < kmerSize; j++)
 			{
 				parent[unitig[i].first].emplace_back(unitig[i].first, j);
@@ -973,10 +976,13 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, const 
 				break;
 			}
 			lastToFirstOverlap -= removeOverlap;
-			for (size_t j = 0; j < kmerSize; j++)
+			if (parent.count(unitig[i].first) == 0)
 			{
-				parent[unitig[i].first].emplace_back(unitig[i].first, j);
-				rank[unitig[i].first].emplace_back(0);
+				for (size_t j = 0; j < kmerSize; j++)
+				{
+					parent[unitig[i].first].emplace_back(unitig[i].first, j);
+					rank[unitig[i].first].emplace_back(0);
+				}
 			}
 			for (size_t j = 0; j < lastToFirstOverlap; j++)
 			{
