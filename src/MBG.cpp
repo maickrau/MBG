@@ -886,7 +886,7 @@ void writeGraph(const BluntGraph& graph, const std::string& filename)
 	}
 }
 
-void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const HashList& hashlist)
+void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const HashList& hashlist, const size_t kmerSize)
 {
 	std::ofstream file { filename };
 	file << "H\tVN:Z:1.0" << std::endl;
@@ -894,6 +894,13 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 	{
 		file << "S\t" << (i+1) << "\t";
 		size_t length = 0;
+		size_t printBeforeLast = 0;
+		for (size_t j = 1; j < unitigs.unitigs[i].size(); j++)
+		{
+			size_t overlap = hashlist.getOverlap(unitigs.unitigs[i][j-1], unitigs.unitigs[i][j]);
+			printBeforeLast += kmerSize - overlap;
+		}
+		size_t prunt = 0;
 		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
 		{
 			auto to = unitigs.unitigs[i][j];
@@ -908,7 +915,7 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 				sequenceRLE = revCompRLE(hashlist.getHashSequenceRLE(to.first)).toString();
 				std::reverse(sequenceCharacterLength.begin(), sequenceCharacterLength.end());
 			}
-			if (j > 0)
+			if (j > 0 && j < unitigs.unitigs[i].size()-1)
 			{
 				auto from = unitigs.unitigs[i][j-1];
 				size_t overlap = hashlist.getOverlap(from, to);
@@ -916,10 +923,18 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 				sequenceRLE = sequenceRLE.substr(overlap);
 				sequenceCharacterLength.erase(sequenceCharacterLength.begin(), sequenceCharacterLength.begin() + overlap);
 			}
+			assert(prunt <= printBeforeLast);
+			if (j < unitigs.unitigs[i].size()-1 && sequenceRLE.size() > printBeforeLast - prunt)
+			{
+				sequenceRLE.erase(sequenceRLE.begin() + printBeforeLast - prunt, sequenceRLE.end());
+				sequenceCharacterLength.erase(sequenceCharacterLength.begin() + printBeforeLast - prunt, sequenceCharacterLength.end());
+			}
+			prunt += sequenceRLE.size();
 			std::string sequence = getSequence(sequenceRLE, sequenceCharacterLength);
 			file << sequence;
 			length += sequence.size();
 		}
+		assert(prunt == printBeforeLast + kmerSize);
 		file << "\tll:f:" << unitigs.averageCoverage(i);
 		file << "\tFC:f:" << (unitigs.averageCoverage(i) * length);
 		file << std::endl;
@@ -1132,24 +1147,6 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, const 
 			}
 			firstToLastOverlap -= removeOverlap;
 			if (i == unitig.size()-1) break;
-			assert(parent.count(unitig[i].first) == 0);
-			assert(rank.count(unitig[i].first) == 0);
-			for (size_t j = 0; j < kmerSize; j++)
-			{
-				parent[unitig[i].first].emplace_back(unitig[i].first, j);
-				rank[unitig[i].first].emplace_back(0);
-			}
-			for (size_t j = 0; j < firstToLastOverlap; j++)
-			{
-				size_t firstOffset = kmerSize - firstToLastOverlap + j;
-				assert(firstOffset < kmerSize);
-				if (!unitig[0].second) firstOffset = kmerSize - 1 - firstOffset;
-				assert(firstOffset < kmerSize);
-				size_t secondOffset = j;
-				if (!unitig[i].second) secondOffset = kmerSize - 1 - secondOffset;
-				assert(secondOffset < kmerSize);
-				merge(parent, rank, unitig[0].first, firstOffset, unitig[i].first, secondOffset);
-			}
 		}
 		if (firstToLastOverlap > 0)
 		{
@@ -1164,38 +1161,6 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, const 
 				if (!unitig.back().second) secondOffset = kmerSize - 1 - secondOffset;
 				assert(secondOffset < kmerSize);
 				merge(parent, rank, unitig[0].first, firstOffset, unitig.back().first, secondOffset);
-			}
-		}
-		size_t lastToFirstOverlap = kmerSize;
-		for (size_t i = unitig.size()-2; i > 0; i--)
-		{
-			size_t overlap = hashlist.getOverlap(unitig[i], unitig[i+1]);
-			assert(overlap < kmerSize);
-			size_t removeOverlap = kmerSize - overlap;
-			if (removeOverlap >= lastToFirstOverlap)
-			{
-				lastToFirstOverlap = 0;
-				break;
-			}
-			lastToFirstOverlap -= removeOverlap;
-			if (parent.count(unitig[i].first) == 0)
-			{
-				for (size_t j = 0; j < kmerSize; j++)
-				{
-					parent[unitig[i].first].emplace_back(unitig[i].first, j);
-					rank[unitig[i].first].emplace_back(0);
-				}
-			}
-			for (size_t j = 0; j < lastToFirstOverlap; j++)
-			{
-				size_t firstOffset = j;
-				assert(firstOffset < kmerSize);
-				if (!unitig.back().second) firstOffset = kmerSize - 1 - firstOffset;
-				assert(firstOffset < kmerSize);
-				size_t secondOffset = kmerSize - lastToFirstOverlap + j;
-				if (!unitig[i].second) secondOffset = kmerSize - 1 - secondOffset;
-				assert(secondOffset < kmerSize);
-				merge(parent, rank, unitig.back().first, firstOffset, unitig[i].first, secondOffset);
 			}
 		}
 	}
@@ -1323,7 +1288,7 @@ void collectExactNeighbors(const std::unordered_map<uint64_t, unsigned char>& ap
 	}
 }
 
-void collectJunctionHashes(const std::unordered_map<uint64_t, unsigned char>& approxNeighbors, const std::unordered_map<HashType, unsigned char>& exactNeighbors, std::unordered_set<uint64_t>& approxHashes, std::unordered_set<HashType>& exactHashes, HashList& hashlist, const size_t kmerSize, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
+void collectJunctionHashes(const std::unordered_map<uint64_t, unsigned char>& approxNeighbors, std::unordered_set<uint64_t>& approxHashes, HashList& hashlist, const size_t kmerSize, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
 {
 	std::string fromSequence = hashlist.getHashSequenceRLE(fromKmer.first).toString();
 	if (!fromKmer.second) fromSequence = revCompRLE(fromSequence);
@@ -1347,30 +1312,17 @@ void collectJunctionHashes(const std::unordered_map<uint64_t, unsigned char>& ap
 		fwkmerHasher.addChar(edgeSequence[i]);
 		fwkmerHasher.removeChar(edgeSequence[i-kmerSize]);
 		auto newBwHash = fwkmerHasher.getBwHash();
-		// somehow including the first and last k-mers is necessary to get it working properly. why? who knows
-		if (i > kmerSize && i < edgeSequence.size()-1)
-		{
-			assert(approxNeighbors.count(oldFwHash) == 1);
-			assert(approxNeighbors.count(newBwHash) == 1);
-			// neither is a junction node if both not in approx
-			if (approxNeighbors.at(oldFwHash) != std::numeric_limits<unsigned char>::max() && approxNeighbors.at(newBwHash) != std::numeric_limits<unsigned char>::max()) continue;
-			HashType oldFwExactHash = hash(edgeSequence.substr(i-kmerSize, kmerSize));
-			HashType newBwExactHash = hash(revCompRLE(edgeSequence.substr(i-kmerSize+1, kmerSize)));
-			assert(exactNeighbors.count(oldFwExactHash) == 1);
-			assert(exactNeighbors.count(newBwExactHash) == 1);
-			if (exactNeighbors.at(oldFwExactHash) != std::numeric_limits<unsigned char>::max() && exactNeighbors.at(newBwExactHash) != std::numeric_limits<unsigned char>::max()) continue;
-		}
+		assert(approxNeighbors.count(oldFwHash) == 1);
+		assert(approxNeighbors.count(newBwHash) == 1);
+		// neither is a junction node if both not in approx
+		if (approxNeighbors.at(oldFwHash) != std::numeric_limits<unsigned char>::max() && approxNeighbors.at(newBwHash) != std::numeric_limits<unsigned char>::max()) continue;
 		auto newHash = fwkmerHasher.hash();
 		approxHashes.insert(oldHash);
 		approxHashes.insert(newHash);
-		exactHashes.insert(hash(edgeSequence.substr(i-kmerSize, kmerSize)));
-		exactHashes.insert(hash(revCompRLE(edgeSequence.substr(i-kmerSize, kmerSize))));
-		exactHashes.insert(hash(edgeSequence.substr(i-kmerSize+1, kmerSize)));
-		exactHashes.insert(hash(revCompRLE(edgeSequence.substr(i-kmerSize+1, kmerSize))));
 	}
 }
 
-bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, const std::unordered_set<HashType>& exactHashes, std::unordered_map<NodeType, std::pair<size_t, bool>>& belongsToUnitig, std::set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>>& addEdges, HashList& hashlist, UnitigGraph& unitigs, const size_t kmerSize, std::pair<size_t, bool> unitigPosition, std::pair<size_t, bool> toUnitigPosition, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
+bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, std::unordered_map<NodeType, std::pair<size_t, bool>>& belongsToUnitig, std::set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>>& addEdges, HashList& hashlist, UnitigGraph& unitigs, const size_t kmerSize, std::pair<size_t, bool> unitigPosition, std::pair<size_t, bool> toUnitigPosition, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
 {
 	std::string fromSequence = hashlist.getHashSequenceRLE(fromKmer.first).toString();
 	if (!fromKmer.second) fromSequence = revCompRLE(fromSequence);
@@ -1408,8 +1360,6 @@ bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, cons
 		fwkmerHasher.removeChar(edgeSequence[i-kmerSize]);
 		if (approxHashes.count(fwkmerHasher.hash()) == 0) continue;
 		size_t kmerStartPos = i - kmerSize + 1;
-		HashType exactHash = hash(edgeSequence.substr(kmerStartPos, kmerSize));
-		if (exactHashes.count(exactHash) == 0) continue;
 
 		size_t overlap = kmerSize - kmerStartPos + lastPosition;
 		assert(overlap < kmerSize);
@@ -1492,30 +1442,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 			collectApproxNeighbors(approxNeighbors, reads, kmerSize, fromKmer, toKmer);
 		}
 	}
-	std::unordered_map<HashType, unsigned char> exactNeighbors;
-	for (size_t i = 0; i < unitigs.edges.size(); i++)
-	{
-		std::pair<size_t, bool> fw { i, true };
-		auto fromKmer = unitigs.unitigs[i].back();
-		for (auto edge : unitigs.edges[fw])
-		{
-			if (canon(fw, edge) != std::make_pair(fw, edge)) continue;
-			auto toKmer = unitigs.unitigs[edge.first][0];
-			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-			collectExactNeighbors(approxNeighbors, exactNeighbors, reads, kmerSize, fromKmer, toKmer);
-		}
-		std::pair<size_t, bool> bw { i, false };
-		fromKmer = reverse(unitigs.unitigs[i][0]);
-		for (auto edge : unitigs.edges[bw])
-		{
-			if (canon(bw, edge) != std::make_pair(bw, edge)) continue;
-			auto toKmer = unitigs.unitigs[edge.first][0];
-			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-			collectExactNeighbors(approxNeighbors, exactNeighbors, reads, kmerSize, fromKmer, toKmer);
-		}
-	}
 	std::unordered_set<uint64_t> approxJunctionHashes;
-	std::unordered_set<HashType> exactJunctionHashes;
 	for (size_t i = 0; i < unitigs.edges.size(); i++)
 	{
 		std::pair<size_t, bool> fw { i, true };
@@ -1525,7 +1452,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 			if (canon(fw, edge) != std::make_pair(fw, edge)) continue;
 			auto toKmer = unitigs.unitigs[edge.first][0];
 			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-			collectJunctionHashes(approxNeighbors, exactNeighbors, approxJunctionHashes, exactJunctionHashes, reads, kmerSize, fromKmer, toKmer);
+			collectJunctionHashes(approxNeighbors, approxJunctionHashes, reads, kmerSize, fromKmer, toKmer);
 		}
 		std::pair<size_t, bool> bw { i, false };
 		fromKmer = reverse(unitigs.unitigs[i][0]);
@@ -1534,7 +1461,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 			if (canon(bw, edge) != std::make_pair(bw, edge)) continue;
 			auto toKmer = unitigs.unitigs[edge.first][0];
 			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-			collectJunctionHashes(approxNeighbors, exactNeighbors, approxJunctionHashes, exactJunctionHashes, reads, kmerSize, fromKmer, toKmer);
+			collectJunctionHashes(approxNeighbors, approxJunctionHashes, reads, kmerSize, fromKmer, toKmer);
 		}
 	}
 	std::unordered_map<NodeType, std::pair<size_t, bool>> belongsToUnitig;
@@ -1549,7 +1476,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 			if (canon(fw, edge) != std::make_pair(fw, edge)) continue;
 			auto toKmer = unitigs.unitigs[edge.first][0];
 			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-			if (addJunctionsToHashes(approxJunctionHashes, exactJunctionHashes, belongsToUnitig, addEdges, reads, unitigs, kmerSize, fw, edge, fromKmer, toKmer))
+			if (addJunctionsToHashes(approxJunctionHashes, belongsToUnitig, addEdges, reads, unitigs, kmerSize, fw, edge, fromKmer, toKmer))
 			{
 				removeEdges.emplace(fw, edge);
 			}
@@ -1561,7 +1488,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 			if (canon(bw, edge) != std::make_pair(bw, edge)) continue;
 			auto toKmer = unitigs.unitigs[edge.first][0];
 			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-			if (addJunctionsToHashes(approxJunctionHashes, exactJunctionHashes, belongsToUnitig, addEdges, reads, unitigs, kmerSize, bw, edge, fromKmer, toKmer))
+			if (addJunctionsToHashes(approxJunctionHashes, belongsToUnitig, addEdges, reads, unitigs, kmerSize, bw, edge, fromKmer, toKmer))
 			{
 				removeEdges.emplace(bw, edge);
 			}
@@ -1616,7 +1543,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		beforeConsistency = getTime();
 		if (!collapseRunLengths) forceEdgeConsistency(unitigs, reads, kmerSize);
 		beforeWrite = getTime();
-		writeGraph(unitigs, outputGraph, reads);
+		writeGraph(unitigs, outputGraph, reads, kmerSize);
 		stats = getSizeAndN50(reads, unitigs, kmerSize, windowSize);
 	}
 	auto afterWrite = getTime();
