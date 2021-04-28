@@ -929,19 +929,66 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, const 
 				break;
 			}
 			firstToLastOverlap -= removeOverlap;
+			for (size_t j = 0; j < kmerSize; j++)
+			{
+				parent[unitig[i].first].emplace_back(unitig[i].first, j);
+				rank[unitig[i].first].emplace_back(0);
+			}
+			for (size_t j = 0; j < firstToLastOverlap; j++)
+			{
+				size_t firstOffset = kmerSize - firstToLastOverlap + j;
+				assert(firstOffset < kmerSize);
+				if (!unitig[0].second) firstOffset = kmerSize - 1 - firstOffset;
+				assert(firstOffset < kmerSize);
+				size_t secondOffset = j;
+				if (!unitig[i].second) secondOffset = kmerSize - 1 - secondOffset;
+				assert(secondOffset < kmerSize);
+				merge(parent, rank, unitig[0].first, firstOffset, unitig[i].first, secondOffset);
+			}
 		}
-		if (firstToLastOverlap == 0) continue;
-		assert(firstToLastOverlap < kmerSize);
-		for (size_t i = 0; i < firstToLastOverlap; i++)
+		if (firstToLastOverlap > 0)
 		{
-			size_t firstOffset = kmerSize - firstToLastOverlap + i;
-			assert(firstOffset < kmerSize);
-			if (!unitig[0].second) firstOffset = kmerSize - 1 - firstOffset;
-			assert(firstOffset < kmerSize);
-			size_t secondOffset = i;
-			if (!unitig.back().second) secondOffset = kmerSize - 1 - secondOffset;
-			assert(secondOffset < kmerSize);
-			merge(parent, rank, unitig[0].first, firstOffset, unitig.back().first, secondOffset);
+			assert(firstToLastOverlap < kmerSize);
+			for (size_t i = 0; i < firstToLastOverlap; i++)
+			{
+				size_t firstOffset = kmerSize - firstToLastOverlap + i;
+				assert(firstOffset < kmerSize);
+				if (!unitig[0].second) firstOffset = kmerSize - 1 - firstOffset;
+				assert(firstOffset < kmerSize);
+				size_t secondOffset = i;
+				if (!unitig.back().second) secondOffset = kmerSize - 1 - secondOffset;
+				assert(secondOffset < kmerSize);
+				merge(parent, rank, unitig[0].first, firstOffset, unitig.back().first, secondOffset);
+			}
+		}
+		size_t lastToFirstOverlap = kmerSize;
+		for (size_t i = unitig.size()-2; i > 0; i--)
+		{
+			size_t overlap = hashlist.getOverlap(unitig[i], unitig[i+1]);
+			assert(overlap < kmerSize);
+			size_t removeOverlap = kmerSize - overlap;
+			if (removeOverlap > lastToFirstOverlap)
+			{
+				lastToFirstOverlap = 0;
+				break;
+			}
+			lastToFirstOverlap -= removeOverlap;
+			for (size_t j = 0; j < kmerSize; j++)
+			{
+				parent[unitig[i].first].emplace_back(unitig[i].first, j);
+				rank[unitig[i].first].emplace_back(0);
+			}
+			for (size_t j = 0; j < lastToFirstOverlap; j++)
+			{
+				size_t firstOffset = j;
+				assert(firstOffset < kmerSize);
+				if (!unitig.back().second) firstOffset = kmerSize - 1 - firstOffset;
+				assert(firstOffset < kmerSize);
+				size_t secondOffset = kmerSize - lastToFirstOverlap + j;
+				if (!unitig[i].second) secondOffset = kmerSize - 1 - secondOffset;
+				assert(secondOffset < kmerSize);
+				merge(parent, rank, unitig.back().first, firstOffset, unitig[i].first, secondOffset);
+			}
 		}
 	}
 	for (size_t unitig = 0; unitig < unitigs.edges.size(); unitig++)
