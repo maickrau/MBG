@@ -1314,8 +1314,13 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 	}
 	if (addedAny)
 	{
-		if (minUnitigCoverage > 1) unitigs = unitigs.filterUnitigsByCoverage(minUnitigCoverage);
 		unitigs = getUnitigs(unitigs);
+		if (minUnitigCoverage > 1)
+		{
+			size_t oldSize = unitigs.unitigs.size();
+			unitigs = unitigs.filterUnitigsByCoverage(minUnitigCoverage);
+			if (unitigs.unitigs.size() != oldSize) unitigs = getUnitigs(unitigs);
+		}
 	}
 }
 
