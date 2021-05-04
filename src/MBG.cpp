@@ -1218,7 +1218,7 @@ bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, std:
 	return addedAny;
 }
 
-void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t kmerSize)
+void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t kmerSize, const double minUnitigCoverage)
 {
 	std::unordered_map<uint64_t, unsigned char> approxNeighbors;
 	for (size_t i = 0; i < unitigs.edges.size(); i++)
@@ -1314,6 +1314,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 	}
 	if (addedAny)
 	{
+		if (minUnitigCoverage > 1) unitigs = unitigs.filterUnitigsByCoverage(minUnitigCoverage);
 		unitigs = getUnitigs(unitigs);
 	}
 }
@@ -1339,7 +1340,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	}
 	else
 	{
-		if (windowSize > 1) forceEdgeDeterminism(reads, unitigs, kmerSize);
+		if (windowSize > 1) forceEdgeDeterminism(reads, unitigs, kmerSize, minUnitigCoverage);
 		beforeConsistency = getTime();
 		if (!collapseRunLengths) forceEdgeConsistency(unitigs, reads, kmerSize);
 		beforeWrite = getTime();
