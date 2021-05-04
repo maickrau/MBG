@@ -112,28 +112,6 @@ UnitigGraph UnitigGraph::filterUnitigsByCoverage(const double filter)
 		if (averageCoverage(i) < filter) kept[i] = false;
 	}
 	UnitigGraph filtered = filterNodes(kept);
-	std::set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> removeEdges;
-	for (size_t i = 0; i < filtered.unitigs.size(); i++)
-	{
-		std::pair<size_t, bool> fw { i, true };
-		std::pair<size_t, bool> bw { i, false };
-		for (auto edge : filtered.edges[fw])
-		{
-			if (filtered.edgeCoverage(fw, edge) >= filter) continue;
-			removeEdges.emplace(std::make_pair(fw, edge));
-		}
-		for (auto edge : filtered.edges[bw])
-		{
-			if (filtered.edgeCoverage(bw, edge) >= filter) continue;
-			removeEdges.emplace(std::make_pair(bw, edge));
-		}
-	}
-	for (auto edge : removeEdges)
-	{
-		filtered.edges[edge.first].erase(edge.second);
-		filtered.edges[reverse(edge.second)].erase(reverse(edge.first));
-		filtered.edgeCoverage(edge.first, edge.second) = 0;
-	}
 	return filtered;
 }
 
