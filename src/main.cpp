@@ -14,7 +14,7 @@ int main(int argc, char** argv)
 		("o,out", "Output graph (required)", cxxopts::value<std::string>())
 		("t", "Number of threads", cxxopts::value<size_t>()->default_value("1"))
 		("k", "K-mer size. Must be odd and >=31 (required)", cxxopts::value<size_t>())
-		("w", "Window size. Must be 1 <= w <= k-30 (required)", cxxopts::value<size_t>())
+		("w", "Window size. Must be 1 <= w <= k-30 (default k-30)", cxxopts::value<size_t>())
 		("a,kmer-abundance", "Minimum k-mer abundance", cxxopts::value<size_t>()->default_value("1"))
 		("u,unitig-abundance", "Minimum average unitig abundace and edge abundance", cxxopts::value<double>()->default_value("2"))
 		("no-hpc", "Don't use homopolymer compression")
@@ -48,16 +48,19 @@ int main(int argc, char** argv)
 		std::cerr << "Select k-mer size -k" << std::endl;
 		paramError = true;
 	}
-	if (params.count("w") == 0)
-	{
-		std::cerr << "Select window size -w" << std::endl;
-		paramError = true;
-	}
 	if (paramError) std::exit(1);
 	std::vector<std::string> inputReads = params["i"].as<std::vector<std::string>>();
 	std::string outputGraph = params["o"].as<std::string>();
 	size_t kmerSize = params["k"].as<size_t>();
-	size_t windowSize = params["w"].as<size_t>();
+	size_t windowSize = 1;
+	if (params.count("w") == 1)
+	{
+		windowSize = params["w"].as<size_t>();
+	}
+	else
+	{
+		windowSize = kmerSize - 30;
+	}
 	size_t minCoverage = params["a"].as<size_t>();
 	double minUnitigCoverage = params["u"].as<double>();
 	size_t numThreads = params["t"].as<size_t>();
@@ -73,12 +76,12 @@ int main(int argc, char** argv)
 		std::cerr << "Number of threads cannot be 0" << std::endl;
 		paramError = true;
 	}
-	if (windowSize > kmerSize)
+	if (params.count("w") == 1 && windowSize > kmerSize)
 	{
 		std::cerr << "Window size cannot be greater than k-mer size" << std::endl;
 		paramError = true;
 	}
-	if (windowSize == 0)
+	if (params.count("w") == 1 && windowSize == 0)
 	{
 		std::cerr << "Window size must be >0" << std::endl;
 		paramError = true;
@@ -93,7 +96,7 @@ int main(int argc, char** argv)
 		std::cerr << "Minimum k-mer size is 31" << std::endl;
 		paramError = true;
 	}
-	if (windowSize > kmerSize - 30)
+	if (params.count("w") == 1 && windowSize > kmerSize - 30)
 	{
 		std::cerr << "Window size must be <= k-30. With current k (" << kmerSize << ") maximum w is " << kmerSize - 30 << std::endl;
 		paramError = true;
