@@ -22,7 +22,7 @@ public:
 	size_t numNodes() const;
 	size_t numEdges() const;
 	UnitigGraph filterUnitigsByCoverage(const double filter);
-	std::pair<std::string, std::vector<uint16_t>> getSequenceAndLength(size_t unitig, const HashList& hashlist) const;
+	std::pair<std::vector<uint16_t>, std::vector<uint16_t>> getSequenceAndLength(size_t unitig, const HashList& hashlist) const;
 };
 
 #endif

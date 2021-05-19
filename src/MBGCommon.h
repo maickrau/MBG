@@ -3,16 +3,18 @@
 
 #include <fstream>
 #include <tuple>
+#include <string_view>
+#include "VectorView.h"
 
 using HashType = unsigned __int128;
 using NodeType = size_t;
 
 HashType hash(std::string_view sequence);
+HashType hash(VectorView<uint16_t> sequence);
 std::ostream& operator<<(std::ostream& os, HashType t);
 std::istream& operator>>(std::istream& is, HashType& t);
 std::pair<size_t, bool> reverse(std::pair<size_t, bool> pos);
 std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> canon(std::pair<size_t, bool> from, std::pair<size_t, bool> to);
-std::string revCompRLE(const std::string& original);
 
 namespace std
 {

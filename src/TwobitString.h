@@ -4,20 +4,21 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include "VectorView.h"
 
 class TwobitString
 {
 public:
 	TwobitString();
-	TwobitString(const std::string_view& str);
-	char get(size_t i) const;
-	void set(size_t i, char c);
+	TwobitString(VectorView<uint16_t> str);
+	uint16_t get(size_t i) const;
+	void set(size_t i, uint16_t c);
 	size_t size() const;
-	TwobitString& operator=(const std::string& str);
-	TwobitString& operator=(const std::string_view& str);
-	std::string toString() const;
+	TwobitString& operator=(const std::vector<uint16_t>& str);
+	TwobitString& operator=(VectorView<uint16_t> str);
+	std::vector<uint16_t> toString() const;
 	void resize(size_t size);
-	void push_back(char c);
+	void push_back(uint16_t c);
 	template <typename Iter>
 	void insert(Iter start, Iter end)
 	{
@@ -29,8 +30,7 @@ public:
 		}
 	}
 private:
-	std::vector<unsigned char> data;
-	size_t realSize;
+	std::vector<uint16_t> data;
 };
 
 
@@ -38,18 +38,16 @@ class TwobitView
 {
 public:
 	TwobitView(const TwobitString& str, const size_t start, const size_t end);
-	char operator[](size_t i) const;
+	uint16_t operator[](size_t i) const;
 	size_t size() const;
-	std::string toString() const;
-	std::string toSubstring(size_t substrStart) const;
+	std::vector<uint16_t> toString() const;
+	std::vector<uint16_t> toSubstring(size_t substrStart) const;
 private:
 	const TwobitString& str;
 	const size_t start;
 	const size_t end;
 };
 
-unsigned char revCompRLE(const unsigned char original);
-TwobitString revCompRLE(const TwobitString& original);
-TwobitString revCompRLE(const TwobitView& original);
+TwobitString revCompMultiRLE(const TwobitString& str);
 
 #endif

@@ -1,41 +1,33 @@
 #include <cassert>
 #include "TwobitString.h"
+#include "MultiRLE.h"
 
 TwobitString::TwobitString() :
-data(),
-realSize(0)
+data()
 {}
 
-TwobitString::TwobitString(const std::string_view& str) :
-data(),
-realSize(0)
+TwobitString::TwobitString(VectorView<uint16_t> str) :
+data()
 {
 	*this = str;
 }
 
-char TwobitString::get(size_t i) const
+uint16_t TwobitString::get(size_t i) const
 {
-	size_t pos = i / 4;
-	size_t off = (i % 4) * 2;
-	return ((data[pos] >> off) & 3) + 1;
+	return data[i];
 }
 
-void TwobitString::set(size_t i, char c)
+void TwobitString::set(size_t i, uint16_t c)
 {
-	assert(c >= 1);
-	assert(c <= 4);
-	size_t pos = i / 4;
-	size_t off = (i % 4) * 2;
-	data[pos] &= ~(3 << off);
-	data[pos] |= (c-1) << off;
+	data[i] = c;
 }
 
 size_t TwobitString::size() const
 {
-	return realSize;
+	return data.size();
 }
 
-TwobitString& TwobitString::operator=(const std::string& str)
+TwobitString& TwobitString::operator=(const std::vector<uint16_t>& str)
 {
 	data.clear();
 	resize(str.size());
@@ -46,7 +38,7 @@ TwobitString& TwobitString::operator=(const std::string& str)
 	return *this;
 }
 
-TwobitString& TwobitString::operator=(const std::string_view& str)
+TwobitString& TwobitString::operator=(VectorView<uint16_t> str)
 {
 	data.clear();
 	resize(str.size());
@@ -59,25 +51,17 @@ TwobitString& TwobitString::operator=(const std::string_view& str)
 
 void TwobitString::resize(size_t size)
 {
-	size_t max = (size + 3) / 4;
-	data.resize(max, 0);
-	realSize = size;
+	data.resize(size);
 }
 
-void TwobitString::push_back(char c)
+void TwobitString::push_back(uint16_t c)
 {
-	size_t pos = realSize / 4;
-	if (pos >= data.size())
-	{
-		data.resize(data.size() * 2, 0);
-	}
-	set(realSize, c);
-	realSize += 1;
+	data.push_back(c);
 }
 
-std::string TwobitString::toString() const
+std::vector<uint16_t> TwobitString::toString() const
 {
-	std::string result;
+	std::vector<uint16_t> result;
 	result.reserve(size());
 	for (size_t i = 0; i < size(); i++)
 	{
@@ -92,7 +76,7 @@ start(start),
 end(end)
 {}
 
-char TwobitView::operator[](size_t i) const
+uint16_t TwobitView::operator[](size_t i) const
 {
 	return str.get(start+i);
 }
@@ -102,9 +86,9 @@ size_t TwobitView::size() const
 	return end-start;
 }
 
-std::string TwobitView::toString() const
+std::vector<uint16_t> TwobitView::toString() const
 {
-	std::string result;
+	std::vector<uint16_t> result;
 	result.reserve(end - start);
 	for (size_t i = start; i < end; i++)
 	{
@@ -113,10 +97,10 @@ std::string TwobitView::toString() const
 	return result;
 }
 
-std::string TwobitView::toSubstring(size_t substrStart) const
+std::vector<uint16_t> TwobitView::toSubstring(size_t substrStart) const
 {
 	assert(start + substrStart < end);
-	std::string result;
+	std::vector<uint16_t> result;
 	result.reserve(end - (start + substrStart));
 	for (size_t i = start + substrStart; i < end; i++)
 	{
@@ -125,32 +109,14 @@ std::string TwobitView::toSubstring(size_t substrStart) const
 	return result;
 }
 
-TwobitString revCompRLE(const TwobitView& original)
+TwobitString revCompMultiRLE(const TwobitString& str)
 {
-	static char mapping[5] { 0, 4, 3, 2, 1 };
 	TwobitString result;
-	result.resize(original.size());
-	for (size_t i = 0; i < result.size(); i++)
+	result.resize(str.size());
+	for (size_t i = 0; i < str.size(); i++)
 	{
-		result.set(i, mapping[(int)original[original.size()-1-i]]);
+		result.set(i, reverseComplement(str.get(str.size()-i-1)));
 	}
 	return result;
 }
 
-TwobitString revCompRLE(const TwobitString& original)
-{
-	static char mapping[5] { 0, 4, 3, 2, 1 };
-	TwobitString result;
-	result.resize(original.size());
-	for (size_t i = 0; i < result.size(); i++)
-	{
-		result.set(i, mapping[(int)original.get(original.size()-1-i)]);
-	}
-	return result;
-}
-
-unsigned char revCompRLE(const unsigned char original)
-{
-	static char mapping[5] { 0, 4, 3, 2, 1 };
-	return mapping[original];
-}

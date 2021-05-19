@@ -3,6 +3,7 @@
 #include <phmap.h>
 #include "MBGCommon.h"
 #include "UnitigGraph.h"
+#include "MultiRLE.h"
 
 size_t UnitigGraph::edgeCoverage(size_t from, bool fromFw, size_t to, bool toFw) const
 {
@@ -114,14 +115,14 @@ UnitigGraph UnitigGraph::filterUnitigsByCoverage(const double filter)
 	return filtered;
 }
 
-std::pair<std::string, std::vector<uint16_t>> UnitigGraph::getSequenceAndLength(size_t unitig, const HashList& hashlist) const
+std::pair<std::vector<uint16_t>, std::vector<uint16_t>> UnitigGraph::getSequenceAndLength(size_t unitig, const HashList& hashlist) const
 {
-	std::string sequenceRLE;
+	std::vector<uint16_t> sequenceRLE;
 	std::vector<uint16_t> sequenceCharacterLength;
 	for (size_t j = 0; j < unitigs[unitig].size(); j++)
 	{
 		auto to = unitigs[unitig][j];
-		std::string sequenceRLEHere;
+		std::vector<uint16_t> sequenceRLEHere;
 		std::vector<uint16_t> sequenceCharacterLengthHere = hashlist.getHashCharacterLength(to.first);
 		if (to.second)
 		{
@@ -129,7 +130,7 @@ std::pair<std::string, std::vector<uint16_t>> UnitigGraph::getSequenceAndLength(
 		}
 		else
 		{
-			sequenceRLEHere = revCompRLE(hashlist.getHashSequenceRLE(to.first)).toString();
+			sequenceRLEHere = revCompMultiRLE(hashlist.getHashSequenceRLE(to.first).toString());
 			std::reverse(sequenceCharacterLengthHere.begin(), sequenceCharacterLengthHere.end());
 		}
 		if (j > 0)
@@ -137,7 +138,7 @@ std::pair<std::string, std::vector<uint16_t>> UnitigGraph::getSequenceAndLength(
 			auto from = unitigs[unitig][j-1];
 			size_t overlap = hashlist.getOverlap(from, to);
 			assert(overlap < sequenceRLEHere.size());
-			sequenceRLEHere = sequenceRLEHere.substr(overlap);
+			sequenceRLEHere.erase(sequenceRLEHere.begin(), sequenceRLEHere.begin() + overlap);
 			sequenceCharacterLengthHere.erase(sequenceCharacterLengthHere.begin(), sequenceCharacterLengthHere.begin() + overlap);
 		}
 		sequenceRLE.insert(sequenceRLE.end(), sequenceRLEHere.begin(), sequenceRLEHere.end());

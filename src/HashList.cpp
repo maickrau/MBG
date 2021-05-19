@@ -2,6 +2,7 @@
 #include <thread>
 #include <chrono>
 #include "HashList.h"
+#include "MultiRLE.h"
 
 AdjacentMinimizerBucket::AdjacentMinimizerBucket() :
 	data(),
@@ -14,7 +15,7 @@ TwobitView AdjacentMinimizerBucket::getView(size_t coord1, size_t coord2, size_t
 	return TwobitView { data[coord1], coord2, coord2+size };
 }
 
-std::pair<size_t, size_t> AdjacentMinimizerBucket::addString(std::string_view str, HashType currentHash, HashType previousHash, size_t overlap)
+std::pair<size_t, size_t> AdjacentMinimizerBucket::addString(VectorView<uint16_t> str, HashType currentHash, HashType previousHash, size_t overlap)
 {
 	if (data.size() == 0 || lastHash == 0 || previousHash == 0 || previousHash != lastHash)
 	{
@@ -27,23 +28,6 @@ std::pair<size_t, size_t> AdjacentMinimizerBucket::addString(std::string_view st
 	lastHash = currentHash;
 	assert(data.back().size() >= str.size());
 	return std::make_pair(data.size()-1, data.back().size() - str.size());
-}
-
-AdjacentMinimizerBucket AdjacentMinimizerBucket::getReverseComplementStorage() const
-{
-	AdjacentMinimizerBucket result;
-	result.data.resize(data.size());
-	for (size_t i = 0; i < data.size(); i++)
-	{
-		result.data[i] = revCompRLE(data[i]);
-	}
-	return result;
-}
-
-std::pair<size_t, size_t> AdjacentMinimizerBucket::getRevCompLocation(size_t coord1, size_t coord2, size_t size) const
-{
-	assert(data[coord1].size() >= coord2 + size);
-	return std::make_pair(coord1, data[coord1].size() - size - coord2);
 }
 
 AdjacentLengthBucket::AdjacentLengthBucket() :
@@ -152,26 +136,11 @@ size_t AdjacentMinimizerList::hashToBucket(HashType hash) const
 	return hash % buckets.size();
 }
 
-std::pair<size_t, std::pair<size_t, size_t>> AdjacentMinimizerList::addString(std::string_view str, HashType currentHash, HashType previousHash, size_t overlap, uint64_t bucketHash)
+std::pair<size_t, std::pair<size_t, size_t>> AdjacentMinimizerList::addString(VectorView<uint16_t> str, HashType currentHash, HashType previousHash, size_t overlap, uint64_t bucketHash)
 {
 	size_t bucket = hashToBucket(bucketHash);
 	std::lock_guard<std::mutex> lock { bucketMutexes[bucket] };
 	return std::make_pair(bucket, buckets[bucket].addString(str, currentHash, previousHash, overlap));
-}
-
-AdjacentMinimizerList AdjacentMinimizerList::getReverseComplementStorage() const
-{
-	AdjacentMinimizerList result { buckets.size() };
-	for (size_t i = 0; i < buckets.size(); i++)
-	{
-		result.buckets[i] = buckets[i].getReverseComplementStorage();
-	}
-	return result;
-}
-
-std::pair<size_t, std::pair<size_t, size_t>> AdjacentMinimizerList::getRevCompLocation(size_t bucket, std::pair<size_t, size_t> coords, size_t size) const
-{
-	return std::make_pair(bucket, buckets[bucket].getRevCompLocation(coords.first, coords.second, size));
 }
 
 AdjacentLengthList::AdjacentLengthList(size_t numBuckets) :
@@ -284,7 +253,7 @@ TwobitView HashList::getHashSequenceRLE(size_t index) const
 	return hashSequences.getView(hashSeqPtr[index].first, hashSeqPtr[index].second, kmerSize);
 }
 
-std::pair<size_t, bool> HashList::getNodeOrNull(std::string_view sequence) const
+std::pair<size_t, bool> HashList::getNodeOrNull(VectorView<uint16_t> sequence) const
 {
 	HashType fwHash = hash(sequence);
 	auto found = hashToNode.find(fwHash);
@@ -301,7 +270,7 @@ void HashList::addEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, b
 	edgeCoverage[from][to] += 1;
 }
 
-std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t bucketHash)
+std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(VectorView<uint16_t> sequence, VectorView<uint16_t> reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t bucketHash)
 {
 	HashType fwHash = hash(sequence);
 	start_without_sleep:

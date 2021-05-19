@@ -8,7 +8,6 @@
 #include <vector>
 #include <string>
 #include <cstdint>
-#include <string_view>
 #include <phmap.h>
 #include <thread>
 #include <concurrentqueue.h> //https://github.com/cameron314/concurrentqueue
@@ -23,102 +22,14 @@
 #include "HashList.h"
 #include "UnitigGraph.h"
 #include "BluntGraph.h"
+#include "MultiRLE.h"
+#include "VectorView.h"
 
-std::vector<std::pair<std::string, std::vector<uint16_t>>> runLengthEncode(const std::string& original)
+std::vector<std::pair<std::vector<uint16_t>, std::vector<uint16_t>>> noRunLengthEncode(const std::string& original)
 {
 	assert(original.size() > 0);
-	std::string resultStr;
-	std::vector<uint16_t> lens;
-	std::vector<std::pair<std::string, std::vector<uint16_t>>> result;
-	resultStr.reserve(original.size());
-	lens.reserve(original.size());
-	lens.push_back(1);
-	switch(original[0])
-	{
-		case 'a':
-		case 'A':
-			resultStr.push_back(1);
-			break;
-		case 'c':
-		case 'C':
-			resultStr.push_back(2);
-			break;
-		case 'g':
-		case 'G':
-			resultStr.push_back(3);
-			break;
-		case 't':
-		case 'T':
-			resultStr.push_back(4);
-			break;
-		default:
-			break;
-	}
-	for (size_t i = 1; i < original.size(); i++)
-	{
-		switch(original[i])
-		{
-			case 'a':
-			case 'A':
-			case 'c':
-			case 'C':
-			case 'g':
-			case 'G':
-			case 't':
-			case 'T':
-			{
-				if (original[i] == original[i-1])
-				{
-					lens.back() += 1;
-					continue;
-				}
-				lens.push_back(1);
-				switch(original[i])
-				{
-					case 'a':
-					case 'A':
-						resultStr.push_back(1);
-						break;
-					case 'c':
-					case 'C':
-						resultStr.push_back(2);
-						break;
-					case 'g':
-					case 'G':
-						resultStr.push_back(3);
-						break;
-					case 't':
-					case 'T':
-						resultStr.push_back(4);
-						break;
-					default:
-						assert(false);
-						break;
-				}
-				break;
-			}
-			default:
-			{
-				if (resultStr.size() == 0) continue;
-				result.emplace_back(std::move(resultStr), std::move(lens));
-				resultStr.clear();
-				lens.clear();
-				break;
-			}
-		}
-	}
-	if (resultStr.size() > 0)
-	{
-		result.emplace_back(std::move(resultStr), std::move(lens));
-	}
-	return result;
-}
-
-std::vector<std::pair<std::string, std::vector<uint16_t>>> noRunLengthEncode(const std::string& original)
-{
-	assert(original.size() > 0);
-	std::vector<std::pair<std::string, std::vector<uint16_t>>> result;
-	std::string resultStr;
+	std::vector<std::pair<std::vector<uint16_t>, std::vector<uint16_t>>> result;
+	std::vector<uint16_t> resultStr;
 	resultStr.reserve(original.size());
 	for (size_t i = 0; i < original.size(); i++)
 	{
@@ -126,19 +37,19 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> noRunLengthEncode(con
 		{
 			case 'a':
 			case 'A':
-				resultStr.push_back(1);
+				resultStr.push_back(0);
 				break;
 			case 'c':
 			case 'C':
-				resultStr.push_back(2);
+				resultStr.push_back(1);
 				break;
 			case 'g':
 			case 'G':
-				resultStr.push_back(3);
+				resultStr.push_back(2);
 				break;
 			case 't':
 			case 'T':
-				resultStr.push_back(4);
+				resultStr.push_back(3);
 				break;
 			default:
 				if (resultStr.size() == 0) continue;
@@ -155,7 +66,7 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> noRunLengthEncode(con
 }
 
 template <typename F>
-uint64_t findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, F callback)
+uint64_t findSyncmerPositions(const std::vector<uint16_t>& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, F callback)
 {
 	if (sequence.size() < kmerSize) return 0;
 	assert(smerSize <= kmerSize);
@@ -244,10 +155,10 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 				}
 				assert(read != nullptr);
 				if (read->sequence.size() == 0) continue;
-				std::vector<std::pair<std::string, std::vector<uint16_t>>> parts;
+				std::vector<std::pair<std::vector<uint16_t>, std::vector<uint16_t>>> parts;
 				if (hpc)
 				{
-					parts = runLengthEncode(read->sequence);
+					parts = multiRLECompress(read->sequence);
 				}
 				else
 				{
@@ -255,10 +166,10 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 				}
 				for (size_t i = 0; i < parts.size(); i++)
 				{
-					std::string& seq = parts[i].first;
+					std::vector<uint16_t>& seq = parts[i].first;
 					std::vector<uint16_t>& lens = parts[i].second;
 					if (seq.size() <= kmerSize + windowSize) continue;
-					std::string revSeq = revCompRLE(seq);
+					std::vector<uint16_t> revSeq = revCompMultiRLE(seq);
 					size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 					std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
 					HashType lastHash = 0;
@@ -273,9 +184,9 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 						assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
 						assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= windowSize);
 						assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
-						std::string_view minimizerSequence { seq.data() + pos, kmerSize };
+						VectorView<uint16_t> minimizerSequence { seq, pos, pos + kmerSize };
 						size_t revPos = seq.size() - (pos + kmerSize);
-						std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
+						VectorView<uint16_t> revMinimizerSequence { revSeq, revPos, revPos + kmerSize };
 						std::pair<size_t, bool> current;
 						size_t overlap = lastMinimizerPosition + kmerSize - pos;
 						std::tie(current, lastHash) = result.addNode(minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, minHash);
@@ -626,30 +537,7 @@ UnitigGraph getUnitigs(const UnitigGraph& oldgraph)
 	return result;
 }
 
-std::string getSequence(const std::string& rle)
-{
-	std::string result;
-	for (size_t i = 0; i < rle.size(); i++)
-	{
-		result += "-ACGT"[(int)rle[i]];
-	}
-	return result;
-}
-
-std::string getSequence(const std::string& rle, const std::vector<uint16_t>& characterLength)
-{
-	std::string result;
-	assert(rle.size() == characterLength.size());
-	for (size_t i = 0; i < rle.size(); i++)
-	{
-		for (size_t j = 0; j < characterLength[i]; j++)
-		{
-			result += "-ACGT"[(int)rle[i]];
-		}
-	}
-	return result;
-}
-
+// todo fix
 size_t getOverlapFromRLE(const HashList& hashlist, std::pair<size_t, bool> from, std::pair<size_t, bool> to)
 {
 	size_t overlap = hashlist.getOverlap(from, to);
@@ -704,7 +592,7 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
 		{
 			auto to = unitigs.unitigs[i][j];
-			std::string sequenceRLE;
+			std::vector<uint16_t> sequenceRLE;
 			std::vector<uint16_t> sequenceCharacterLength = hashlist.getHashCharacterLength(to.first);
 			if (to.second)
 			{
@@ -712,7 +600,7 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 			}
 			else
 			{
-				sequenceRLE = revCompRLE(hashlist.getHashSequenceRLE(to.first)).toString();
+				sequenceRLE = revCompMultiRLE(hashlist.getHashSequenceRLE(to.first).toString());
 				std::reverse(sequenceCharacterLength.begin(), sequenceCharacterLength.end());
 			}
 			if (j > 0 && j < unitigs.unitigs[i].size()-1)
@@ -720,7 +608,7 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 				auto from = unitigs.unitigs[i][j-1];
 				size_t overlap = hashlist.getOverlap(from, to);
 				assert(overlap < sequenceRLE.size());
-				sequenceRLE = sequenceRLE.substr(overlap);
+				sequenceRLE.erase(sequenceRLE.begin(), sequenceRLE.begin() + overlap);
 				sequenceCharacterLength.erase(sequenceCharacterLength.begin(), sequenceCharacterLength.begin() + overlap);
 			}
 			assert(prunt <= printBeforeLast);
@@ -730,7 +618,7 @@ void writeGraph(const UnitigGraph& unitigs, const std::string& filename, const H
 				sequenceCharacterLength.erase(sequenceCharacterLength.begin() + printBeforeLast - prunt, sequenceCharacterLength.end());
 			}
 			prunt += sequenceRLE.size();
-			std::string sequence = getSequence(sequenceRLE, sequenceCharacterLength);
+			std::string sequence = multiRLEDecompress(sequenceRLE, sequenceCharacterLength);
 			file << sequence;
 			length += sequence.size();
 		}
@@ -836,7 +724,7 @@ AssemblyStats getSizeAndN50(const HashList& hashlist, const UnitigGraph& graph, 
 		for (size_t j = 0; j < unitig.size(); j++)
 		{
 			auto to = unitig[j];
-			std::string sequenceRLE;
+			std::vector<uint16_t> sequenceRLE;
 			std::vector<uint16_t> sequenceCharacterLength = hashlist.getHashCharacterLength(to.first);
 			if (to.first)
 			{
@@ -844,7 +732,7 @@ AssemblyStats getSizeAndN50(const HashList& hashlist, const UnitigGraph& graph, 
 			}
 			else
 			{
-				sequenceRLE = revCompRLE(hashlist.getHashSequenceRLE(to.first)).toString();
+				sequenceRLE = revCompMultiRLE(hashlist.getHashSequenceRLE(to.first).toString());
 				std::reverse(sequenceCharacterLength.begin() ,sequenceCharacterLength.end());
 			}
 			if (j > 0)
@@ -852,10 +740,10 @@ AssemblyStats getSizeAndN50(const HashList& hashlist, const UnitigGraph& graph, 
 				auto from = unitig[j-1];
 				size_t overlap = hashlist.getOverlap(from, to);
 				assert(overlap < sequenceRLE.size());
-				sequenceRLE = sequenceRLE.substr(overlap);
+				sequenceRLE.erase(sequenceRLE.begin(), sequenceRLE.begin() + overlap);
 				sequenceCharacterLength.erase(sequenceCharacterLength.begin(), sequenceCharacterLength.begin() + overlap);
 			}
-			length += getSequence(sequenceRLE, sequenceCharacterLength).size();
+			length += multiRLEDecompress(sequenceRLE, sequenceCharacterLength).size();
 		}
 		total += length;
 		sizes.push_back(length);
@@ -1016,7 +904,8 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, const 
 		{
 			auto found = find(parent, std::make_pair(node, i));
 			size_t length = hashlist.getRunLength(found.first, found.second);
-			assert(length > 0);
+			// can be zero because of overlapping multi-RLE
+			// assert(length > 0);
 			hashlist.setRunLength(node, i, length);
 		}
 	}
@@ -1024,12 +913,12 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, const 
 
 void collectApproxNeighbors(std::unordered_map<uint64_t, unsigned char>& approxNeighbors, HashList& hashlist, const size_t kmerSize, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
 {
-	std::string fromSequence = hashlist.getHashSequenceRLE(fromKmer.first).toString();
-	if (!fromKmer.second) fromSequence = revCompRLE(fromSequence);
-	std::string toSequence = hashlist.getHashSequenceRLE(toKmer.first).toString();
-	if (!toKmer.second) toSequence = revCompRLE(toSequence);
+	std::vector<uint16_t> edgeSequence = hashlist.getHashSequenceRLE(fromKmer.first).toString();
+	if (!fromKmer.second) edgeSequence = revCompMultiRLE(edgeSequence);
+	std::vector<uint16_t> toSequence = hashlist.getHashSequenceRLE(toKmer.first).toString();
+	if (!toKmer.second) toSequence = revCompMultiRLE(toSequence);
 	size_t overlap = hashlist.getOverlap(fromKmer, toKmer);
-	std::string edgeSequence = fromSequence + toSequence.substr(overlap);
+	edgeSequence.insert(edgeSequence.end(), toSequence.begin()+overlap, toSequence.end());
 	assert(edgeSequence.size() > kmerSize);
 	assert(edgeSequence.size() == kmerSize + kmerSize - overlap);
 	assert(edgeSequence.size() < 2 * kmerSize);
@@ -1047,55 +936,19 @@ void collectApproxNeighbors(std::unordered_map<uint64_t, unsigned char>& approxN
 		auto newBwHash = fwkmerHasher.getBwHash();
 		if (approxNeighbors.count(oldFwHash) == 1 && approxNeighbors.at(oldFwHash) != edgeSequence[i]) approxNeighbors[oldFwHash] = std::numeric_limits<unsigned char>::max();
 		if (approxNeighbors.count(oldFwHash) == 0) approxNeighbors[oldFwHash] = edgeSequence[i];
-		if (approxNeighbors.count(newBwHash) == 1 && approxNeighbors.at(newBwHash) != revCompRLE(edgeSequence[i-kmerSize])) approxNeighbors[newBwHash] = std::numeric_limits<unsigned char>::max();
-		if (approxNeighbors.count(newBwHash) == 0) approxNeighbors[newBwHash] = revCompRLE(edgeSequence[i-kmerSize]);
-	}
-}
-
-void collectExactNeighbors(const std::unordered_map<uint64_t, unsigned char>& approxNeighbors, std::unordered_map<HashType, unsigned char>& exactNeighbors, HashList& hashlist, const size_t kmerSize, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
-{
-	std::string fromSequence = hashlist.getHashSequenceRLE(fromKmer.first).toString();
-	if (!fromKmer.second) fromSequence = revCompRLE(fromSequence);
-	std::string toSequence = hashlist.getHashSequenceRLE(toKmer.first).toString();
-	if (!toKmer.second) toSequence = revCompRLE(toSequence);
-	size_t overlap = hashlist.getOverlap(fromKmer, toKmer);
-	std::string edgeSequence = fromSequence + toSequence.substr(overlap);
-	assert(edgeSequence.size() > kmerSize);
-	assert(edgeSequence.size() == kmerSize + kmerSize - overlap);
-	assert(edgeSequence.size() < 2 * kmerSize);
-	if (edgeSequence.size() == kmerSize + 1) return;
-	FastHasher fwkmerHasher { kmerSize };
-	for (size_t i = 0; i < kmerSize; i++)
-	{
-		fwkmerHasher.addChar(edgeSequence[i]);
-	}
-	for (size_t i = kmerSize; i < edgeSequence.size(); i++)
-	{
-		auto oldFwHash = fwkmerHasher.getFwHash();
-		fwkmerHasher.addChar(edgeSequence[i]);
-		fwkmerHasher.removeChar(edgeSequence[i-kmerSize]);
-		auto newBwHash = fwkmerHasher.getBwHash();
-		assert(approxNeighbors.count(oldFwHash) == 1);
-		assert(approxNeighbors.count(newBwHash) == 1);
-		// neither is a junction node if both not in approx
-		if (approxNeighbors.at(oldFwHash) != std::numeric_limits<unsigned char>::max() && approxNeighbors.at(newBwHash) != std::numeric_limits<unsigned char>::max()) continue;
-		HashType oldFwExactHash = hash(edgeSequence.substr(i-kmerSize, kmerSize));
-		HashType newBwExactHash = hash(revCompRLE(edgeSequence.substr(i-kmerSize+1, kmerSize)));
-		if (exactNeighbors.count(oldFwExactHash) == 1 && exactNeighbors.at(oldFwExactHash) != edgeSequence[i]) exactNeighbors[oldFwExactHash] = std::numeric_limits<unsigned char>::max();
-		if (exactNeighbors.count(oldFwExactHash) == 0) exactNeighbors[oldFwExactHash] = edgeSequence[i];
-		if (exactNeighbors.count(newBwExactHash) == 1 && exactNeighbors.at(newBwExactHash) != revCompRLE(edgeSequence[i-kmerSize])) exactNeighbors[newBwExactHash] = std::numeric_limits<unsigned char>::max();
-		if (exactNeighbors.count(newBwExactHash) == 0) exactNeighbors[newBwExactHash] = revCompRLE(edgeSequence[i-kmerSize]);
+		if (approxNeighbors.count(newBwHash) == 1 && approxNeighbors.at(newBwHash) != reverseComplement(edgeSequence[i-kmerSize])) approxNeighbors[newBwHash] = std::numeric_limits<unsigned char>::max();
+		if (approxNeighbors.count(newBwHash) == 0) approxNeighbors[newBwHash] = reverseComplement(edgeSequence[i-kmerSize]);
 	}
 }
 
 void collectJunctionHashes(const std::unordered_map<uint64_t, unsigned char>& approxNeighbors, std::unordered_set<uint64_t>& approxHashes, HashList& hashlist, const size_t kmerSize, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
 {
-	std::string fromSequence = hashlist.getHashSequenceRLE(fromKmer.first).toString();
-	if (!fromKmer.second) fromSequence = revCompRLE(fromSequence);
-	std::string toSequence = hashlist.getHashSequenceRLE(toKmer.first).toString();
-	if (!toKmer.second) toSequence = revCompRLE(toSequence);
+	std::vector<uint16_t> edgeSequence = hashlist.getHashSequenceRLE(fromKmer.first).toString();
+	if (!fromKmer.second) edgeSequence = revCompMultiRLE(edgeSequence);
+	std::vector<uint16_t> toSequence = hashlist.getHashSequenceRLE(toKmer.first).toString();
+	if (!toKmer.second) toSequence = revCompMultiRLE(toSequence);
 	size_t overlap = hashlist.getOverlap(fromKmer, toKmer);
-	std::string edgeSequence = fromSequence + toSequence.substr(overlap);
+	edgeSequence.insert(edgeSequence.end(), toSequence.begin()+overlap, toSequence.end());
 	assert(edgeSequence.size() > kmerSize);
 	assert(edgeSequence.size() == kmerSize + kmerSize - overlap);
 	assert(edgeSequence.size() < 2 * kmerSize);
@@ -1124,17 +977,17 @@ void collectJunctionHashes(const std::unordered_map<uint64_t, unsigned char>& ap
 
 bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, std::unordered_map<NodeType, std::pair<size_t, bool>>& belongsToUnitig, std::set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>>& addEdges, HashList& hashlist, UnitigGraph& unitigs, const size_t kmerSize, std::pair<size_t, bool> unitigPosition, std::pair<size_t, bool> toUnitigPosition, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
 {
-	std::string fromSequence = hashlist.getHashSequenceRLE(fromKmer.first).toString();
-	if (!fromKmer.second) fromSequence = revCompRLE(fromSequence);
-	std::string toSequence = hashlist.getHashSequenceRLE(toKmer.first).toString();
-	if (!toKmer.second) toSequence = revCompRLE(toSequence);
+	std::vector<uint16_t> edgeSequence = hashlist.getHashSequenceRLE(fromKmer.first).toString();
+	if (!fromKmer.second) edgeSequence = revCompMultiRLE(edgeSequence);
+	std::vector<uint16_t> toSequence = hashlist.getHashSequenceRLE(toKmer.first).toString();
+	if (!toKmer.second) toSequence = revCompMultiRLE(toSequence);
 	size_t bigOverlap = hashlist.getOverlap(fromKmer, toKmer); // actually the smallest overlap in the entire function
 	assert(bigOverlap < kmerSize);
-	std::string edgeSequence = fromSequence + toSequence.substr(bigOverlap);
+	edgeSequence.insert(edgeSequence.end(), toSequence.begin() + bigOverlap, toSequence.end());
 	assert(edgeSequence.size() > kmerSize);
 	assert(edgeSequence.size() < 2 * kmerSize);
 	if (edgeSequence.size() == kmerSize + 1) return false;
-	std::string revSeq = revCompRLE(edgeSequence);
+	std::vector<uint16_t> revSeq = revCompMultiRLE(edgeSequence);
 	std::vector<uint16_t> lens;
 	lens = hashlist.getHashCharacterLength(fromKmer.first);
 	if (!fromKmer.second) std::reverse(lens.begin(), lens.end());
@@ -1166,9 +1019,9 @@ bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, std:
 		HashType lastHash = 0;
 		uint64_t minHash = 0;
 
-		std::string_view minimizerSequence { edgeSequence.data() + kmerStartPos, kmerSize };
+		VectorView<uint16_t> minimizerSequence { edgeSequence, kmerStartPos, kmerStartPos + kmerSize };
 		size_t revPos = edgeSequence.size() - (kmerStartPos + kmerSize);
-		std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
+		VectorView<uint16_t> revMinimizerSequence { revSeq, revPos, revPos + kmerSize };
 		std::pair<size_t, bool> current;
 		std::tie(current, lastHash) = hashlist.addNode(minimizerSequence, revMinimizerSequence, lens, kmerStartPos, kmerStartPos+kmerSize, lastHash, overlap, minHash);
 		hashlist.addSequenceOverlap(lastKmer, current, overlap);

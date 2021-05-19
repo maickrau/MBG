@@ -14,9 +14,7 @@ class AdjacentMinimizerBucket
 public:
 	AdjacentMinimizerBucket();
 	TwobitView getView(size_t coord1, size_t coord2, size_t size) const;
-	std::pair<size_t, size_t> addString(std::string_view str, HashType currentHash, HashType previousHash, size_t overlap);
-	AdjacentMinimizerBucket getReverseComplementStorage() const;
-	std::pair<size_t, size_t> getRevCompLocation(size_t coord1, size_t coord2, size_t size) const;
+	std::pair<size_t, size_t> addString(VectorView<uint16_t> str, HashType currentHash, HashType previousHash, size_t overlap);
 private:
 	std::vector<TwobitString> data;
 	HashType lastHash;
@@ -44,9 +42,7 @@ class AdjacentMinimizerList
 public:
 	AdjacentMinimizerList(size_t numBuckets);
 	TwobitView getView(size_t bucket, std::pair<size_t, size_t> coords, size_t size) const;
-	std::pair<size_t, std::pair<size_t, size_t>> addString(std::string_view str, HashType currentHash, HashType previousHash, size_t overlap, uint64_t bucketHash);
-	AdjacentMinimizerList getReverseComplementStorage() const;
-	std::pair<size_t, std::pair<size_t, size_t>> getRevCompLocation(size_t bucket, std::pair<size_t, size_t> coords, size_t size) const;
+	std::pair<size_t, std::pair<size_t, size_t>> addString(VectorView<uint16_t> str, HashType currentHash, HashType previousHash, size_t overlap, uint64_t bucketHash);
 private:
 	size_t hashToBucket(HashType hash) const;
 	std::vector<AdjacentMinimizerBucket> buckets;
@@ -88,8 +84,8 @@ public:
 	TwobitView getRevCompHashSequenceRLE(size_t index) const;
 	size_t getRunLength(size_t index, size_t offset) const;
 	void setRunLength(size_t index, size_t offset, size_t runLength);
-	std::pair<size_t, bool> getNodeOrNull(std::string_view sequence) const;
-	std::pair<std::pair<size_t, bool>, HashType> addNode(std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t bucketHash);
+	std::pair<size_t, bool> getNodeOrNull(VectorView<uint16_t> sequence) const;
+	std::pair<std::pair<size_t, bool>, HashType> addNode(VectorView<uint16_t> sequence, VectorView<uint16_t> reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t bucketHash);
 private:
 	std::mutex indexMutex;
 	AdjacentLengthList hashCharacterLengths;

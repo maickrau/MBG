@@ -2,8 +2,7 @@
 #include <unordered_set>
 #include "BluntGraph.h"
 #include "VectorWithDirection.h"
-
-std::string getSequence(const std::string& rle, const std::vector<uint16_t>& characterLength);
+#include "MultiRLE.h"
 
 template <typename F>
 void iterateEdges(const HashList& hashlist, const UnitigGraph& unitigs, F callback)
@@ -50,13 +49,13 @@ void iterateEdges(const HashList& hashlist, const UnitigGraph& unitigs, F callba
 BluntGraph::BluntGraph(const HashList& hashlist, const UnitigGraph& unitigs)
 {
 	VectorWithDirection<size_t> maxOverlap = getMaxOverlaps(hashlist, unitigs);
-	std::vector<std::pair<std::string, std::vector<uint16_t>>> unbluntSequences = getUnbluntSequences(hashlist, unitigs);
+	std::vector<std::pair<std::vector<uint16_t>, std::vector<uint16_t>>> unbluntSequences = getUnbluntSequences(hashlist, unitigs);
 	initializeNodes(unbluntSequences, maxOverlap, unitigs);
 	initializeEdgesAndEdgenodes(hashlist, unitigs, maxOverlap, unbluntSequences);
 	assert(nodes.size() == nodeAvgCoverage.size());
 }
 
-void BluntGraph::initializeEdgesAndEdgenodes(const HashList& hashlist, const UnitigGraph& unitigs, const VectorWithDirection<size_t>& maxOverlap, const std::vector<std::pair<std::string, std::vector<uint16_t>>>& unbluntSequences)
+void BluntGraph::initializeEdgesAndEdgenodes(const HashList& hashlist, const UnitigGraph& unitigs, const VectorWithDirection<size_t>& maxOverlap, const std::vector<std::pair<std::vector<uint16_t>, std::vector<uint16_t>>>& unbluntSequences)
 {
 	VectorWithDirection<std::unordered_set<std::pair<size_t, bool>>> processedCanons;
 	processedCanons.resize(unitigs.unitigs.size());
@@ -73,31 +72,32 @@ void BluntGraph::initializeEdgesAndEdgenodes(const HashList& hashlist, const Uni
 		}
 		assert(fromClipped + toClipped > overlap);
 		size_t missingSeqSize = fromClipped + toClipped - overlap;
-		std::string missingSeq = unbluntSequences[from.first].first;
+		std::vector<uint16_t> missingSeq = unbluntSequences[from.first].first;
 		std::vector<uint16_t> missingLength = unbluntSequences[from.first].second;
 		if (!from.second)
 		{
-			missingSeq = revCompRLE(missingSeq);
+			missingSeq = revCompMultiRLE(missingSeq);
 			std::reverse(missingLength.begin(), missingLength.end());
 		}
 		size_t startIndex = missingSeq.size() - fromClipped;
 		assert(startIndex < missingSeq.size());
 		assert(startIndex + missingSeqSize <= missingSeq.size());
 		assert(missingSeq.size() == missingLength.size());
-		missingSeq = missingSeq.substr(startIndex, missingSeqSize);
+		missingSeq.erase(missingSeq.begin() + startIndex + missingSeqSize, missingSeq.end());
+		missingSeq.erase(missingSeq.begin(), missingSeq.begin() + startIndex);
 		missingLength = std::vector<uint16_t> { missingLength.begin() + startIndex, missingLength.begin() + startIndex + missingSeqSize };
 		assert(missingSeq.size() == missingLength.size());
 		assert(missingSeq.size() > 0);
 		size_t newNodeIndex = nodes.size();
 		assert(nodeAvgCoverage.size() == newNodeIndex);
-		nodes.push_back(getSequence(missingSeq, missingLength));
+		nodes.push_back(multiRLEDecompress(missingSeq, missingLength));
 		nodeAvgCoverage.push_back(coverage);
 		edges.emplace_back(from.first, from.second, newNodeIndex, true, coverage);
 		edges.emplace_back(newNodeIndex, true, to.first, to.second, coverage);
 	});
 }
 
-void BluntGraph::initializeNodes(const std::vector<std::pair<std::string, std::vector<uint16_t>>>& unbluntSequences, const VectorWithDirection<size_t>& maxOverlap, const UnitigGraph& unitigs)
+void BluntGraph::initializeNodes(const std::vector<std::pair<std::vector<uint16_t>, std::vector<uint16_t>>>& unbluntSequences, const VectorWithDirection<size_t>& maxOverlap, const UnitigGraph& unitigs)
 {
 	nodes.resize(unitigs.unitigs.size());
 	nodeAvgCoverage.resize(unitigs.unitigs.size());
@@ -105,19 +105,19 @@ void BluntGraph::initializeNodes(const std::vector<std::pair<std::string, std::v
 	{
 		size_t leftClip = (maxOverlap[std::make_pair(i, false)] + 1) / 2;
 		size_t rightClip = (maxOverlap[std::make_pair(i, true)] + 1) / 2;
-		std::string sequence = unbluntSequences[i].first;
+		std::vector<uint16_t> sequence = unbluntSequences[i].first;
 		std::vector<uint16_t> lengths = unbluntSequences[i].second;
-		sequence = sequence.substr(leftClip);
-		sequence = sequence.substr(0, sequence.size() - rightClip);
+		sequence.erase(sequence.begin(), sequence.begin() + leftClip);
+		sequence.erase(sequence.begin() + sequence.size() - rightClip, sequence.end());
 		lengths = std::vector<uint16_t> { lengths.begin() + leftClip, lengths.end() - rightClip };
-		nodes[i] = getSequence(sequence, lengths);
+		nodes[i] = multiRLEDecompress(sequence, lengths);
 		nodeAvgCoverage[i] = unitigs.averageCoverage(i);
 	}
 }
 
-std::vector<std::pair<std::string, std::vector<uint16_t>>> BluntGraph::getUnbluntSequences(const HashList& hashlist, const UnitigGraph& unitigs) const
+std::vector<std::pair<std::vector<uint16_t>, std::vector<uint16_t>>> BluntGraph::getUnbluntSequences(const HashList& hashlist, const UnitigGraph& unitigs) const
 {
-	std::vector<std::pair<std::string, std::vector<uint16_t>>> unbluntSequences;
+	std::vector<std::pair<std::vector<uint16_t>, std::vector<uint16_t>>> unbluntSequences;
 	unbluntSequences.resize(unitigs.unitigs.size());
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{

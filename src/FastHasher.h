@@ -4,20 +4,25 @@
 #include <cstdint>
 #include <cstring>
 #include <algorithm>
+#include <vector>
 
+// algorithm from
+// ntHash: recursive nucleotide hashing, Mohamadi et al 2016
+// https://bioinformatics.stackexchange.com/questions/19/are-there-any-rolling-hash-functions-that-can-hash-a-dna-sequence-and-its-revers
+// hash values changed to accommodate the much larger alphabet
 class FastHasher
 {
 public:
 	FastHasher(size_t kmerSize, uint64_t fwHash, uint64_t bwHash);
 	FastHasher(size_t kmerSize);
 	__attribute__((always_inline))
-	inline void addChar(char c)
+	inline void addChar(uint16_t c)
 	{
 		fwHash = rotlone(fwHash) ^ fwAddHash(c);
 		bwHash = rotrone(bwHash) ^ bwAddHash(c);
 	}
 	__attribute__((always_inline))
-	inline void removeChar(char c)
+	inline void removeChar(uint16_t c)
 	{
 		fwHash ^= fwRemoveHash(c);
 		bwHash ^= bwRemoveHash(c);
@@ -38,7 +43,7 @@ public:
 		return bwHash;
 	}
 private:
-	char complement(char c) const;
+	uint16_t complement(uint16_t c) const;
 	__attribute__((always_inline))
 	inline uint64_t rotlone(uint64_t val) const
 	{
@@ -61,35 +66,30 @@ private:
 	};
 	void precalcRots();
 	__attribute__((always_inline))
-	inline uint64_t fwAddHash(char c)
+	inline uint64_t fwAddHash(uint16_t c)
 	{
 		return fwAdd[(int)c];
 	}
 	__attribute__((always_inline))
-	inline uint64_t fwRemoveHash(char c)
+	inline uint64_t fwRemoveHash(uint16_t c)
 	{
 		return fwRemove[(int)c];
 	}
 	__attribute__((always_inline))
-	inline uint64_t bwAddHash(char c)
+	inline uint64_t bwAddHash(uint16_t c)
 	{
 		return bwAdd[(int)c];
 	}
 	__attribute__((always_inline))
-	inline uint64_t bwRemoveHash(char c)
+	inline uint64_t bwRemoveHash(uint16_t c)
 	{
 		return bwRemove[(int)c];
 	}
-	uint64_t fwAdd[5];
-	uint64_t fwRemove[5];
-	uint64_t bwAdd[5];
-	uint64_t bwRemove[5];
-	// https://bioinformatics.stackexchange.com/questions/19/are-there-any-rolling-hash-functions-that-can-hash-a-dna-sequence-and-its-revers
-	static constexpr uint64_t hashA = 0x3c8bfbb395c60474;
-	static constexpr uint64_t hashC = 0x3193c18562a02b4c;
-	static constexpr uint64_t hashG = 0x20323ed082572324;
-	static constexpr uint64_t hashT = 0x295549f54be24456;
-	uint64_t charHashes[5] { 0, 0x3c8bfbb395c60474, 0x3193c18562a02b4c, 0x20323ed082572324, 0x295549f54be24456 };
+	static std::vector<uint64_t> fwAdd;
+	static std::vector<uint64_t> fwRemove;
+	static std::vector<uint64_t> bwAdd;
+	static std::vector<uint64_t> bwRemove;
+	static std::vector<uint64_t> charHashes;
 	uint64_t fwHash;
 	uint64_t bwHash;
 	size_t kmerSize;
