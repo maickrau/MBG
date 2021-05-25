@@ -20,6 +20,7 @@ int main(int argc, char** argv)
 		("no-hpc", "Don't use homopolymer compression")
 		("collapse-hpc", "Collapse homopolymer runs to one character instead of taking consensus")
 		("blunt", "Output a bluntified graph without edge overlaps")
+		("include-end-kmers", "Force k-mers at read ends to be included")
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
@@ -67,9 +68,11 @@ int main(int argc, char** argv)
 	bool hpc = true;
 	bool collapseRunLengths = false;
 	bool blunt = false;
+	bool includeEndKmers = false;
 	if (params.count("blunt") == 1) blunt = true;
 	if (params.count("no-hpc") == 1) hpc = false;
 	if (params.count("collapse-hpc") == 1) collapseRunLengths = true;
+	if (params.count("include-end-kmers") == 1) includeEndKmers = true;
 
 	if (numThreads == 0)
 	{
@@ -111,7 +114,8 @@ int main(int argc, char** argv)
 	std::cerr << "t=" << numThreads << ",";
 	std::cerr << "hpc=" << (hpc ? "yes" : "no") << ",";
 	std::cerr << "collapse=" << (collapseRunLengths ? "yes" : "no") << ",";
+	std::cerr << "endkmers=" << (includeEndKmers ? "yes" : "no") << ",";
 	std::cerr << "blunt=" << (blunt ? "yes" : "no") << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, hpc, collapseRunLengths, blunt, numThreads);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, hpc, collapseRunLengths, blunt, numThreads, includeEndKmers);
 }
