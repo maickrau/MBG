@@ -1,3 +1,4 @@
+#include <iostream>
 #include <algorithm>
 #include <thread>
 #include <chrono>
@@ -47,81 +48,104 @@ std::pair<size_t, size_t> AdjacentMinimizerBucket::getRevCompLocation(size_t coo
 }
 
 AdjacentLengthBucket::AdjacentLengthBucket() :
-	sums(),
 	counts(),
 	lastHash(0)
 {
+}
+
+uint8_t AdjacentLengthBucket::getNum(size_t coord1, size_t coord2) const
+{
+	assert(coord1 < counts.size());
+	assert(coord2 < counts[coord1].size());
+	assert(counts[coord1][coord2].size() > 0);
+	uint8_t maxCount = 0;
+	uint8_t maxValue = 0;
+	for (auto pair : counts[coord1][coord2])
+	{
+		if (pair.second > maxCount)
+		{
+			maxCount = pair.second;
+			maxValue = pair.first;
+		}
+	}
+	assert(maxCount > 0);
+	return maxValue;
 }
 
 std::vector<uint16_t> AdjacentLengthBucket::getData(size_t coord1, size_t coord2, size_t size) const
 {
 	std::vector<uint16_t> result;
 	result.resize(size, 0);
-	assert(sums.size() == counts.size());
-	assert(sums[coord1].size() == counts[coord1].size());
 	for (size_t i = 0; i < size; i++)
 	{
-		result[i] = int(double(sums[coord1][coord2+i]) / double(counts[coord1][coord2+i]) + .5);
+		result[i] = getNum(coord1, coord2+i);
 	}
 	return result;
 }
 
 void AdjacentLengthBucket::setData(size_t coord1, size_t coord2, size_t value)
 {
-	sums[coord1][coord2] = value;
-	counts[coord1][coord2] = 1;
+	assert(coord1 < counts.size());
+	assert(coord2 < counts[coord1].size());
+	counts[coord1][coord2].clear();
+	counts[coord1][coord2].emplace_back(value, 1);
 }
 
 std::pair<size_t, size_t> AdjacentLengthBucket::addData(const std::vector<uint16_t>& lens, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap)
 {
 	assert(end > start);
 	assert(end <= lens.size());
-	if (sums.size() == 0 || lastHash == 0 || previousHash == 0 || previousHash != lastHash)
+	if (counts.size() == 0 || lastHash == 0 || previousHash == 0 || previousHash != lastHash)
 	{
-		sums.emplace_back(lens.begin() + start, lens.begin() + end);
 		counts.emplace_back();
-		counts.back().resize(end - start, 1);
+		counts.back().resize(end - start);
+		addCounts(lens, true, start, end, counts.size()-1, 0);
 		lastHash = currentHash;
-		assert(sums.back().size() == counts.back().size());
-		return std::make_pair(sums.size()-1, 0);
+		return std::make_pair(counts.size()-1, 0);
 	}
 	assert(overlap < lens.size());
 	assert(end > start + overlap);
-	sums.back().insert(sums.back().end(), lens.begin() + start + overlap, lens.begin() + end);
-	counts.back().resize(counts.back().size() + end - (start + overlap), 1);
-	assert(counts.back().size() == sums.back().size());
+	counts.back().resize(counts.back().size() + end - (start + overlap));
+	assert(counts.back().size() >= end - start);
+	addCounts(lens, true, start, end, counts.size()-1, counts.back().size() - (end - start));
 	lastHash = currentHash;
-	assert(sums.back().size() >= end - start);
-	return std::make_pair(sums.size()-1, sums.back().size() - (end - start));
+	return std::make_pair(counts.size()-1, counts.back().size() - (end - start));
+}
+
+void AdjacentLengthBucket::addNum(size_t coord1, size_t coord2, uint8_t value)
+{
+	assert(coord1 < counts.size());
+	assert(coord2 < counts[coord1].size());
+	for (auto& pair : counts[coord1][coord2])
+	{
+		if (pair.first == value)
+		{
+			assert(pair.second != std::numeric_limits<uint8_t>::max());
+			if (pair.second == std::numeric_limits<uint8_t>::max()) return;
+			pair.second += 1;
+			return;
+		}
+	}
+	counts[coord1][coord2].emplace_back(value, 1);
 }
 
 void AdjacentLengthBucket::addCounts(const std::vector<uint16_t>& lens, bool fw, size_t start, size_t end, size_t coord1, size_t coord2)
 {
-	assert(coord1 < sums.size());
-	assert(sums.size() == counts.size());
-	assert(coord2 < sums[coord1].size());
-	assert(sums[coord1].size() == counts[coord1].size());
-	assert(coord2 + end - start <= sums[coord1].size());
+	assert(coord1 < counts.size());
+	assert(coord2 < counts[coord1].size());
+	assert(coord2 + end - start <= counts[coord1].size());
 	if (fw)
 	{
 		for (size_t i = 0; i < end - start; i++)
 		{
-			if (lens[start+i] < std::numeric_limits<uint16_t>::max() - sums[coord1][coord2+i] && counts[coord1][coord2 + i] < std::numeric_limits<uint8_t>::max() - 1)
-			{
-				sums[coord1][coord2 + i] += lens[start + i];
-				counts[coord1][coord2 + i] += 1;
-			}
+			addNum(coord1, coord2+i, lens[start+i]);
 		}
 	}
 	else
 	{
 		for (size_t i = 0; i < end - start; i++)
 		{
-			if (lens[end - 1 - i] < std::numeric_limits<uint16_t>::max() - sums[coord1][coord2+i] && counts[coord1][coord2 + i] < std::numeric_limits<uint8_t>::max() - 1)
-			{
-				sums[coord1][coord2 + i] += lens[end - 1 - i];
-				counts[coord1][coord2 + i] += 1;
-			}
+			addNum(coord1, coord2+i, lens[end-1-i]);
 		}
 	}
 }
@@ -129,9 +153,9 @@ void AdjacentLengthBucket::addCounts(const std::vector<uint16_t>& lens, bool fw,
 size_t AdjacentLengthBucket::size() const
 {
 	size_t total = 0;
-	for (size_t i = 0; i < sums.size(); i++)
+	for (size_t i = 0; i < counts.size(); i++)
 	{
-		total += sums[i].size();
+		total += counts[i].size();
 	}
 	return total;
 }

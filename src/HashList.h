@@ -32,9 +32,10 @@ public:
 	std::pair<size_t, size_t> addData(const std::vector<uint16_t>& lens, size_t start, size_t end, HashType currentHash, HashType previousHash, size_t overlap);
 	void addCounts(const std::vector<uint16_t>& lens, bool fw, size_t start, size_t end, size_t coord1, size_t coord2);
 	size_t size() const;
+	void addNum(size_t coord1, size_t coord2, uint8_t value);
+	uint8_t getNum(size_t coord1, size_t coord2) const;
 private:
-	std::vector<std::vector<uint16_t>> sums;
-	std::vector<std::vector<uint8_t>> counts;
+	std::vector<std::vector<std::vector<std::pair<uint8_t, uint8_t>>>> counts;
 	HashType lastHash;
 	friend class AdjacentLengthList;
 };
