@@ -409,8 +409,8 @@ uint64_t findSyncmerPositions(const std::string& sequence, size_t kmerSize, size
 
 char complement(char c)
 {
-	// todo fix
-	static std::vector<char> comp { 0, 4, 3, 2, 1 };
+	// todo move all to one place
+	static std::vector<char> comp { 0, 4, 3, 2, 1, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 25, 22, 19, 28, 21, 18, 27, 24, 17, 26, 23, 20 };
 	return comp[c];
 }
 
@@ -610,7 +610,11 @@ size_t getRLExpandedPosition(const std::string& seq, const std::vector<uint16_t>
 	size_t prefixSum = 0;
 	for (size_t i = 0; i < pos; i++)
 	{
-		prefixSum += lens[i];
+		assert(seq[i] >= 1);
+		assert(seq[i] <= 28);
+		if (seq[i] >= 1 && seq[i] <= 4) prefixSum += lens[i];
+		if (seq[i] >= 5 && seq[i] <= 16) prefixSum += lens[i] * 2 + 1;
+		if (seq[i] >= 17 && seq[i] <= 28) prefixSum += lens[i] * 2;
 	}
 	return prefixSum;
 }
@@ -774,7 +778,7 @@ void findCollectedKmers(const std::string& seq, const size_t kmerSize, const std
 	}
 }
 
-void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& inputReads, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool includeEndKmers, const std::string& outputSequencePaths)
+void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& inputReads, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool dinucRle, const bool includeEndKmers, const std::string& outputSequencePaths)
 {
 	std::unordered_set<uint64_t> approxHashes = collectApproxHashes(hashlist, kmerSize, unitigs);
 	std::unordered_set<HashType> exactHashes = collectExactHashes(hashlist, kmerSize, unitigs);
@@ -845,13 +849,20 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 	for (const std::string& filename : inputReads)
 	{
 		std::cerr << "Collecting paths from " << filename << std::endl;
-		FastQ::streamFastqFromFile(filename, false, [&hashlist, &outPaths, &kmerUnitigPosition, &unitigs, &unitigLength, &kmerUnitigStart, &kmerUnitigEnd, &approxHashes, &exactHashes, includeEndKmers, hpc, kmerSize, windowSize](FastQ& read)
+		FastQ::streamFastqFromFile(filename, false, [&hashlist, &outPaths, &kmerUnitigPosition, &unitigs, &unitigLength, &kmerUnitigStart, &kmerUnitigEnd, &approxHashes, &exactHashes, includeEndKmers, hpc, dinucRle, kmerSize, windowSize](FastQ& read)
 		{
 			if (read.sequence.size() == 0) return;
 			std::vector<std::pair<std::string, std::vector<uint16_t>>> parts;
 			if (hpc)
 			{
 				parts = runLengthEncode(read.sequence);
+				if (dinucRle)
+				{
+					for (size_t i = 0; i < parts.size(); i++)
+					{
+						parts[i] = dinucRunLengthEncode(parts[i].first, parts[i].second);
+					}
+				}
 			}
 			else
 			{
@@ -2033,7 +2044,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	{
 		assert(!blunt);
 		std::cerr << "Writing paths to " << outputSequencePaths << std::endl;
-		writePaths(reads, unitigs, inputReads, kmerSize, windowSize, hpc, includeEndKmers, outputSequencePaths);
+		writePaths(reads, unitigs, inputReads, kmerSize, windowSize, hpc, dinucRle, includeEndKmers, outputSequencePaths);
 	}
 	auto afterPaths = getTime();
 	std::cerr << "reading and hashing sequences took " << formatTime(beforeReading, beforeUnitigs) << std::endl;
