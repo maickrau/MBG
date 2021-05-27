@@ -24,14 +24,14 @@ Multiple read files can be inputted with "-i file1.fa -i file2.fa" etc. Input re
 #### Parameters
 
 - `-k`: k-mer size. Must be odd and at least 31
-- `-w`: window size. Cannot be greater than k-30
-- `-a`: minimum k-mer abundance. Discard k-mers whose coverage is less than this
-- `-u`: minimum unitig abundance. Discard unitigs whose average coverage is less than this
-- `-t`: number of threads
+- `-w`: window size. Cannot be greater than k-30. Default k-30
+- `-a`: minimum k-mer abundance. Discard k-mers whose coverage is less than this. Default 1
+- `-u`: minimum unitig abundance. Discard unitigs whose average coverage is less than this. Default 2
+- `-t`: number of threads. Default 1
+- `-i`: input read files. Can use multiple times to input multiple files. Format .fa/.fasta/.fa.gz/.fasta.gz/.fq/.fastq/.fq.gz/.fastq.gz
+- `-o`: output graph file
 
 Other options:
-- `-i`: input read files. Can use multiple times to input multiple files
-- `-o`: output graph file
 - `-h`: print help
 - `-v`: print version
 - `--blunt`: output a graph without edge overlaps
