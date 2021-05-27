@@ -21,6 +21,7 @@ int main(int argc, char** argv)
 		("collapse-hpc", "Collapse homopolymer runs to one character instead of taking consensus")
 		("blunt", "Output a bluntified graph without edge overlaps")
 		("include-end-kmers", "Force k-mers at read ends to be included")
+		("output-sequence-paths", "Output the paths of the input sequences to a file (.gaf)", cxxopts::value<std::string>())
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
@@ -65,6 +66,7 @@ int main(int argc, char** argv)
 	size_t minCoverage = params["a"].as<size_t>();
 	double minUnitigCoverage = params["u"].as<double>();
 	size_t numThreads = params["t"].as<size_t>();
+	std::string outputSequencePaths = "";
 	bool hpc = true;
 	bool collapseRunLengths = false;
 	bool blunt = false;
@@ -73,6 +75,7 @@ int main(int argc, char** argv)
 	if (params.count("no-hpc") == 1) hpc = false;
 	if (params.count("collapse-hpc") == 1) collapseRunLengths = true;
 	if (params.count("include-end-kmers") == 1) includeEndKmers = true;
+	if (params.count("output-sequence-paths") == 1) outputSequencePaths = params["output-sequence-paths"].as<std::string>();
 
 	if (numThreads == 0)
 	{
@@ -104,6 +107,11 @@ int main(int argc, char** argv)
 		std::cerr << "Window size must be <= k-30. With current k (" << kmerSize << ") maximum w is " << kmerSize - 30 << std::endl;
 		paramError = true;
 	}
+	if (outputSequencePaths != "" && blunt)
+	{
+		std::cerr << "--output-sequence-paths and --blunt are not supported together" << std::endl;
+		paramError = true;
+	}
 	if (paramError) std::abort();
 	
 	std::cerr << "Parameters: ";
@@ -117,5 +125,5 @@ int main(int argc, char** argv)
 	std::cerr << "endkmers=" << (includeEndKmers ? "yes" : "no") << ",";
 	std::cerr << "blunt=" << (blunt ? "yes" : "no") << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, hpc, collapseRunLengths, blunt, numThreads, includeEndKmers);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, hpc, collapseRunLengths, blunt, numThreads, includeEndKmers, outputSequencePaths);
 }
