@@ -389,10 +389,11 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 std::vector<size_t> getRLEExpandedPositions(const std::string& seq, const std::vector<uint16_t>& lens)
 {
 	std::vector<size_t> result;
-	result.emplace_back(0);
+	result.resize(seq.size()+1);
+	result[0] = 0;
 	for (size_t i = 0; i < seq.size(); i++)
 	{
-		result.emplace_back(result.back() + lens[i]);
+		result[i+1] = result[i] + lens[i];
 	}
 	return result;
 }
@@ -640,7 +641,7 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 		std::cerr << "Collecting paths from " << filename << std::endl;
 		FastQ::streamFastqFromFile(filename, false, [&hashlist, &outPaths, &kmerUnitigPosition, &unitigs, &unitigLength, &kmerUnitigStart, &kmerUnitigEnd, &approxHashes, &exactHashes, includeEndKmers, hpc, kmerSize](FastQ& read)
 		{
-			if (read.sequence.size() == 0) return;
+			if (read.sequence.size() <= kmerSize) return;
 			std::vector<std::pair<std::string, std::vector<uint16_t>>> parts;
 			if (hpc)
 			{
