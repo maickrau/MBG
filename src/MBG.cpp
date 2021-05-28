@@ -386,16 +386,6 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 	std::cerr << result.size() << " distinct fw/bw sequence nodes" << std::endl;
 }
 
-size_t getRLExpandedPosition(const std::string& seq, const std::vector<uint16_t>& lens, size_t pos)
-{
-	size_t prefixSum = 0;
-	for (size_t i = 0; i < pos; i++)
-	{
-		prefixSum += lens[i];
-	}
-	return prefixSum;
-}
-
 std::vector<size_t> getRLEExpandedPositions(const std::string& seq, const std::vector<uint16_t>& lens)
 {
 	std::vector<size_t> result;
@@ -610,7 +600,8 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 		std::string seq;
 		std::vector<uint16_t> lens;
 		std::tie(seq, lens) = unitigs.getSequenceAndLength(i, hashlist);
-		unitigLength[i] = getRLExpandedPosition(seq, lens, seq.size());
+		std::vector<size_t> RLEposes = getRLEExpandedPositions(seq, lens);
+		unitigLength[i] = RLEposes.back();
 		size_t seqPos = 0;
 		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
 		{
@@ -624,19 +615,19 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 			std::pair<size_t, bool> kmerHere = unitigs.unitigs[i][j];
 			assert(kmerUnitigStart[kmerHere.first] == std::numeric_limits<size_t>::max());
 			assert(kmerUnitigEnd[kmerHere.first] == std::numeric_limits<size_t>::max());
-			assert(seqPos + kmerSize <= seq.size());
+			assert(seqPos + kmerSize < RLEposes.size());
 			if (kmerHere.second)
 			{
-				kmerUnitigStart[kmerHere.first] = getRLExpandedPosition(seq, lens, seqPos);
-				kmerUnitigEnd[kmerHere.first] = getRLExpandedPosition(seq, lens, seqPos + kmerSize) - 1;
+				kmerUnitigStart[kmerHere.first] = RLEposes[seqPos];
+				kmerUnitigEnd[kmerHere.first] = RLEposes[seqPos + kmerSize] - 1;
 				assert(kmerUnitigStart[kmerHere.first] >= 0);
 				assert(kmerUnitigStart[kmerHere.first] < kmerUnitigEnd[kmerHere.first]);
 				assert(kmerUnitigEnd[kmerHere.first] < unitigLength[i]);
 			}
 			else
 			{
-				kmerUnitigEnd[kmerHere.first] = unitigLength[i] - getRLExpandedPosition(seq, lens, seqPos) - 1;
-				kmerUnitigStart[kmerHere.first] = unitigLength[i] - getRLExpandedPosition(seq, lens, seqPos + kmerSize);
+				kmerUnitigEnd[kmerHere.first] = unitigLength[i] - RLEposes[seqPos] - 1;
+				kmerUnitigStart[kmerHere.first] = unitigLength[i] - RLEposes[seqPos + kmerSize];
 				assert(kmerUnitigStart[kmerHere.first] >= 0);
 				assert(kmerUnitigStart[kmerHere.first] < kmerUnitigEnd[kmerHere.first]);
 				assert(kmerUnitigEnd[kmerHere.first] < unitigLength[i]);
