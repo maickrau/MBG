@@ -605,36 +605,62 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 	std::cerr << result.size() << " distinct fw/bw sequence nodes" << std::endl;
 }
 
-size_t getRLExpandedPosition(const std::string& seq, const std::vector<uint16_t>& lens, size_t pos)
+std::vector<size_t> getRLEExpandedPositions(const std::string& seq, const std::vector<uint16_t>& lens)
 {
-	size_t prefixSum = 0;
-	for (size_t i = 0; i < pos; i++)
+	std::vector<size_t> result;
+	result.resize(seq.size()+1);
+	result[0] = 0;
+	for (size_t i = 0; i < seq.size(); i++)
 	{
 		assert(seq[i] >= 1);
 		assert(seq[i] <= 28);
-		if (seq[i] >= 1 && seq[i] <= 4) prefixSum += lens[i];
-		if (seq[i] >= 5 && seq[i] <= 16) prefixSum += lens[i] * 2 + 1;
-		if (seq[i] >= 17 && seq[i] <= 28) prefixSum += lens[i] * 2;
+		size_t lenHere = 0;
+		if (seq[i] >= 1 && seq[i] <= 4) lenHere = lens[i];
+		if (seq[i] >= 5 && seq[i] <= 16) lenHere = lens[i] * 2 + 1;
+		if (seq[i] >= 17 && seq[i] <= 28) lenHere = lens[i] * 2;
+		result[i+1] = result[i] + lenHere;
 	}
-	return prefixSum;
+	return result;
 }
 
-void outputSequencePathLine(std::ofstream& outPaths, const std::string& readName, const std::string& readSeq, const std::vector<uint16_t>& readLens, const size_t currentSeqStart, const size_t currentSeqEnd, const std::vector<std::tuple<size_t, bool, size_t>>& kmerPath, const size_t currentPathStart, const size_t currentPathEnd, const std::vector<size_t>& unitigLength, const std::vector<size_t>& kmerUnitigStart, const std::vector<size_t>& kmerUnitigEnd, const UnitigGraph& unitigs, const HashList& hashlist)
+void outputSequencePathLine(std::ofstream& outPaths, const std::string& readName, const std::vector<size_t>& readExpandedPositions, const size_t currentSeqStart, const size_t currentSeqEnd, const std::vector<std::tuple<size_t, bool, size_t>>& kmerPath, const size_t currentPathStart, const size_t currentPathEnd, const std::vector<size_t>& unitigLength, const std::vector<size_t>& kmerUnitigStart, const std::vector<size_t>& kmerUnitigEnd, const UnitigGraph& unitigs, const HashList& hashlist)
 {
 	if (kmerPath.size() == 0) return;
-	assert(readSeq.size() == readLens.size());
-	assert(readSeq.size() >= currentSeqEnd);
+	assert(readExpandedPositions.size() >= currentSeqEnd);
 	assert(currentSeqEnd > currentSeqStart);
 	assert(currentPathEnd > currentPathStart);
 	assert(currentPathEnd - currentPathStart == currentSeqEnd - currentSeqStart);
-	std::vector<std::pair<size_t, bool>> unitigPath;
-	unitigPath.emplace_back(std::get<0>(kmerPath[0]), std::get<1>(kmerPath[0]));
+	std::pair<size_t, bool> firstUnitig;
+	std::pair<size_t, bool> lastUnitig;
+	firstUnitig = std::make_pair(std::get<0>(kmerPath[0]), std::get<1>(kmerPath[0]));
+	lastUnitig = firstUnitig;
 	size_t endAddition = 0;
+	std::string pathStr;
+	if (firstUnitig.second)
+	{
+		pathStr += ">";
+	}
+	else
+	{
+		pathStr += "<";
+	}
+	// +1 because indices start at 0 but node ids at 1
+	pathStr += std::to_string(firstUnitig.first+1);
 	for (size_t i = 1; i < kmerPath.size(); i++)
 	{
 		if (std::get<2>(kmerPath[i]) == 0)
 		{
-			unitigPath.emplace_back(std::get<0>(kmerPath[i]), std::get<1>(kmerPath[i]));
+			lastUnitig = std::make_pair(std::get<0>(kmerPath[i]), std::get<1>(kmerPath[i]));
+			if (lastUnitig.second)
+			{
+				pathStr += ">";
+			}
+			else
+			{
+				pathStr += "<";
+			}
+			// +1 because indices start at 0 but node ids at 1
+			pathStr += std::to_string(lastUnitig.first+1);
 			std::pair<size_t, bool> from, to;
 			if (std::get<1>(kmerPath[i-1]))
 			{
@@ -682,7 +708,7 @@ void outputSequencePathLine(std::ofstream& outPaths, const std::string& readName
 	}
 	else
 	{
-		RLExpandedPathStart = unitigLength[unitigPath[0].first] - 1 - kmerUnitigEnd[startKmer.first];
+		RLExpandedPathStart = unitigLength[firstUnitig.first] - 1 - kmerUnitigEnd[startKmer.first];
 	}
 	if (endKmer.second)
 	{
@@ -690,27 +716,13 @@ void outputSequencePathLine(std::ofstream& outPaths, const std::string& readName
 	}
 	else
 	{
-		RLExpandedPathEnd = unitigLength[unitigPath.back().first] - kmerUnitigStart[endKmer.first];
+		RLExpandedPathEnd = unitigLength[lastUnitig.first] - kmerUnitigStart[endKmer.first];
 	}
 	RLExpandedPathEnd += endAddition;
-	size_t RLExpandedSeqSize = getRLExpandedPosition(readSeq, readLens, readSeq.size());
-	size_t RLExpandedSeqStart = getRLExpandedPosition(readSeq, readLens, currentSeqStart);
-	size_t RLExpandedSeqEnd = getRLExpandedPosition(readSeq, readLens, currentSeqEnd);
-	size_t RLExpandedPathSize = endAddition + unitigLength[unitigPath.back().first];
-	std::string pathStr;
-	for (size_t i = 0; i < unitigPath.size(); i++)
-	{
-		if (unitigPath[i].second)
-		{
-			pathStr += ">";
-		}
-		else
-		{
-			pathStr += "<";
-		}
-		// +1 because indices start at 0 but node ids at 1
-		pathStr += std::to_string(unitigPath[i].first+1);
-	}
+	size_t RLExpandedSeqSize = readExpandedPositions.back();
+	size_t RLExpandedSeqStart = readExpandedPositions[currentSeqStart];
+	size_t RLExpandedSeqEnd = readExpandedPositions[currentSeqEnd];
+	size_t RLExpandedPathSize = endAddition + unitigLength[lastUnitig.first];
 	assert(RLExpandedSeqStart < RLExpandedSeqEnd);
 	assert(RLExpandedSeqEnd <= RLExpandedSeqSize);
 	assert(RLExpandedPathStart < RLExpandedPathEnd);
@@ -763,9 +775,10 @@ void findCollectedKmers(const std::string& seq, const size_t kmerSize, const std
 	}
 	if (approxHashes.count(hasher.hash()) == 1)
 	{
-		if (exactHashes.count(hash(seq.substr(0, kmerSize))) == 1)
+		HashType exactHash = hash(seq.substr(0, kmerSize));
+		if (exactHashes.count(exactHash) == 1)
 		{
-			callback(0);
+			callback(0, exactHash);
 		}
 	}
 	for (size_t i = kmerSize; i < seq.size(); i++)
@@ -773,8 +786,9 @@ void findCollectedKmers(const std::string& seq, const size_t kmerSize, const std
 		hasher.addChar(seq[i]);
 		hasher.removeChar(seq[i-kmerSize]);
 		if (approxHashes.count(hasher.hash()) == 0) continue;
-		if (exactHashes.count(hash(seq.substr(i-kmerSize+1, kmerSize))) == 0) continue;
-		callback(i - kmerSize + 1);
+		HashType exactHash = hash(seq.substr(i-kmerSize+1, kmerSize));
+		if (exactHashes.count(exactHash) == 0) continue;
+		callback(i - kmerSize + 1, exactHash);
 	}
 }
 
@@ -812,7 +826,8 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 		std::string seq;
 		std::vector<uint16_t> lens;
 		std::tie(seq, lens) = unitigs.getSequenceAndLength(i, hashlist);
-		unitigLength[i] = getRLExpandedPosition(seq, lens, seq.size());
+		std::vector<size_t> RLEposes = getRLEExpandedPositions(seq, lens);
+		unitigLength[i] = RLEposes.back();
 		size_t seqPos = 0;
 		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
 		{
@@ -826,19 +841,19 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 			std::pair<size_t, bool> kmerHere = unitigs.unitigs[i][j];
 			assert(kmerUnitigStart[kmerHere.first] == std::numeric_limits<size_t>::max());
 			assert(kmerUnitigEnd[kmerHere.first] == std::numeric_limits<size_t>::max());
-			assert(seqPos + kmerSize <= seq.size());
+			assert(seqPos + kmerSize < RLEposes.size());
 			if (kmerHere.second)
 			{
-				kmerUnitigStart[kmerHere.first] = getRLExpandedPosition(seq, lens, seqPos);
-				kmerUnitigEnd[kmerHere.first] = getRLExpandedPosition(seq, lens, seqPos + kmerSize) - 1;
+				kmerUnitigStart[kmerHere.first] = RLEposes[seqPos];
+				kmerUnitigEnd[kmerHere.first] = RLEposes[seqPos + kmerSize] - 1;
 				assert(kmerUnitigStart[kmerHere.first] >= 0);
 				assert(kmerUnitigStart[kmerHere.first] < kmerUnitigEnd[kmerHere.first]);
 				assert(kmerUnitigEnd[kmerHere.first] < unitigLength[i]);
 			}
 			else
 			{
-				kmerUnitigEnd[kmerHere.first] = unitigLength[i] - getRLExpandedPosition(seq, lens, seqPos) - 1;
-				kmerUnitigStart[kmerHere.first] = unitigLength[i] - getRLExpandedPosition(seq, lens, seqPos + kmerSize);
+				kmerUnitigEnd[kmerHere.first] = unitigLength[i] - RLEposes[seqPos] - 1;
+				kmerUnitigStart[kmerHere.first] = unitigLength[i] - RLEposes[seqPos + kmerSize];
 				assert(kmerUnitigStart[kmerHere.first] >= 0);
 				assert(kmerUnitigStart[kmerHere.first] < kmerUnitigEnd[kmerHere.first]);
 				assert(kmerUnitigEnd[kmerHere.first] < unitigLength[i]);
@@ -849,9 +864,9 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 	for (const std::string& filename : inputReads)
 	{
 		std::cerr << "Collecting paths from " << filename << std::endl;
-		FastQ::streamFastqFromFile(filename, false, [&hashlist, &outPaths, &kmerUnitigPosition, &unitigs, &unitigLength, &kmerUnitigStart, &kmerUnitigEnd, &approxHashes, &exactHashes, includeEndKmers, hpc, dinucRle, kmerSize, windowSize](FastQ& read)
+		FastQ::streamFastqFromFile(filename, false, [&hashlist, &outPaths, &kmerUnitigPosition, &unitigs, &unitigLength, &kmerUnitigStart, &kmerUnitigEnd, &approxHashes, &exactHashes, includeEndKmers, hpc, dinucRle, kmerSize](FastQ& read)
 		{
-			if (read.sequence.size() == 0) return;
+			if (read.sequence.size() <= kmerSize) return;
 			std::vector<std::pair<std::string, std::vector<uint16_t>>> parts;
 			if (hpc)
 			{
@@ -871,27 +886,35 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 			for (size_t i = 0; i < parts.size(); i++)
 			{
 				std::string& seq = parts[i].first;
-				std::vector<uint16_t>& lens = parts[i].second;
 				if (seq.size() <= kmerSize) continue;
+				std::vector<uint16_t>& lens = parts[i].second;
+				auto readExpandedPositions = getRLEExpandedPositions(seq, lens);
 				size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
-				std::vector<size_t> positions;
 				std::pair<size_t, bool> lastKmer { std::numeric_limits<size_t>::max(), true };
-				findCollectedKmers(seq, kmerSize, approxHashes, exactHashes, [&positions](size_t pos) { positions.push_back(pos); });
 				std::vector<std::tuple<size_t, bool, size_t>> kmerPath;
 				size_t currentSeqStart = std::numeric_limits<size_t>::max();
 				size_t currentPathStart = std::numeric_limits<size_t>::max();
 				size_t currentSeqEnd = std::numeric_limits<size_t>::max();
 				size_t currentPathEnd = std::numeric_limits<size_t>::max();
-				for (auto pos : positions)
+				findCollectedKmers(seq, kmerSize, approxHashes, exactHashes, [&kmerPath, &lastKmer, &lastMinimizerPosition, &currentSeqStart, &currentSeqEnd, &currentPathStart, &currentPathEnd, &read, &readExpandedPositions, &unitigLength, &kmerUnitigStart, &kmerUnitigEnd, &unitigs, &hashlist, &outPaths, &kmerUnitigPosition, kmerSize](size_t pos, HashType hash)
 				{
-					std::string_view minimizerSequence { seq.data() + pos, kmerSize };
-					std::pair<size_t, bool> current;
+					std::pair<size_t, bool> current = hashlist.hashToNode.at(hash);
 					size_t overlap = lastMinimizerPosition + kmerSize - pos;
-					current = hashlist.getNodeOrNull(minimizerSequence);
 					lastMinimizerPosition = pos;
 					assert(current.first != std::numeric_limits<size_t>::max());
 					assert(current.first < kmerUnitigPosition.size());
 					std::tuple<size_t, bool, size_t> unitigPosition = kmerUnitigPosition[current.first];
+					if (std::get<0>(unitigPosition) == std::numeric_limits<size_t>::max())
+					{
+						outputSequencePathLine(outPaths, read.seq_id, readExpandedPositions, currentSeqStart, currentSeqEnd, kmerPath, currentPathStart, currentPathEnd, unitigLength, kmerUnitigStart, kmerUnitigEnd, unitigs, hashlist);
+						kmerPath.clear();
+						currentSeqStart = std::numeric_limits<size_t>::max();
+						currentSeqEnd = std::numeric_limits<size_t>::max();
+						currentPathStart = std::numeric_limits<size_t>::max();
+						currentPathEnd = std::numeric_limits<size_t>::max();
+						lastKmer.first = std::numeric_limits<size_t>::max();
+						return;
+					}
 					if (!current.second)
 					{
 						std::get<1>(unitigPosition) = !std::get<1>(unitigPosition);
@@ -900,43 +923,19 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 							std::get<2>(unitigPosition) = unitigs.unitigs[std::get<0>(unitigPosition)].size() - 1 - std::get<2>(unitigPosition);
 						}
 					}
-					if (std::get<0>(unitigPosition) == std::numeric_limits<size_t>::max())
-					{
-						outputSequencePathLine(outPaths, read.seq_id, seq, lens, currentSeqStart, currentSeqEnd, kmerPath, currentPathStart, currentPathEnd, unitigLength, kmerUnitigStart, kmerUnitigEnd, unitigs, hashlist);
-						kmerPath.clear();
-						currentSeqStart = std::numeric_limits<size_t>::max();
-						currentSeqEnd = std::numeric_limits<size_t>::max();
-						currentPathStart = std::numeric_limits<size_t>::max();
-						currentPathEnd = std::numeric_limits<size_t>::max();
-						lastKmer.first = std::numeric_limits<size_t>::max();
-						continue;
-					}
 					if (kmerPath.size() == 0)
 					{
 						currentSeqStart = pos;
 						currentSeqEnd = pos + kmerSize;
-						currentPathStart = 0;
-						for (size_t j = 1; j < std::get<2>(unitigPosition); j++)
+						currentPathStart = kmerUnitigStart[current.first];
+						if (!current.second)
 						{
-							std::pair<size_t, bool> from;
-							std::pair<size_t, bool> to;
-							if (std::get<1>(unitigPosition))
-							{
-								from = unitigs.unitigs[std::get<0>(unitigPosition)][j-1];
-								to = unitigs.unitigs[std::get<0>(unitigPosition)][j];
-							}
-							else
-							{
-								from = reverse(unitigs.unitigs[std::get<0>(unitigPosition)][unitigs.unitigs[std::get<0>(unitigPosition)].size()-j]);
-								to = reverse(unitigs.unitigs[std::get<0>(unitigPosition)][unitigs.unitigs[std::get<0>(unitigPosition)].size()-j-1]);
-							}
-							size_t overlap = hashlist.getOverlap(from, to);
-							currentPathStart += kmerSize - overlap;
+							currentPathStart = unitigLength[std::get<0>(unitigPosition)] - currentPathStart;
 						}
 						currentPathEnd = currentPathStart + kmerSize;
 						kmerPath.emplace_back(unitigPosition);
 						lastKmer = current;
-						continue;
+						return;
 					}
 					assert(lastKmer.first != std::numeric_limits<size_t>::max());
 					bool hasMaybeValidEdge = true;
@@ -958,7 +957,7 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 							currentPathEnd += kmerSize - overlap;
 							kmerPath.emplace_back(unitigPosition);
 							lastKmer = current;
-							continue;
+							return;
 						}
 						if (std::get<2>(unitigPosition) == 0 && std::get<2>(kmerPath.back()) == unitigs.unitigs[std::get<0>(kmerPath.back())].size()-1)
 						{
@@ -973,38 +972,25 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 								currentPathEnd += kmerSize - overlap;
 								kmerPath.emplace_back(unitigPosition);
 								lastKmer = current;
-								continue;
+								return;
 							}
 						}
 					}
 					// no valid edge
-					outputSequencePathLine(outPaths, read.seq_id, seq, lens, currentSeqStart, currentSeqEnd, kmerPath, currentPathStart, currentPathEnd, unitigLength, kmerUnitigStart, kmerUnitigEnd, unitigs, hashlist);
+					outputSequencePathLine(outPaths, read.seq_id, readExpandedPositions, currentSeqStart, currentSeqEnd, kmerPath, currentPathStart, currentPathEnd, unitigLength, kmerUnitigStart, kmerUnitigEnd, unitigs, hashlist);
 					kmerPath.clear();
 					currentSeqStart = pos;
 					currentSeqEnd = pos + kmerSize;
-					currentPathStart = 0;
-					for (size_t j = 1; j < std::get<2>(unitigPosition); j++)
+					currentPathStart = kmerUnitigStart[current.first];
+					if (!current.second)
 					{
-						std::pair<size_t, bool> from;
-						std::pair<size_t, bool> to;
-						if (std::get<1>(unitigPosition))
-						{
-							from = unitigs.unitigs[std::get<0>(unitigPosition)][j-1];
-							to = unitigs.unitigs[std::get<0>(unitigPosition)][j];
-						}
-						else
-						{
-							from = reverse(unitigs.unitigs[std::get<0>(unitigPosition)][unitigs.unitigs[std::get<0>(unitigPosition)].size()-j]);
-							to = reverse(unitigs.unitigs[std::get<0>(unitigPosition)][unitigs.unitigs[std::get<0>(unitigPosition)].size()-j-1]);
-						}
-						size_t overlap = hashlist.getOverlap(from, to);
-						currentPathStart += kmerSize - overlap;
+						currentPathStart = unitigLength[std::get<0>(unitigPosition)] - currentPathStart;
 					}
 					currentPathEnd = currentPathStart + kmerSize;
 					kmerPath.emplace_back(unitigPosition);
 					lastKmer = current;
-				};
-				outputSequencePathLine(outPaths, read.seq_id, seq, lens, currentSeqStart, currentSeqEnd, kmerPath, currentPathStart, currentPathEnd, unitigLength, kmerUnitigStart, kmerUnitigEnd, unitigs, hashlist);
+				});
+				outputSequencePathLine(outPaths, read.seq_id, readExpandedPositions, currentSeqStart, currentSeqEnd, kmerPath, currentPathStart, currentPathEnd, unitigLength, kmerUnitigStart, kmerUnitigEnd, unitigs, hashlist);
 			}
 		});
 	}
