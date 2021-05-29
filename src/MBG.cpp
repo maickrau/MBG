@@ -664,9 +664,28 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 				size_t currentPathStart = std::numeric_limits<size_t>::max();
 				size_t currentSeqEnd = std::numeric_limits<size_t>::max();
 				size_t currentPathEnd = std::numeric_limits<size_t>::max();
-				findCollectedKmers(seq, kmerSize, approxHashes, exactHashes, [&kmerPath, &lastKmer, &lastMinimizerPosition, &currentSeqStart, &currentSeqEnd, &currentPathStart, &currentPathEnd, &read, &readExpandedPositions, &unitigLength, &kmerUnitigStart, &kmerUnitigEnd, &unitigs, &hashlist, &outPaths, &kmerUnitigPosition, kmerSize](size_t pos, HashType hash)
+				std::vector<std::pair<size_t, std::pair<size_t, bool>>> matches;
+				findCollectedKmers(seq, kmerSize, approxHashes, exactHashes, [&matches, &hashlist](size_t pos, HashType hash)
 				{
-					std::pair<size_t, bool> current = hashlist.hashToNode.at(hash);
+					matches.emplace_back(pos, hashlist.hashToNode.at(hash));
+				});
+				for (size_t j = matches.size()-1; j < matches.size(); j--)
+				{
+					for (size_t k = j+1; k < matches.size(); k++)
+					{
+						size_t overlap = kmerSize - (matches[k].first - matches[j].first);
+						auto canonEdge = canon(matches[j].second, matches[k].second);
+						if (hashlist.sequenceOverlap[canonEdge.first].count(canonEdge.second) == 0) continue;
+						if (overlap != hashlist.getOverlap(canonEdge.first, canonEdge.second)) continue;
+						if (k == j+1) break;
+						matches.erase(matches.begin()+j+1, matches.begin()+k);
+						break;
+					}
+				}
+				for (auto pair : matches)
+				{
+					size_t pos = pair.first;
+					std::pair<size_t, bool> current = pair.second;
 					size_t overlap = lastMinimizerPosition + kmerSize - pos;
 					lastMinimizerPosition = pos;
 					assert(current.first != std::numeric_limits<size_t>::max());
@@ -681,7 +700,7 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 						currentPathStart = std::numeric_limits<size_t>::max();
 						currentPathEnd = std::numeric_limits<size_t>::max();
 						lastKmer.first = std::numeric_limits<size_t>::max();
-						return;
+						continue;
 					}
 					if (!current.second)
 					{
@@ -703,7 +722,7 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 						currentPathEnd = currentPathStart + kmerSize;
 						kmerPath.emplace_back(unitigPosition);
 						lastKmer = current;
-						return;
+						continue;
 					}
 					assert(lastKmer.first != std::numeric_limits<size_t>::max());
 					bool hasMaybeValidEdge = true;
@@ -725,7 +744,7 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 							currentPathEnd += kmerSize - overlap;
 							kmerPath.emplace_back(unitigPosition);
 							lastKmer = current;
-							return;
+							continue;
 						}
 						if (std::get<2>(unitigPosition) == 0 && std::get<2>(kmerPath.back()) == unitigs.unitigs[std::get<0>(kmerPath.back())].size()-1)
 						{
@@ -740,7 +759,7 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 								currentPathEnd += kmerSize - overlap;
 								kmerPath.emplace_back(unitigPosition);
 								lastKmer = current;
-								return;
+								continue;
 							}
 						}
 					}
@@ -757,7 +776,7 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 					currentPathEnd = currentPathStart + kmerSize;
 					kmerPath.emplace_back(unitigPosition);
 					lastKmer = current;
-				});
+				}
 				outputSequencePathLine(outPaths, read.seq_id, readExpandedPositions, currentSeqStart, currentSeqEnd, kmerPath, currentPathStart, currentPathEnd, unitigLength, kmerUnitigStart, kmerUnitigEnd, unitigs, hashlist);
 			}
 		});
