@@ -29,8 +29,8 @@ public:
 			++i;
 		}
 	}
-private:
 	std::vector<uint16_t> data;
+private:
 };
 
 
@@ -42,10 +42,10 @@ public:
 	size_t size() const;
 	std::vector<uint16_t> toString() const;
 	std::vector<uint16_t> toSubstring(size_t substrStart) const;
-private:
 	const TwobitString& str;
 	const size_t start;
 	const size_t end;
+private:
 };
 
 TwobitString revCompMultiRLE(const TwobitString& str);

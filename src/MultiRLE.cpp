@@ -316,3 +316,16 @@ std::vector<uint16_t> revCompMultiRLE(const std::vector<uint16_t>& codes)
 	}
 	return result;
 }
+
+size_t getExpandedLength(uint16_t code, uint16_t length)
+{
+	uint16_t motifLength = 1;
+	while (getNumBefore(motifLength+1) <= code)
+	{
+		motifLength += 1;
+		assert(motifLength <= MaxMotifLength);
+	}
+	code -= getNumBefore(motifLength);
+	uint16_t overhang = code % motifLength;
+	return length * motifLength + overhang;
+}

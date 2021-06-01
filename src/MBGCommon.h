@@ -4,12 +4,14 @@
 #include <fstream>
 #include <tuple>
 #include <string_view>
+#include "TwobitString.h"
 #include "VectorView.h"
 
 using HashType = unsigned __int128;
 using NodeType = size_t;
 
 HashType hash(std::string_view sequence);
+HashType hash(TwobitView sequence);
 HashType hash(VectorView<uint16_t> sequence);
 std::ostream& operator<<(std::ostream& os, HashType t);
 std::istream& operator>>(std::istream& is, HashType& t);

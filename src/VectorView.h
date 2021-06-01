@@ -8,7 +8,7 @@ template <typename T>
 class VectorView
 {
 public:
-	VectorView(std::vector<T>& data, size_t startpos, size_t endpos) :
+	VectorView(const std::vector<T>& data, size_t startpos, size_t endpos) :
 	data(data),
 	startpos(startpos),
 	endpos(endpos)
@@ -22,15 +22,11 @@ public:
 	{
 		return data[startpos+pos];
 	}
-	T& operator[](size_t pos)
-	{
-		return data[startpos+pos];
-	}
-	T* begin()
+	const T* begin()
 	{
 		return data.data() + startpos;
 	}
-	T* end()
+	const T* end()
 	{
 		return data.data() + endpos;
 	}
@@ -39,7 +35,7 @@ public:
 		return std::string_view { (char*)(data.data() + startpos), size() * sizeof(T) };
 	}
 private:
-	std::vector<T>& data;
+	const std::vector<T>& data;
 	size_t startpos;
 	size_t endpos;
 };

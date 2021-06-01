@@ -17,6 +17,11 @@ HashType hash(VectorView<uint16_t> sequence)
 	return hash(view);
 }
 
+HashType hash(TwobitView sequence)
+{
+	return hash(VectorView<uint16_t> { sequence.str.data, sequence.start, sequence.end });
+}
+
 std::ostream& operator<<(std::ostream& os, HashType t)
 {
 	if (t == 0)

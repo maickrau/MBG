@@ -10,5 +10,6 @@ std::string multiRLEDecompress(const std::vector<uint16_t>& codes, const std::ve
 size_t maxCode();
 std::vector<uint16_t> revCompMultiRLE(const std::vector<uint16_t>& codes);
 uint16_t reverseComplement(uint16_t code);
+size_t getExpandedLength(uint16_t code, uint16_t length);
 
 #endif

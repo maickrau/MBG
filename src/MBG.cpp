@@ -65,8 +65,8 @@ std::vector<std::pair<std::vector<uint16_t>, std::vector<uint16_t>>> noRunLength
 	return result;
 }
 
-template <typename F>
-uint64_t findSyncmerPositions(const std::vector<uint16_t>& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, F callback)
+template <typename F, typename EdgeCheckFunction>
+uint64_t findSyncmerPositions(const std::vector<uint16_t>& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, EdgeCheckFunction endSmer, F callback)
 {
 	if (sequence.size() < kmerSize) return 0;
 	assert(smerSize <= kmerSize);
@@ -79,16 +79,19 @@ uint64_t findSyncmerPositions(const std::vector<uint16_t>& sequence, size_t kmer
 		fwkmerHasher.addChar(sequence[i]);
 	}
 	minHash = std::min(minHash, fwkmerHasher.hash());
-	smerOrder.emplace_back(0, fwkmerHasher.hash());
+	auto thisHash = fwkmerHasher.hash();
+	if (endSmer(thisHash)) thisHash = 0;
+	smerOrder.emplace_back(0, thisHash);
 	for (size_t i = 1; i < windowSize; i++)
 	{
 		size_t seqPos = smerSize+i-1;
 		fwkmerHasher.addChar(sequence[seqPos]);
 		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
 		size_t hash = fwkmerHasher.hash();
+		minHash = std::min(minHash, hash);
+		if (endSmer(hash)) hash = 0;
 		while (smerOrder.size() > 0 && std::get<1>(smerOrder.back()) > hash) smerOrder.pop_back();
 		smerOrder.emplace_back(i, hash);
-		minHash = std::min(minHash, hash);
 	}
 	if ((std::get<0>(smerOrder.front()) == 0) || (std::get<1>(smerOrder.back()) == std::get<1>(smerOrder.front()) && std::get<0>(smerOrder.back()) == windowSize-1))
 	{
@@ -100,6 +103,8 @@ uint64_t findSyncmerPositions(const std::vector<uint16_t>& sequence, size_t kmer
 		fwkmerHasher.addChar(sequence[seqPos]);
 		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
 		size_t hash = fwkmerHasher.hash();
+		minHash = std::min(minHash, hash);
+		if (endSmer(hash)) hash = 0;
 		// even though pop_front is used it turns out std::vector is faster than std::deque ?!
 		// because pop_front is O(w), but it is only called in O(1/w) fraction of loops
 		// so the performace penalty of pop_front does not scale with w!
@@ -111,12 +116,57 @@ uint64_t findSyncmerPositions(const std::vector<uint16_t>& sequence, size_t kmer
 		{
 			callback(i-windowSize+1);
 		}
-		minHash = std::min(minHash, hash);
 	}
 	return minHash;
 }
 
-void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool collapseRunLengths, const size_t numThreads)
+char complement(char c)
+{
+	static std::vector<char> comp { 0, 4, 3, 2, 1 };
+	return comp[c];
+}
+
+void collectEndSmers(std::vector<bool>& endSmer, const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc)
+{
+	size_t smerSize = kmerSize - windowSize + 1;
+	size_t addedEndSmers = 0;
+	for (const std::string& filename : files)
+	{
+		std::cerr << "Reading end k-mers from " << filename << std::endl;
+		FastQ::streamFastqFromFile(filename, false, [&endSmer, smerSize, hpc, &addedEndSmers](FastQ& read)
+		{
+			if (read.sequence.size() <= smerSize) return;
+			std::vector<std::pair<std::vector<uint16_t>, std::vector<uint16_t>>> parts;
+			if (hpc)
+			{
+				parts = multiRLECompress(read.sequence);
+			}
+			else
+			{
+				parts = noRunLengthEncode(read.sequence);
+			}
+			for (size_t i = 0; i < parts.size(); i++)
+			{
+				std::vector<uint16_t>& seq = parts[i].first;
+				if (seq.size() <= smerSize) continue;
+				FastHasher startKmer { smerSize };
+				FastHasher endKmer { smerSize };
+				for (size_t i = 0; i < smerSize; i++)
+				{
+					startKmer.addChar(seq[i]);
+					endKmer.addChar(complement(seq[seq.size()-1-i]));
+				}
+				if (!endSmer[startKmer.hash() % endSmer.size()]) addedEndSmers += 1;
+				if (!endSmer[endKmer.hash() % endSmer.size()]) addedEndSmers += 1;
+				endSmer[startKmer.hash() % endSmer.size()] = true;
+				endSmer[endKmer.hash() % endSmer.size()] = true;
+			}
+		});
+	}
+	std::cerr << addedEndSmers << " end k-mers" << std::endl;
+}
+
+void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool collapseRunLengths, const size_t numThreads, const bool includeEndKmers)
 {
 	// check that all files actually exist
 	for (const std::string& name : files)
@@ -128,6 +178,17 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 			std::exit(1);
 		}
 	}
+	std::vector<bool> endSmer;
+	if (includeEndKmers)
+	{
+		// 2^32 arbitrarily, should be big enough for a human genome
+		// a 30x coverage error-free hifi dataset will have an edge s-mer about every 250-300bp
+		// so a human genome will have about 10000000-12000000 set bits
+		// so about ~0.3% filled -> ~0.3% of kmers have a hash collision and are picked even though they are not edge k-mers
+		// note that this also limits the effective window size to 250-300 regardless of what parameter is given
+		endSmer.resize(4294967296, false);
+		collectEndSmers(endSmer, files, kmerSize, windowSize, hpc);
+	}
 	std::atomic<size_t> totalNodes = 0;
 	std::atomic<bool> readDone;
 	readDone = false;
@@ -135,7 +196,7 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 	moodycamel::ConcurrentQueue<std::shared_ptr<FastQ>> sequenceQueue;
 	for (size_t i = 0; i < numThreads; i++)
 	{
-		threads.emplace_back([&readDone, &result, &sequenceQueue, &totalNodes, hpc, kmerSize, windowSize, collapseRunLengths]()
+		threads.emplace_back([&readDone, &endSmer, &result, &sequenceQueue, &totalNodes, hpc, kmerSize, windowSize, collapseRunLengths, includeEndKmers]()
 		{
 			// keep the same smerOrder to reduce mallocs which destroy multithreading performance
 			std::vector<std::tuple<size_t, uint64_t>> smerOrder;
@@ -168,17 +229,27 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 				{
 					std::vector<uint16_t>& seq = parts[i].first;
 					std::vector<uint16_t>& lens = parts[i].second;
-					if (seq.size() <= kmerSize + windowSize) continue;
 					std::vector<uint16_t> revSeq = revCompMultiRLE(seq);
 					size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 					std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
 					HashType lastHash = 0;
 					smerOrder.resize(0);
 					std::vector<size_t> positions;
-					uint64_t minHash = findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [&positions](size_t pos)
+					uint64_t minHash;
+					if (includeEndKmers)
 					{
-						positions.push_back(pos);
-					});
+						minHash = findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [&endSmer](uint64_t hash) { return endSmer[hash % endSmer.size()]; }, [&positions](size_t pos)
+						{
+							positions.push_back(pos);
+						});
+					}
+					else
+					{
+						minHash = findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [](uint64_t hash) { return false; }, [&positions](size_t pos)
+						{
+							positions.push_back(pos);
+						});
+					}
 					for (auto pos : positions)
 					{
 						assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
@@ -223,6 +294,405 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 	}
 	std::cerr << totalNodes << " nodes" << std::endl;
 	std::cerr << result.size() << " distinct fw/bw sequence nodes" << std::endl;
+}
+
+std::vector<size_t> getRLEExpandedPositions(const std::vector<uint16_t>& seq, const std::vector<uint16_t>& lens)
+{
+	std::vector<size_t> result;
+	result.resize(seq.size()+1);
+	result[0] = 0;
+	for (size_t i = 0; i < seq.size(); i++)
+	{
+		result[i+1] = result[i] + getExpandedLength(seq[i], lens[i]);
+	}
+	return result;
+}
+
+void outputSequencePathLine(std::ofstream& outPaths, const std::string& readName, const std::vector<size_t>& readExpandedPositions, const size_t currentSeqStart, const size_t currentSeqEnd, const std::vector<std::tuple<size_t, bool, size_t>>& kmerPath, const size_t currentPathStart, const size_t currentPathEnd, const std::vector<size_t>& unitigLength, const std::vector<size_t>& kmerUnitigStart, const std::vector<size_t>& kmerUnitigEnd, const UnitigGraph& unitigs, const HashList& hashlist)
+{
+	if (kmerPath.size() == 0) return;
+	assert(readExpandedPositions.size() >= currentSeqEnd);
+	assert(currentSeqEnd > currentSeqStart);
+	assert(currentPathEnd > currentPathStart);
+	assert(currentPathEnd - currentPathStart == currentSeqEnd - currentSeqStart);
+	std::pair<size_t, bool> firstUnitig;
+	std::pair<size_t, bool> lastUnitig;
+	firstUnitig = std::make_pair(std::get<0>(kmerPath[0]), std::get<1>(kmerPath[0]));
+	lastUnitig = firstUnitig;
+	size_t endAddition = 0;
+	std::string pathStr;
+	if (firstUnitig.second)
+	{
+		pathStr += ">";
+	}
+	else
+	{
+		pathStr += "<";
+	}
+	// +1 because indices start at 0 but node ids at 1
+	pathStr += std::to_string(firstUnitig.first+1);
+	for (size_t i = 1; i < kmerPath.size(); i++)
+	{
+		if (std::get<2>(kmerPath[i]) == 0)
+		{
+			lastUnitig = std::make_pair(std::get<0>(kmerPath[i]), std::get<1>(kmerPath[i]));
+			if (lastUnitig.second)
+			{
+				pathStr += ">";
+			}
+			else
+			{
+				pathStr += "<";
+			}
+			// +1 because indices start at 0 but node ids at 1
+			pathStr += std::to_string(lastUnitig.first+1);
+			std::pair<size_t, bool> from, to;
+			if (std::get<1>(kmerPath[i-1]))
+			{
+				from = unitigs.unitigs[std::get<0>(kmerPath[i-1])].back();
+			}
+			else
+			{
+				from = reverse(unitigs.unitigs[std::get<0>(kmerPath[i-1])][0]);
+			}
+			if (std::get<1>(kmerPath[i]))
+			{
+				to = unitigs.unitigs[std::get<0>(kmerPath[i])][0];
+			}
+			else
+			{
+				to = reverse(unitigs.unitigs[std::get<0>(kmerPath[i])].back());
+			}
+			size_t overlap = hashlist.getOverlap(from, to);
+			endAddition += unitigLength[std::get<0>(kmerPath[i-1])] - overlap;
+		}
+	}
+	std::pair<size_t, bool> startKmer;
+	if (std::get<1>(kmerPath[0]))
+	{
+		startKmer = unitigs.unitigs[std::get<0>(kmerPath[0])][std::get<2>(kmerPath[0])];
+	}
+	else
+	{
+		startKmer = reverse(unitigs.unitigs[std::get<0>(kmerPath[0])][unitigs.unitigs[std::get<0>(kmerPath[0])].size() - std::get<2>(kmerPath[0]) - 1]);
+	}
+	std::pair<size_t, bool> endKmer;
+	if (std::get<1>(kmerPath.back()))
+	{
+		endKmer = unitigs.unitigs[std::get<0>(kmerPath.back())][std::get<2>(kmerPath.back())];
+	}
+	else
+	{
+		endKmer = reverse(unitigs.unitigs[std::get<0>(kmerPath.back())][unitigs.unitigs[std::get<0>(kmerPath.back())].size() - std::get<2>(kmerPath.back()) - 1]);
+	}
+	size_t RLExpandedPathStart = 0;
+	size_t RLExpandedPathEnd = 0;
+	if (startKmer.second)
+	{
+		RLExpandedPathStart = kmerUnitigStart[startKmer.first];
+	}
+	else
+	{
+		RLExpandedPathStart = unitigLength[firstUnitig.first] - 1 - kmerUnitigEnd[startKmer.first];
+	}
+	if (endKmer.second)
+	{
+		RLExpandedPathEnd = kmerUnitigEnd[endKmer.first] + 1;
+	}
+	else
+	{
+		RLExpandedPathEnd = unitigLength[lastUnitig.first] - kmerUnitigStart[endKmer.first];
+	}
+	RLExpandedPathEnd += endAddition;
+	size_t RLExpandedSeqSize = readExpandedPositions.back();
+	size_t RLExpandedSeqStart = readExpandedPositions[currentSeqStart];
+	size_t RLExpandedSeqEnd = readExpandedPositions[currentSeqEnd];
+	size_t RLExpandedPathSize = endAddition + unitigLength[lastUnitig.first];
+	assert(RLExpandedSeqStart < RLExpandedSeqEnd);
+	assert(RLExpandedSeqEnd <= RLExpandedSeqSize);
+	assert(RLExpandedPathStart < RLExpandedPathEnd);
+	assert(RLExpandedPathEnd <= RLExpandedPathSize);
+	outPaths << readName << "\t" << RLExpandedSeqSize << "\t" << RLExpandedSeqStart << "\t" << RLExpandedSeqEnd << "\t" << "+" << "\t" << pathStr << "\t" << RLExpandedPathSize << "\t" << RLExpandedPathStart << "\t" << RLExpandedPathEnd << "\t" << (RLExpandedPathEnd - RLExpandedPathStart) << "\t" << (RLExpandedPathEnd - RLExpandedPathStart) << "\t" << "60" << std::endl;
+}
+
+std::unordered_set<uint64_t> collectApproxHashes(const HashList& hashlist, const size_t kmerSize, const UnitigGraph& unitigs)
+{
+	std::unordered_set<uint64_t> approxHashes;
+	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
+	{
+		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
+		{
+			FastHasher hasher { kmerSize };
+			auto seq = hashlist.getHashSequenceRLE(unitigs.unitigs[i][j].first);
+			for (size_t k = 0; k < kmerSize; k++)
+			{
+				hasher.addChar(seq[k]);
+			}
+			approxHashes.insert(hasher.hash());
+		}
+	}
+	return approxHashes;
+}
+
+std::unordered_set<HashType> collectExactHashes(const HashList& hashlist, const size_t kmerSize, const UnitigGraph& unitigs)
+{
+	std::unordered_set<HashType> exactHashes;
+	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
+	{
+		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
+		{
+			TwobitView seq = hashlist.getHashSequenceRLE(unitigs.unitigs[i][j].first);
+			assert(seq.size() == kmerSize);
+			exactHashes.insert(hash(seq));
+			auto revseq = revCompMultiRLE(seq.toString());
+			assert(revseq.size() == kmerSize);
+			exactHashes.insert(hash(VectorView<uint16_t> { revseq, 0, kmerSize }));
+		}
+	}
+	return exactHashes;
+}
+
+template <typename F>
+void findCollectedKmers(const std::vector<uint16_t>& seq, const size_t kmerSize, const std::unordered_set<uint64_t>& approxHashes, const std::unordered_set<HashType>& exactHashes, F callback)
+{
+	FastHasher hasher { kmerSize };
+	for (size_t i = 0; i < kmerSize; i++)
+	{
+		hasher.addChar(seq[i]);
+	}
+	if (approxHashes.count(hasher.hash()) == 1)
+	{
+		HashType exactHash = hash(VectorView<uint16_t> { seq, 0, kmerSize });
+		if (exactHashes.count(exactHash) == 1)
+		{
+			callback(0, exactHash);
+		}
+	}
+	for (size_t i = kmerSize; i < seq.size(); i++)
+	{
+		hasher.addChar(seq[i]);
+		hasher.removeChar(seq[i-kmerSize]);
+		if (approxHashes.count(hasher.hash()) == 0) continue;
+		HashType exactHash = hash(VectorView<uint16_t> { seq, i - kmerSize+1, i + 1});
+		if (exactHashes.count(exactHash) == 0) continue;
+		callback(i - kmerSize + 1, exactHash);
+	}
+}
+
+void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& inputReads, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool includeEndKmers, const std::string& outputSequencePaths)
+{
+	std::unordered_set<uint64_t> approxHashes = collectApproxHashes(hashlist, kmerSize, unitigs);
+	std::unordered_set<HashType> exactHashes = collectExactHashes(hashlist, kmerSize, unitigs);
+	std::vector<std::tuple<size_t, bool, size_t>> kmerUnitigPosition;
+	kmerUnitigPosition.resize(hashlist.size(), std::make_tuple(std::numeric_limits<size_t>::max(), true, std::numeric_limits<size_t>::max()));
+	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
+	{
+		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
+		{
+			assert(std::get<0>(kmerUnitigPosition[unitigs.unitigs[i][j].first]) == std::numeric_limits<size_t>::max());
+			std::get<0>(kmerUnitigPosition[unitigs.unitigs[i][j].first]) = i;
+			std::get<1>(kmerUnitigPosition[unitigs.unitigs[i][j].first]) = unitigs.unitigs[i][j].second;
+			if (unitigs.unitigs[i][j].second)
+			{
+				std::get<2>(kmerUnitigPosition[unitigs.unitigs[i][j].first]) = j;
+			}
+			else
+			{
+				std::get<2>(kmerUnitigPosition[unitigs.unitigs[i][j].first]) = unitigs.unitigs[i].size() - 1 - j;
+			}
+		}
+	}
+	std::vector<size_t> unitigLength;
+	std::vector<size_t> kmerUnitigStart;
+	std::vector<size_t> kmerUnitigEnd;
+	unitigLength.resize(unitigs.unitigs.size(), std::numeric_limits<size_t>::max());
+	kmerUnitigStart.resize(hashlist.size(), std::numeric_limits<size_t>::max());
+	kmerUnitigEnd.resize(hashlist.size(), std::numeric_limits<size_t>::max());
+	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
+	{
+		std::vector<uint16_t> seq;
+		std::vector<uint16_t> lens;
+		std::tie(seq, lens) = unitigs.getSequenceAndLength(i, hashlist);
+		std::vector<size_t> RLEposes = getRLEExpandedPositions(seq, lens);
+		unitigLength[i] = RLEposes.back();
+		size_t seqPos = 0;
+		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
+		{
+			if (j > 0)
+			{
+				size_t overlap = hashlist.getOverlap(unitigs.unitigs[i][j-1], unitigs.unitigs[i][j]);
+				assert(overlap > 0);
+				assert(overlap < kmerSize);
+				seqPos += kmerSize - overlap;
+			}
+			std::pair<size_t, bool> kmerHere = unitigs.unitigs[i][j];
+			assert(kmerUnitigStart[kmerHere.first] == std::numeric_limits<size_t>::max());
+			assert(kmerUnitigEnd[kmerHere.first] == std::numeric_limits<size_t>::max());
+			assert(seqPos + kmerSize < RLEposes.size());
+			if (kmerHere.second)
+			{
+				kmerUnitigStart[kmerHere.first] = RLEposes[seqPos];
+				kmerUnitigEnd[kmerHere.first] = RLEposes[seqPos + kmerSize] - 1;
+				assert(kmerUnitigStart[kmerHere.first] >= 0);
+				assert(kmerUnitigStart[kmerHere.first] < kmerUnitigEnd[kmerHere.first]);
+				assert(kmerUnitigEnd[kmerHere.first] < unitigLength[i]);
+			}
+			else
+			{
+				kmerUnitigEnd[kmerHere.first] = unitigLength[i] - RLEposes[seqPos] - 1;
+				kmerUnitigStart[kmerHere.first] = unitigLength[i] - RLEposes[seqPos + kmerSize];
+				assert(kmerUnitigStart[kmerHere.first] >= 0);
+				assert(kmerUnitigStart[kmerHere.first] < kmerUnitigEnd[kmerHere.first]);
+				assert(kmerUnitigEnd[kmerHere.first] < unitigLength[i]);
+			}
+		}
+	}
+	std::ofstream outPaths { outputSequencePaths };
+	for (const std::string& filename : inputReads)
+	{
+		std::cerr << "Collecting paths from " << filename << std::endl;
+		FastQ::streamFastqFromFile(filename, false, [&hashlist, &outPaths, &kmerUnitigPosition, &unitigs, &unitigLength, &kmerUnitigStart, &kmerUnitigEnd, &approxHashes, &exactHashes, includeEndKmers, hpc, kmerSize](FastQ& read)
+		{
+			if (read.sequence.size() <= kmerSize) return;
+			std::vector<std::pair<std::vector<uint16_t>, std::vector<uint16_t>>> parts;
+			if (hpc)
+			{
+				parts = multiRLECompress(read.sequence);
+			}
+			else
+			{
+				parts = noRunLengthEncode(read.sequence);
+			}
+			for (size_t i = 0; i < parts.size(); i++)
+			{
+				std::vector<uint16_t>& seq = parts[i].first;
+				if (seq.size() <= kmerSize) continue;
+				std::vector<uint16_t>& lens = parts[i].second;
+				auto readExpandedPositions = getRLEExpandedPositions(seq, lens);
+				size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
+				std::pair<size_t, bool> lastKmer { std::numeric_limits<size_t>::max(), true };
+				std::vector<std::tuple<size_t, bool, size_t>> kmerPath;
+				size_t currentSeqStart = std::numeric_limits<size_t>::max();
+				size_t currentPathStart = std::numeric_limits<size_t>::max();
+				size_t currentSeqEnd = std::numeric_limits<size_t>::max();
+				size_t currentPathEnd = std::numeric_limits<size_t>::max();
+				std::vector<std::pair<size_t, std::pair<size_t, bool>>> matches;
+				findCollectedKmers(seq, kmerSize, approxHashes, exactHashes, [&matches, &hashlist](size_t pos, HashType hash)
+				{
+					matches.emplace_back(pos, hashlist.hashToNode.at(hash));
+				});
+				for (size_t j = matches.size()-1; j < matches.size(); j--)
+				{
+					for (size_t k = j+1; k < matches.size(); k++)
+					{
+						size_t overlap = kmerSize - (matches[k].first - matches[j].first);
+						auto canonEdge = canon(matches[j].second, matches[k].second);
+						if (hashlist.sequenceOverlap[canonEdge.first].count(canonEdge.second) == 0) continue;
+						if (overlap != hashlist.getOverlap(canonEdge.first, canonEdge.second)) continue;
+						if (k == j+1) break;
+						matches.erase(matches.begin()+j+1, matches.begin()+k);
+						break;
+					}
+				}
+				for (auto pair : matches)
+				{
+					size_t pos = pair.first;
+					std::pair<size_t, bool> current = pair.second;
+					size_t overlap = lastMinimizerPosition + kmerSize - pos;
+					lastMinimizerPosition = pos;
+					assert(current.first != std::numeric_limits<size_t>::max());
+					assert(current.first < kmerUnitigPosition.size());
+					std::tuple<size_t, bool, size_t> unitigPosition = kmerUnitigPosition[current.first];
+					if (std::get<0>(unitigPosition) == std::numeric_limits<size_t>::max())
+					{
+						outputSequencePathLine(outPaths, read.seq_id, readExpandedPositions, currentSeqStart, currentSeqEnd, kmerPath, currentPathStart, currentPathEnd, unitigLength, kmerUnitigStart, kmerUnitigEnd, unitigs, hashlist);
+						kmerPath.clear();
+						currentSeqStart = std::numeric_limits<size_t>::max();
+						currentSeqEnd = std::numeric_limits<size_t>::max();
+						currentPathStart = std::numeric_limits<size_t>::max();
+						currentPathEnd = std::numeric_limits<size_t>::max();
+						lastKmer.first = std::numeric_limits<size_t>::max();
+						continue;
+					}
+					if (!current.second)
+					{
+						std::get<1>(unitigPosition) = !std::get<1>(unitigPosition);
+						if (std::get<0>(unitigPosition) != std::numeric_limits<size_t>::max())
+						{
+							std::get<2>(unitigPosition) = unitigs.unitigs[std::get<0>(unitigPosition)].size() - 1 - std::get<2>(unitigPosition);
+						}
+					}
+					if (kmerPath.size() == 0)
+					{
+						currentSeqStart = pos;
+						currentSeqEnd = pos + kmerSize;
+						currentPathStart = kmerUnitigStart[current.first];
+						if (!current.second)
+						{
+							currentPathStart = unitigLength[std::get<0>(unitigPosition)] - currentPathStart;
+						}
+						currentPathEnd = currentPathStart + kmerSize;
+						kmerPath.emplace_back(unitigPosition);
+						lastKmer = current;
+						continue;
+					}
+					assert(lastKmer.first != std::numeric_limits<size_t>::max());
+					bool hasMaybeValidEdge = true;
+					auto canonEdge = canon(lastKmer, current);
+					if (hashlist.sequenceOverlap[canonEdge.first].count(canonEdge.second) == 0)
+					{
+						hasMaybeValidEdge = false;
+					}
+					if (hasMaybeValidEdge && overlap != hashlist.getOverlap(lastKmer, current))
+					{
+						hasMaybeValidEdge = false;
+					}
+					if (hasMaybeValidEdge)
+					{
+						if (std::get<0>(unitigPosition) == std::get<0>(kmerPath.back()) && std::get<1>(unitigPosition) == std::get<1>(kmerPath.back()) && std::get<2>(unitigPosition) == std::get<2>(kmerPath.back()) + 1)
+						{
+							assert(overlap < kmerSize);
+							currentSeqEnd += kmerSize - overlap;
+							currentPathEnd += kmerSize - overlap;
+							kmerPath.emplace_back(unitigPosition);
+							lastKmer = current;
+							continue;
+						}
+						if (std::get<2>(unitigPosition) == 0 && std::get<2>(kmerPath.back()) == unitigs.unitigs[std::get<0>(kmerPath.back())].size()-1)
+						{
+							std::pair<size_t, bool> fromUnitig = std::make_pair(std::get<0>(kmerPath.back()), std::get<1>(kmerPath.back()));
+							std::pair<size_t, bool> toUnitig = std::make_pair(std::get<0>(unitigPosition), std::get<1>(unitigPosition));
+							auto canonEdge = canon(fromUnitig, toUnitig);
+							if (unitigs.edges[canonEdge.first].count(canonEdge.second) == 1)
+							{
+								// edge is valid
+								assert(overlap < kmerSize);
+								currentSeqEnd += kmerSize - overlap;
+								currentPathEnd += kmerSize - overlap;
+								kmerPath.emplace_back(unitigPosition);
+								lastKmer = current;
+								continue;
+							}
+						}
+					}
+					// no valid edge
+					outputSequencePathLine(outPaths, read.seq_id, readExpandedPositions, currentSeqStart, currentSeqEnd, kmerPath, currentPathStart, currentPathEnd, unitigLength, kmerUnitigStart, kmerUnitigEnd, unitigs, hashlist);
+					kmerPath.clear();
+					currentSeqStart = pos;
+					currentSeqEnd = pos + kmerSize;
+					currentPathStart = kmerUnitigStart[current.first];
+					if (!current.second)
+					{
+						currentPathStart = unitigLength[std::get<0>(unitigPosition)] - currentPathStart;
+					}
+					currentPathEnd = currentPathStart + kmerSize;
+					kmerPath.emplace_back(unitigPosition);
+					lastKmer = current;
+				}
+				outputSequencePathLine(outPaths, read.seq_id, readExpandedPositions, currentSeqStart, currentSeqEnd, kmerPath, currentPathStart, currentPathEnd, unitigLength, kmerUnitigStart, kmerUnitigEnd, unitigs, hashlist);
+			}
+		});
+	}
 }
 
 void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, bool> start, const VectorWithDirection<std::unordered_set<std::pair<size_t, bool>>>& edges, std::vector<std::pair<size_t, bool>>& belongsToUnitig, VectorWithDirection<bool>& unitigStart, VectorWithDirection<bool>& unitigEnd)
@@ -1177,11 +1647,11 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 	}
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc, const bool collapseRunLengths, const bool blunt, const size_t numThreads)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc, const bool collapseRunLengths, const bool blunt, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths)
 {
 	auto beforeReading = getTime();
 	HashList reads { kmerSize, collapseRunLengths, numThreads };
-	loadReadsAsHashesMultithread(reads, inputReads, kmerSize, windowSize, hpc, collapseRunLengths, numThreads);
+	loadReadsAsHashesMultithread(reads, inputReads, kmerSize, windowSize, hpc, collapseRunLengths, numThreads, includeEndKmers);
 	auto beforeUnitigs = getTime();
 	auto unitigs = getUnitigGraph(reads, minCoverage);
 	auto beforeFilter = getTime();
@@ -1193,6 +1663,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	if (blunt)
 	{
 		BluntGraph blunt { reads, unitigs };
+		std::cerr << "Writing graph to " << outputGraph << std::endl;
 		writeGraph(blunt, outputGraph);
 		stats = getSizeAndN50(blunt);
 	}
@@ -1202,16 +1673,25 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		beforeConsistency = getTime();
 		if (!collapseRunLengths) forceEdgeConsistency(unitigs, reads, kmerSize);
 		beforeWrite = getTime();
+		std::cerr << "Writing graph to " << outputGraph << std::endl;
 		writeGraph(unitigs, outputGraph, reads, kmerSize);
 		stats = getSizeAndN50(reads, unitigs, kmerSize, windowSize);
 	}
 	auto afterWrite = getTime();
+	if (outputSequencePaths != "")
+	{
+		assert(!blunt);
+		std::cerr << "Writing paths to " << outputSequencePaths << std::endl;
+		writePaths(reads, unitigs, inputReads, kmerSize, windowSize, hpc, includeEndKmers, outputSequencePaths);
+	}
+	auto afterPaths = getTime();
 	std::cerr << "reading and hashing sequences took " << formatTime(beforeReading, beforeUnitigs) << std::endl;
 	std::cerr << "unitigifying took " << formatTime(beforeUnitigs, beforeFilter) << std::endl;
 	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforeDeterminism) << std::endl;
 	if (!blunt && windowSize > 1) std::cerr << "forcing edge determinism took " << formatTime(beforeDeterminism, beforeConsistency) << std::endl;
 	if (!blunt && !collapseRunLengths) std::cerr << "forcing edge consistency took " << formatTime(beforeConsistency, beforeWrite) << std::endl;
 	std::cerr << "writing the graph and calculating stats took " << formatTime(beforeWrite, afterWrite) << std::endl;
+	if (outputSequencePaths != "") std::cerr << "writing sequence paths took " << formatTime(afterWrite, afterPaths) << std::endl;
 	std::cerr << "nodes: " << stats.nodes << std::endl;
 	std::cerr << "edges: " << stats.edges << std::endl;
 	std::cerr << "assembly size " << stats.size << " bp, N50 " << stats.N50 << std::endl;
