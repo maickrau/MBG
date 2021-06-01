@@ -473,7 +473,9 @@ void findCollectedKmers(const std::vector<uint16_t>& seq, const size_t kmerSize,
 		hasher.addChar(seq[i]);
 		hasher.removeChar(seq[i-kmerSize]);
 		if (approxHashes.count(hasher.hash()) == 0) continue;
-		HashType exactHash = hash(VectorView<uint16_t> { seq, i - kmerSize+1, i + 1});
+		VectorView<uint16_t> view {seq, i - kmerSize+1, i + 1};
+		assert(view.size() == kmerSize);
+		HashType exactHash = hash(view);
 		if (exactHashes.count(exactHash) == 0) continue;
 		callback(i - kmerSize + 1, exactHash);
 	}
