@@ -5,6 +5,7 @@
 #include <cstring>
 #include <algorithm>
 #include <vector>
+#include <mutex>
 
 // algorithm from
 // ntHash: recursive nucleotide hashing, Mohamadi et al 2016
@@ -90,6 +91,8 @@ private:
 	static std::vector<uint64_t> bwAdd;
 	static std::vector<uint64_t> bwRemove;
 	static std::vector<uint64_t> charHashes;
+	static size_t precalcedK;
+	static std::mutex precalcMutex;
 	uint64_t fwHash;
 	uint64_t bwHash;
 	size_t kmerSize;

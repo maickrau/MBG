@@ -4,6 +4,8 @@
 
 extern std::vector<uint16_t> multiRLEReverseComplements;
 
+std::mutex FastHasher::precalcMutex;
+size_t FastHasher::precalcedK = 0;
 std::vector<uint64_t> FastHasher::charHashes;
 std::vector<uint64_t> FastHasher::fwAdd;
 std::vector<uint64_t> FastHasher::fwRemove;
@@ -15,7 +17,8 @@ fwHash(fwHash),
 bwHash(bwHash),
 kmerSize(kmerSize % 64)
 {
-	if (charHashes.size() == 0) precalcRots();
+	std::lock_guard<std::mutex> guard { precalcMutex };
+	if (charHashes.size() == 0 || kmerSize != precalcedK) precalcRots();
 }
 
 FastHasher::FastHasher(size_t kmerSize) :
@@ -23,7 +26,8 @@ fwHash(0),
 bwHash(0),
 kmerSize(kmerSize % 64)
 {
-	if (charHashes.size() == 0) precalcRots();
+	std::lock_guard<std::mutex> guard { precalcMutex };
+	if (charHashes.size() == 0 || kmerSize != precalcedK) precalcRots();
 }
 
 uint16_t FastHasher::complement(uint16_t c) const
@@ -70,4 +74,5 @@ void FastHasher::precalcRots()
 	{
 		bwRemove[i] = rotrone(charHashes[(int)complement(i)]);
 	}
+	precalcedK = kmerSize;
 }
