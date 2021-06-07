@@ -374,6 +374,16 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 		{
 			std::shared_ptr<FastQ> ptr = std::make_shared<FastQ>();
 			std::swap(*ptr, read);
+			bool queued = sequenceQueue.try_enqueue(ptr);
+			if (queued) return;
+			size_t triedSleeping = 0;
+			while (triedSleeping < 1000)
+			{
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+				queued = sequenceQueue.try_enqueue(ptr);
+				if (queued) return;
+				triedSleeping += 1;
+			}
 			sequenceQueue.enqueue(ptr);
 		});
 	}
