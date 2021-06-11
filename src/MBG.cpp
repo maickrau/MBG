@@ -219,6 +219,7 @@ void collectEndSmers(std::vector<bool>& endSmer, const std::vector<std::string>&
 {
 	size_t smerSize = kmerSize - windowSize + 1;
 	size_t addedEndSmers = 0;
+	std::cerr << "Collecting end k-mers" << std::endl;
 	iterateReadsMultithreaded(files, 1, [&endSmer, smerSize, hpc, &addedEndSmers](size_t thread, FastQ& read)
 	{
 		if (read.sequence.size() <= smerSize) return;
@@ -282,6 +283,7 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 		smerOrders.emplace_back();
 		smerOrders.back().reserve(windowSize);
 	}
+	std::cerr << "Collecting selected k-mers" << std::endl;
 	iterateReadsMultithreaded(files, numThreads, [&endSmer, &result, &totalNodes, hpc, kmerSize, windowSize, collapseRunLengths, includeEndKmers, &smerOrders](size_t thread, FastQ& read)
 	{
 		std::vector<std::tuple<size_t, uint64_t>>& smerOrder = smerOrders[thread];
