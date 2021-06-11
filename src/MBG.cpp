@@ -154,61 +154,6 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> noRunLengthEncode(con
 	return result;
 }
 
-template <typename F, typename EdgeCheckFunction>
-uint64_t findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, EdgeCheckFunction endSmer, F callback)
-{
-	if (sequence.size() < kmerSize) return 0;
-	assert(smerSize <= kmerSize);
-	size_t windowSize = kmerSize - smerSize + 1;
-	assert(windowSize >= 1);
-	uint64_t minHash = std::numeric_limits<uint64_t>::max();
-	FastHasher fwkmerHasher { smerSize };
-	for (size_t i = 0; i < smerSize; i++)
-	{
-		fwkmerHasher.addChar(sequence[i]);
-	}
-	minHash = std::min(minHash, fwkmerHasher.hash());
-	auto thisHash = fwkmerHasher.hash();
-	if (endSmer(thisHash)) thisHash = 0;
-	smerOrder.emplace_back(0, thisHash);
-	for (size_t i = 1; i < windowSize; i++)
-	{
-		size_t seqPos = smerSize+i-1;
-		fwkmerHasher.addChar(sequence[seqPos]);
-		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
-		size_t hash = fwkmerHasher.hash();
-		minHash = std::min(minHash, hash);
-		if (endSmer(hash)) hash = 0;
-		while (smerOrder.size() > 0 && std::get<1>(smerOrder.back()) > hash) smerOrder.pop_back();
-		smerOrder.emplace_back(i, hash);
-	}
-	if ((std::get<0>(smerOrder.front()) == 0) || (std::get<1>(smerOrder.back()) == std::get<1>(smerOrder.front()) && std::get<0>(smerOrder.back()) == windowSize-1))
-	{
-		callback(0);
-	}
-	for (size_t i = windowSize; smerSize+i-1 < sequence.size(); i++)
-	{
-		size_t seqPos = smerSize+i-1;
-		fwkmerHasher.addChar(sequence[seqPos]);
-		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
-		size_t hash = fwkmerHasher.hash();
-		minHash = std::min(minHash, hash);
-		if (endSmer(hash)) hash = 0;
-		// even though pop_front is used it turns out std::vector is faster than std::deque ?!
-		// because pop_front is O(w), but it is only called in O(1/w) fraction of loops
-		// so the performace penalty of pop_front does not scale with w!
-		// and std::vector's speed in normal, non-popfront operation outweighs the slow pop_front
-		while (smerOrder.size() > 0 && std::get<0>(smerOrder.front()) <= i - windowSize) smerOrder.erase(smerOrder.begin());
-		while (smerOrder.size() > 0 && std::get<1>(smerOrder.back()) > hash) smerOrder.pop_back();
-		smerOrder.emplace_back(i, hash);
-		if ((std::get<0>(smerOrder.front()) == i-windowSize+1) || (std::get<1>(smerOrder.back()) == std::get<1>(smerOrder.front()) && std::get<0>(smerOrder.back()) == i))
-		{
-			callback(i-windowSize+1);
-		}
-	}
-	return minHash;
-}
-
 char complement(char c)
 {
 	static std::vector<char> comp { 0, 4, 3, 2, 1 };
@@ -252,81 +197,20 @@ void collectEndSmers(std::vector<bool>& endSmer, const std::vector<std::string>&
 	std::cerr << addedEndSmers << " end k-mers" << std::endl;
 }
 
-void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool collapseRunLengths, const size_t numThreads, const bool includeEndKmers)
+void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::string>& files, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
-	// check that all files actually exist
-	for (const std::string& name : files)
-	{
-		std::ifstream file { name };
-		if (!file.good())
-		{
-			std::cerr << "Input file " << name << " can't be read!" << std::endl;
-			std::exit(1);
-		}
-	}
-	std::vector<bool> endSmer;
-	if (includeEndKmers)
-	{
-		// 2^32 arbitrarily, should be big enough for a human genome
-		// a 30x coverage error-free hifi dataset will have an edge s-mer about every 250-300bp
-		// so a human genome will have about 10000000-12000000 set bits
-		// so about ~0.3% filled -> ~0.3% of kmers have a hash collision and are picked even though they are not edge k-mers
-		// note that this also limits the effective window size to 250-300 regardless of what parameter is given
-		endSmer.resize(4294967296, false);
-		collectEndSmers(endSmer, files, kmerSize, windowSize, hpc);
-	}
 	std::atomic<size_t> totalNodes = 0;
-	// keep the same smerOrder to reduce mallocs which destroy multithreading performance
-	std::vector<std::vector<std::tuple<size_t, uint64_t>>> smerOrders;
-	for (size_t i = 0; i < numThreads; i++)
-	{
-		smerOrders.emplace_back();
-		smerOrders.back().reserve(windowSize);
-	}
 	std::cerr << "Collecting selected k-mers" << std::endl;
-	iterateReadsMultithreaded(files, numThreads, [&endSmer, &result, &totalNodes, hpc, kmerSize, windowSize, collapseRunLengths, includeEndKmers, &smerOrders](size_t thread, FastQ& read)
+	iterateReadsMultithreaded(files, numThreads, [&result, &totalNodes, kmerSize, &partIterator](size_t thread, FastQ& read)
 	{
-		std::vector<std::tuple<size_t, uint64_t>>& smerOrder = smerOrders[thread];
-		if (read.sequence.size() == 0) return;
-		std::vector<std::pair<std::string, std::vector<uint16_t>>> parts;
-		if (hpc)
+		partIterator.iteratePartKmers(read, [&result, &totalNodes, kmerSize](const std::string& seq, const std::vector<uint16_t>& lens, uint64_t minHash, const std::vector<size_t>& positions)
 		{
-			parts = runLengthEncode(read.sequence);
-		}
-		else
-		{
-			parts = noRunLengthEncode(read.sequence);
-		}
-		for (size_t i = 0; i < parts.size(); i++)
-		{
-			std::string& seq = parts[i].first;
-			std::vector<uint16_t>& lens = parts[i].second;
-			if (seq.size() <= kmerSize) continue;
 			std::string revSeq = revCompRLE(seq);
 			size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 			std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
 			HashType lastHash = 0;
-			smerOrder.resize(0);
-			std::vector<size_t> positions;
-			uint64_t minHash;
-			if (includeEndKmers)
-			{
-				minHash = findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [&endSmer](uint64_t hash) { return endSmer[hash % endSmer.size()]; }, [&positions](size_t pos)
-				{
-					positions.push_back(pos);
-				});
-			}
-			else
-			{
-				minHash = findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [](uint64_t hash) { return false; }, [&positions](size_t pos)
-				{
-					positions.push_back(pos);
-				});
-			}
 			for (auto pos : positions)
 			{
-				assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
-				assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= windowSize);
 				assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
 				std::string_view minimizerSequence { seq.data() + pos, kmerSize };
 				size_t revPos = seq.size() - (pos + kmerSize);
@@ -346,7 +230,7 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 				last = current;
 				totalNodes += 1;
 			};
-		}
+		});
 	});
 	std::cerr << totalNodes << " total selected k-mers in reads" << std::endl;
 	std::cerr << result.size() << " distinct selected k-mers in reads" << std::endl;
@@ -1778,8 +1662,30 @@ void printUnitigKmerCount(const UnitigGraph& unitigs)
 void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc, const bool collapseRunLengths, const bool blunt, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths)
 {
 	auto beforeReading = getTime();
+	// check that all files actually exist
+	for (const std::string& name : inputReads)
+	{
+		std::ifstream file { name };
+		if (!file.good())
+		{
+			std::cerr << "Input file " << name << " can't be read!" << std::endl;
+			std::exit(1);
+		}
+	}
+	std::vector<bool> endSmer;
+	if (includeEndKmers)
+	{
+		// 2^32 arbitrarily, should be big enough for a human genome
+		// a 30x coverage error-free hifi dataset will have an edge s-mer about every 250-300bp
+		// so a human genome will have about 10000000-12000000 set bits
+		// so about ~0.3% filled -> ~0.3% of kmers have a hash collision and are picked even though they are not edge k-mers
+		// note that this also limits the effective window size to 250-300 regardless of what parameter is given
+		endSmer.resize(4294967296, false);
+		collectEndSmers(endSmer, inputReads, kmerSize, windowSize, hpc);
+	}
+	ReadpartIterator partIterator { kmerSize, windowSize, hpc, endSmer };
 	HashList reads { kmerSize, collapseRunLengths, numThreads };
-	loadReadsAsHashesMultithread(reads, inputReads, kmerSize, windowSize, hpc, collapseRunLengths, numThreads, includeEndKmers);
+	loadReadsAsHashesMultithread(reads, inputReads, kmerSize, partIterator, numThreads);
 	auto beforeUnitigs = getTime();
 	auto unitigs = getUnitigGraph(reads, minCoverage);
 	auto beforeFilter = getTime();
