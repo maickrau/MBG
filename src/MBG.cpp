@@ -668,7 +668,7 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 					}
 				}
 				assert(read != nullptr);
-				if (read->sequence.size() <= kmerSize) return;
+				if (read->sequence.size() <= kmerSize) continue;
 				std::vector<std::pair<std::string, std::vector<uint16_t>>> parts;
 				if (hpc)
 				{
