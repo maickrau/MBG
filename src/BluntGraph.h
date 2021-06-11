@@ -12,14 +12,13 @@
 class BluntGraph
 {
 public:
-	BluntGraph(const HashList& hashlist, const UnitigGraph& unitigs);
+	BluntGraph(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::pair<std::string, std::vector<uint16_t>>>& unitigSequences);
 	std::vector<std::string> nodes;
 	std::vector<std::tuple<size_t, bool, size_t, bool, size_t>> edges;
 	std::vector<float> nodeAvgCoverage;
 private:
 	void initializeNodes(const std::vector<std::pair<std::string, std::vector<uint16_t>>>& unbluntSequences, const VectorWithDirection<size_t>& maxOverlap, const UnitigGraph& unitigs);
 	void initializeEdgesAndEdgenodes(const HashList& hashlist, const UnitigGraph& unitigs, const VectorWithDirection<size_t>& maxOverlap, const std::vector<std::pair<std::string, std::vector<uint16_t>>>& unbluntSequences);
-	std::vector<std::pair<std::string, std::vector<uint16_t>>> getUnbluntSequences(const HashList& hashlist, const UnitigGraph& unitigs) const;
 	VectorWithDirection<size_t> getMaxOverlaps(const HashList& hashlist, const UnitigGraph& unitigs) const;
 };
 

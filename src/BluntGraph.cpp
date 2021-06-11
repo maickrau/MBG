@@ -2,8 +2,7 @@
 #include <unordered_set>
 #include "BluntGraph.h"
 #include "VectorWithDirection.h"
-
-std::string getSequence(const std::string& rle, const std::vector<uint16_t>& characterLength);
+#include "HPCConsensus.h"
 
 template <typename F>
 void iterateEdges(const HashList& hashlist, const UnitigGraph& unitigs, F callback)
@@ -47,12 +46,11 @@ void iterateEdges(const HashList& hashlist, const UnitigGraph& unitigs, F callba
 	}
 }
 
-BluntGraph::BluntGraph(const HashList& hashlist, const UnitigGraph& unitigs)
+BluntGraph::BluntGraph(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::pair<std::string, std::vector<uint16_t>>>& unitigSequences)
 {
 	VectorWithDirection<size_t> maxOverlap = getMaxOverlaps(hashlist, unitigs);
-	std::vector<std::pair<std::string, std::vector<uint16_t>>> unbluntSequences = getUnbluntSequences(hashlist, unitigs);
-	initializeNodes(unbluntSequences, maxOverlap, unitigs);
-	initializeEdgesAndEdgenodes(hashlist, unitigs, maxOverlap, unbluntSequences);
+	initializeNodes(unitigSequences, maxOverlap, unitigs);
+	initializeEdgesAndEdgenodes(hashlist, unitigs, maxOverlap, unitigSequences);
 	assert(nodes.size() == nodeAvgCoverage.size());
 }
 
@@ -90,7 +88,7 @@ void BluntGraph::initializeEdgesAndEdgenodes(const HashList& hashlist, const Uni
 		assert(missingSeq.size() > 0);
 		size_t newNodeIndex = nodes.size();
 		assert(nodeAvgCoverage.size() == newNodeIndex);
-		nodes.push_back(getSequence(missingSeq, missingLength));
+		nodes.push_back(getHPCExpanded(missingSeq, missingLength));
 		nodeAvgCoverage.push_back(coverage);
 		edges.emplace_back(from.first, from.second, newNodeIndex, true, coverage);
 		edges.emplace_back(newNodeIndex, true, to.first, to.second, coverage);
@@ -110,21 +108,9 @@ void BluntGraph::initializeNodes(const std::vector<std::pair<std::string, std::v
 		sequence = sequence.substr(leftClip);
 		sequence = sequence.substr(0, sequence.size() - rightClip);
 		lengths = std::vector<uint16_t> { lengths.begin() + leftClip, lengths.end() - rightClip };
-		nodes[i] = getSequence(sequence, lengths);
+		nodes[i] = getHPCExpanded(sequence, lengths);
 		nodeAvgCoverage[i] = unitigs.averageCoverage(i);
 	}
-}
-
-std::vector<std::pair<std::string, std::vector<uint16_t>>> BluntGraph::getUnbluntSequences(const HashList& hashlist, const UnitigGraph& unitigs) const
-{
-	std::vector<std::pair<std::string, std::vector<uint16_t>>> unbluntSequences;
-	unbluntSequences.resize(unitigs.unitigs.size());
-	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
-	{
-		//todo fix
-		// unbluntSequences[i] = unitigs.getSequenceAndLength(i, hashlist);
-	}
-	return unbluntSequences;
 }
 
 VectorWithDirection<size_t> BluntGraph::getMaxOverlaps(const HashList& hashlist, const UnitigGraph& unitigs) const

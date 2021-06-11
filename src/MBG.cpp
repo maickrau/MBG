@@ -973,25 +973,49 @@ size_t getOverlapFromRLE(const std::vector<std::pair<std::string, std::vector<ui
 	return result;
 }
 
-void writeGraph(const BluntGraph& graph, const std::string& filename)
+size_t getN50(std::vector<size_t>& nodeSizes, size_t totalSize)
 {
+	std::sort(nodeSizes.begin(), nodeSizes.end());
+	size_t sizeSum = 0;
+	sizeSum += nodeSizes.back();
+	while (sizeSum * 2 < totalSize)
+	{
+		nodeSizes.pop_back();
+		sizeSum += nodeSizes.back();
+	}
+	return nodeSizes.back();
+}
+
+AssemblyStats writeGraph(const BluntGraph& graph, const std::string& filename)
+{
+	AssemblyStats stats;
+	stats.size = 0;
+	stats.nodes = graph.nodes.size();
+	stats.edges = graph.edges.size();
+	stats.N50 = 0;
+	stats.approxKmers = 0;
+	std::vector<size_t> nodeSizes;
 	std::ofstream file { filename };
 	file << "H\tVN:Z:1.0" << std::endl;
 	for (size_t i = 0; i < graph.nodes.size(); i++)
 	{
 		file << "S\t" << (i+1) << "\t" << graph.nodes[i] << "\tll:f:" << graph.nodeAvgCoverage[i] << "\tFC:f:" << (graph.nodes[i].size() * graph.nodeAvgCoverage[i]) << std::endl;
+		stats.size += graph.nodes[i].size();
+		nodeSizes.push_back(graph.nodes[i].size());
 	}
 	for (auto edge : graph.edges)
 	{
 		file << "L\t" << (std::get<0>(edge)+1) << "\t" << (std::get<1>(edge) ? "+" : "-") << "\t" << (std::get<2>(edge)+1) << "\t" << (std::get<3>(edge) ? "+" : "-") << "\t0M\tec:i:" << std::get<4>(edge) << std::endl;
 	}
+	stats.N50 = getN50(nodeSizes, stats.size);
+	return stats;
 }
 
 AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename, const HashList& hashlist, const std::vector<std::pair<std::string, std::vector<uint16_t>>>& unitigSequences, const size_t kmerSize)
 {
 	AssemblyStats stats;
 	stats.size = 0;
-	stats.nodes = 0;
+	stats.nodes = unitigs.unitigs.size();
 	stats.edges = 0;
 	stats.N50 = 0;
 	stats.approxKmers = 0;
@@ -1007,7 +1031,6 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 		file << "\tFC:f:" << (unitigs.averageCoverage(i) * realSequence.size());
 		file << std::endl;
 		stats.size += realSequence.size();
-		stats.nodes += 1;
 		nodeSizes.push_back(realSequence.size());
 	}
 	for (size_t i = 0; i < unitigs.edges.size(); i++)
@@ -1049,15 +1072,7 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 			file << "L\t" << (bw.first+1) << "\t" << (bw.second ? "+" : "-") << "\t" << (to.first+1) << "\t" << (to.second ? "+" : "-") << "\t" << overlap << "M\tec:i:" << unitigs.edgeCoverage(bw, to) << std::endl;
 		}
 	}
-	std::sort(nodeSizes.begin(), nodeSizes.end());
-	size_t sizeSum = 0;
-	sizeSum += nodeSizes.back();
-	while (sizeSum * 2 < stats.size)
-	{
-		nodeSizes.pop_back();
-		sizeSum += nodeSizes.back();
-	}
-	stats.N50 = nodeSizes.back();
+	stats.N50 = getN50(nodeSizes, stats.size);
 	stats.approxKmers = stats.size - stats.nodes * kmerSize;
 	return stats;
 }
@@ -1598,11 +1613,9 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	AssemblyStats stats;
 	if (blunt)
 	{
-		//todo fix
-		assert(false);
-		// BluntGraph blunt { reads, unitigs };
+		BluntGraph blunt { reads, unitigs, unitigSequences };
 		std::cerr << "Writing graph to " << outputGraph << std::endl;
-		// stats = writeGraph(blunt, outputGraph);
+		stats = writeGraph(blunt, outputGraph);
 	}
 	else
 	{
