@@ -7,10 +7,10 @@ SRCDIR=src
 
 LIBS=-lz
 
-_DEPS = fastqloader.h CommonUtils.h MBGCommon.h TwobitString.h VectorWithDirection.h FastHasher.h SparseEdgeContainer.h HashList.h LazyString.h UnitigGraph.h BluntGraph.h ReadHelper.h
+_DEPS = fastqloader.h CommonUtils.h MBGCommon.h TwobitString.h VectorWithDirection.h FastHasher.h SparseEdgeContainer.h HashList.h LazyString.h UnitigGraph.h BluntGraph.h ReadHelper.h HPCConsensus.h
 DEPS = $(patsubst %, $(SRCDIR)/%, $(_DEPS))
 
-_OBJ = MBG.o fastqloader.o CommonUtils.o main.o MBGCommon.o TwobitString.o FastHasher.o SparseEdgeContainer.o HashList.o LazyString.o UnitigGraph.o BluntGraph.o
+_OBJ = MBG.o fastqloader.o CommonUtils.o main.o MBGCommon.o TwobitString.o FastHasher.o SparseEdgeContainer.o HashList.o LazyString.o UnitigGraph.o BluntGraph.o HPCConsensus.o
 OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 
 LINKFLAGS = $(CPPFLAGS) -Wl,-Bstatic $(LIBS) -Wl,-Bdynamic -Wl,--as-needed -lpthread -pthread -static-libstdc++

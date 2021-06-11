@@ -121,7 +121,8 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> BluntGraph::getUnblun
 	unbluntSequences.resize(unitigs.unitigs.size());
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
-		unbluntSequences[i] = unitigs.getSequenceAndLength(i, hashlist);
+		//todo fix
+		// unbluntSequences[i] = unitigs.getSequenceAndLength(i, hashlist);
 	}
 	return unbluntSequences;
 }

@@ -8,6 +8,8 @@
 #include <thread>
 #include <iostream>
 #include <concurrentqueue.h> //https://github.com/cameron314/concurrentqueue
+#include "fastqloader.h"
+#include "FastHasher.h"
 
 template <typename F, typename EdgeCheckFunction>
 uint64_t findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, EdgeCheckFunction endSmer, F callback)
