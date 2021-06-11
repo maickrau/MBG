@@ -25,6 +25,19 @@
 #include "MultiRLE.h"
 #include "VectorView.h"
 
+std::string rleCompress(const std::string& original)
+{
+	std::string result;
+	assert(original.size() > 0);
+	result.reserve(original.size());
+	result.push_back(original[0]);
+	for (size_t i = 1; i < original.size(); i++)
+	{
+		if (original[i] != original[i-1]) result.push_back(original[i]);
+	}
+	return result;
+}
+
 std::vector<std::pair<std::vector<uint16_t>, std::vector<uint16_t>>> noRunLengthEncode(const std::string& original)
 {
 	assert(original.size() > 0);
@@ -139,7 +152,7 @@ void collectEndSmers(std::vector<bool>& endSmer, const std::vector<std::string>&
 			std::vector<std::pair<std::vector<uint16_t>, std::vector<uint16_t>>> parts;
 			if (hpc)
 			{
-				parts = multiRLECompress(read.sequence);
+				parts = multiRLECompress(rleCompress(read.sequence));
 			}
 			else
 			{
@@ -219,7 +232,7 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 				std::vector<std::pair<std::vector<uint16_t>, std::vector<uint16_t>>> parts;
 				if (hpc)
 				{
-					parts = multiRLECompress(read->sequence);
+					parts = multiRLECompress(rleCompress(read->sequence));
 				}
 				else
 				{
@@ -586,7 +599,7 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 				std::vector<std::pair<std::vector<uint16_t>, std::vector<uint16_t>>> parts;
 				if (hpc)
 				{
-					parts = multiRLECompress(read->sequence);
+					parts = multiRLECompress(rleCompress(read->sequence));
 				}
 				else
 				{
