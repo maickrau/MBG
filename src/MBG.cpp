@@ -219,39 +219,35 @@ void collectEndSmers(std::vector<bool>& endSmer, const std::vector<std::string>&
 {
 	size_t smerSize = kmerSize - windowSize + 1;
 	size_t addedEndSmers = 0;
-	for (const std::string& filename : files)
+	iterateReadsMultithreaded(files, 1, [&endSmer, smerSize, hpc, &addedEndSmers](size_t thread, FastQ& read)
 	{
-		std::cerr << "Reading end k-mers from " << filename << std::endl;
-		FastQ::streamFastqFromFile(filename, false, [&endSmer, smerSize, hpc, &addedEndSmers](FastQ& read)
+		if (read.sequence.size() <= smerSize) return;
+		std::vector<std::pair<std::string, std::vector<uint16_t>>> parts;
+		if (hpc)
 		{
-			if (read.sequence.size() <= smerSize) return;
-			std::vector<std::pair<std::string, std::vector<uint16_t>>> parts;
-			if (hpc)
+			parts = runLengthEncode(read.sequence);
+		}
+		else
+		{
+			parts = noRunLengthEncode(read.sequence);
+		}
+		for (size_t i = 0; i < parts.size(); i++)
+		{
+			std::string& seq = parts[i].first;
+			if (seq.size() <= smerSize) continue;
+			FastHasher startKmer { smerSize };
+			FastHasher endKmer { smerSize };
+			for (size_t i = 0; i < smerSize; i++)
 			{
-				parts = runLengthEncode(read.sequence);
+				startKmer.addChar(seq[i]);
+				endKmer.addChar(complement(seq[seq.size()-1-i]));
 			}
-			else
-			{
-				parts = noRunLengthEncode(read.sequence);
-			}
-			for (size_t i = 0; i < parts.size(); i++)
-			{
-				std::string& seq = parts[i].first;
-				if (seq.size() <= smerSize) continue;
-				FastHasher startKmer { smerSize };
-				FastHasher endKmer { smerSize };
-				for (size_t i = 0; i < smerSize; i++)
-				{
-					startKmer.addChar(seq[i]);
-					endKmer.addChar(complement(seq[seq.size()-1-i]));
-				}
-				if (!endSmer[startKmer.hash() % endSmer.size()]) addedEndSmers += 1;
-				if (!endSmer[endKmer.hash() % endSmer.size()]) addedEndSmers += 1;
-				endSmer[startKmer.hash() % endSmer.size()] = true;
-				endSmer[endKmer.hash() % endSmer.size()] = true;
-			}
-		});
-	}
+			if (!endSmer[startKmer.hash() % endSmer.size()]) addedEndSmers += 1;
+			if (!endSmer[endKmer.hash() % endSmer.size()]) addedEndSmers += 1;
+			endSmer[startKmer.hash() % endSmer.size()] = true;
+			endSmer[endKmer.hash() % endSmer.size()] = true;
+		}
+	});
 	std::cerr << addedEndSmers << " end k-mers" << std::endl;
 }
 
