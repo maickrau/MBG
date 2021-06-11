@@ -417,7 +417,7 @@ void findCollectedKmers(const std::string& seq, const size_t kmerSize, const std
 	}
 }
 
-void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& inputReads, const size_t kmerSize, const size_t windowSize, const bool hpc, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t numThreads)
+void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& inputReads, const size_t kmerSize, const ReadpartIterator& partIterator, const std::string& outputSequencePaths, const size_t numThreads)
 {
 	std::unordered_set<uint64_t> approxHashes = collectApproxHashes(hashlist, kmerSize, unitigs);
 	std::unordered_set<HashType> exactHashes = collectExactHashes(hashlist, kmerSize, unitigs);
@@ -487,23 +487,9 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 	}
 	std::ofstream outPaths { outputSequencePaths };
 	std::mutex pathWriteMutex;
-	iterateReadsMultithreaded(inputReads, numThreads, [&outPaths, kmerSize, hpc, &approxHashes, &exactHashes, &kmerUnitigPosition, &unitigLength, &kmerUnitigStart, &kmerUnitigEnd, &hashlist, &unitigs, &pathWriteMutex](size_t thread, FastQ& read)
+	iterateReadsMultithreaded(inputReads, numThreads, [&outPaths, kmerSize, &approxHashes, &exactHashes, &kmerUnitigPosition, &unitigLength, &kmerUnitigStart, &kmerUnitigEnd, &hashlist, &unitigs, &pathWriteMutex, &partIterator](size_t thread, FastQ& read)
 	{
-		if (read.sequence.size() <= kmerSize) return;
-		std::vector<std::pair<std::string, std::vector<uint16_t>>> parts;
-		if (hpc)
-		{
-			parts = runLengthEncode(read.sequence);
-		}
-		else
-		{
-			parts = noRunLengthEncode(read.sequence);
-		}
-		for (size_t i = 0; i < parts.size(); i++)
-		{
-			std::string& seq = parts[i].first;
-			if (seq.size() <= kmerSize) continue;
-			std::vector<uint16_t>& lens = parts[i].second;
+		partIterator.iterateParts(read, [&read, &outPaths, kmerSize, &approxHashes, &exactHashes, &kmerUnitigPosition, &unitigLength, &kmerUnitigStart, &kmerUnitigEnd, &hashlist, &unitigs, &pathWriteMutex](const std::string& seq, const std::vector<uint16_t>& lens) {
 			auto readExpandedPositions = getRLEExpandedPositions(seq, lens);
 			size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 			std::pair<size_t, bool> lastKmer { std::numeric_limits<size_t>::max(), true };
@@ -635,7 +621,7 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 				std::lock_guard<std::mutex> guard { pathWriteMutex };
 				outputSequencePathLine(outPaths, read.seq_id, readExpandedPositions, currentSeqStart, currentSeqEnd, kmerPath, currentPathStart, currentPathEnd, unitigLength, kmerUnitigStart, kmerUnitigEnd, unitigs, hashlist);
 			}
-		}
+		});
 	});
 }
 
@@ -1717,7 +1703,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	{
 		assert(!blunt);
 		std::cerr << "Writing paths to " << outputSequencePaths << std::endl;
-		writePaths(reads, unitigs, inputReads, kmerSize, windowSize, hpc, includeEndKmers, outputSequencePaths, numThreads);
+		writePaths(reads, unitigs, inputReads, kmerSize, partIterator, outputSequencePaths, numThreads);
 	}
 	auto afterPaths = getTime();
 	std::cerr << "reading and hashing sequences took " << formatTime(beforeReading, beforeUnitigs) << std::endl;
