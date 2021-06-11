@@ -11,7 +11,6 @@
 #include <string_view>
 #include <phmap.h>
 #include <thread>
-#include <concurrentqueue.h> //https://github.com/cameron314/concurrentqueue
 #include "fastqloader.h"
 #include "CommonUtils.h"
 #include "MBGCommon.h"
@@ -23,6 +22,7 @@
 #include "HashList.h"
 #include "UnitigGraph.h"
 #include "BluntGraph.h"
+#include "ReadHelper.h"
 
 std::vector<std::pair<std::string, std::vector<uint16_t>>> runLengthEncode(const std::string& original)
 {
@@ -279,119 +279,77 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 		collectEndSmers(endSmer, files, kmerSize, windowSize, hpc);
 	}
 	std::atomic<size_t> totalNodes = 0;
-	std::atomic<bool> readDone;
-	readDone = false;
-	std::vector<std::thread> threads;
-	moodycamel::ConcurrentQueue<std::shared_ptr<FastQ>> sequenceQueue;
+	// keep the same smerOrder to reduce mallocs which destroy multithreading performance
+	std::vector<std::vector<std::tuple<size_t, uint64_t>>> smerOrders;
 	for (size_t i = 0; i < numThreads; i++)
 	{
-		threads.emplace_back([&readDone, &endSmer, &result, &sequenceQueue, &totalNodes, hpc, kmerSize, windowSize, collapseRunLengths, includeEndKmers]()
-		{
-			// keep the same smerOrder to reduce mallocs which destroy multithreading performance
-			std::vector<std::tuple<size_t, uint64_t>> smerOrder;
-			smerOrder.reserve(windowSize);
-			while (true)
-			{
-				std::shared_ptr<FastQ> read;
-				if (!sequenceQueue.try_dequeue(read))
-				{
-					bool tryBreaking = readDone;
-					if (!sequenceQueue.try_dequeue(read))
-					{
-						if (tryBreaking) return;
-						std::this_thread::sleep_for(std::chrono::milliseconds(10));
-						continue;
-					}
-				}
-				assert(read != nullptr);
-				if (read->sequence.size() == 0) continue;
-				std::vector<std::pair<std::string, std::vector<uint16_t>>> parts;
-				if (hpc)
-				{
-					parts = runLengthEncode(read->sequence);
-				}
-				else
-				{
-					parts = noRunLengthEncode(read->sequence);
-				}
-				for (size_t i = 0; i < parts.size(); i++)
-				{
-					std::string& seq = parts[i].first;
-					std::vector<uint16_t>& lens = parts[i].second;
-					if (seq.size() <= kmerSize) continue;
-					std::string revSeq = revCompRLE(seq);
-					size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
-					std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
-					HashType lastHash = 0;
-					smerOrder.resize(0);
-					std::vector<size_t> positions;
-					uint64_t minHash;
-					if (includeEndKmers)
-					{
-						minHash = findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [&endSmer](uint64_t hash) { return endSmer[hash % endSmer.size()]; }, [&positions](size_t pos)
-						{
-							positions.push_back(pos);
-						});
-					}
-					else
-					{
-						minHash = findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [](uint64_t hash) { return false; }, [&positions](size_t pos)
-						{
-							positions.push_back(pos);
-						});
-					}
-					for (auto pos : positions)
-					{
-						assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
-						assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= windowSize);
-						assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
-						std::string_view minimizerSequence { seq.data() + pos, kmerSize };
-						size_t revPos = seq.size() - (pos + kmerSize);
-						std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
-						std::pair<size_t, bool> current;
-						size_t overlap = lastMinimizerPosition + kmerSize - pos;
-						std::tie(current, lastHash) = result.addNode(minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, minHash);
-						assert(pos - lastMinimizerPosition < kmerSize);
-						if (last.first != std::numeric_limits<size_t>::max())
-						{
-							assert(lastMinimizerPosition + kmerSize >= pos);
-							result.addSequenceOverlap(last, current, overlap);
-							auto pair = canon(last, current);
-							result.addEdgeCoverage(pair.first, pair.second);
-						}
-						lastMinimizerPosition = pos;
-						last = current;
-						totalNodes += 1;
-					};
-				}
-			}
-		});
+		smerOrders.emplace_back();
+		smerOrders.back().reserve(windowSize);
 	}
-	for (const std::string& filename : files)
+	iterateReadsMultithreaded(files, numThreads, [&endSmer, &result, &totalNodes, hpc, kmerSize, windowSize, collapseRunLengths, includeEndKmers, &smerOrders](size_t thread, FastQ& read)
 	{
-		std::cerr << "Reading sequences from " << filename << std::endl;
-		FastQ::streamFastqFromFile(filename, false, [&sequenceQueue](FastQ& read)
+		std::vector<std::tuple<size_t, uint64_t>>& smerOrder = smerOrders[thread];
+		if (read.sequence.size() == 0) return;
+		std::vector<std::pair<std::string, std::vector<uint16_t>>> parts;
+		if (hpc)
 		{
-			std::shared_ptr<FastQ> ptr = std::make_shared<FastQ>();
-			std::swap(*ptr, read);
-			bool queued = sequenceQueue.try_enqueue(ptr);
-			if (queued) return;
-			size_t triedSleeping = 0;
-			while (triedSleeping < 1000)
+			parts = runLengthEncode(read.sequence);
+		}
+		else
+		{
+			parts = noRunLengthEncode(read.sequence);
+		}
+		for (size_t i = 0; i < parts.size(); i++)
+		{
+			std::string& seq = parts[i].first;
+			std::vector<uint16_t>& lens = parts[i].second;
+			if (seq.size() <= kmerSize) continue;
+			std::string revSeq = revCompRLE(seq);
+			size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
+			std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
+			HashType lastHash = 0;
+			smerOrder.resize(0);
+			std::vector<size_t> positions;
+			uint64_t minHash;
+			if (includeEndKmers)
 			{
-				std::this_thread::sleep_for(std::chrono::milliseconds(10));
-				queued = sequenceQueue.try_enqueue(ptr);
-				if (queued) return;
-				triedSleeping += 1;
+				minHash = findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [&endSmer](uint64_t hash) { return endSmer[hash % endSmer.size()]; }, [&positions](size_t pos)
+				{
+					positions.push_back(pos);
+				});
 			}
-			sequenceQueue.enqueue(ptr);
-		});
-	}
-	readDone = true;
-	for (size_t i = 0; i < threads.size(); i++)
-	{
-		threads[i].join();
-	}
+			else
+			{
+				minHash = findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [](uint64_t hash) { return false; }, [&positions](size_t pos)
+				{
+					positions.push_back(pos);
+				});
+			}
+			for (auto pos : positions)
+			{
+				assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos > lastMinimizerPosition);
+				assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= windowSize);
+				assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
+				std::string_view minimizerSequence { seq.data() + pos, kmerSize };
+				size_t revPos = seq.size() - (pos + kmerSize);
+				std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
+				std::pair<size_t, bool> current;
+				size_t overlap = lastMinimizerPosition + kmerSize - pos;
+				std::tie(current, lastHash) = result.addNode(minimizerSequence, revMinimizerSequence, lens, pos, pos + kmerSize, lastHash, overlap, minHash);
+				assert(pos - lastMinimizerPosition < kmerSize);
+				if (last.first != std::numeric_limits<size_t>::max())
+				{
+					assert(lastMinimizerPosition + kmerSize >= pos);
+					result.addSequenceOverlap(last, current, overlap);
+					auto pair = canon(last, current);
+					result.addEdgeCoverage(pair.first, pair.second);
+				}
+				lastMinimizerPosition = pos;
+				last = current;
+				totalNodes += 1;
+			};
+		}
+	});
 	std::cerr << totalNodes << " total selected k-mers in reads" << std::endl;
 	std::cerr << result.size() << " distinct selected k-mers in reads" << std::endl;
 }
