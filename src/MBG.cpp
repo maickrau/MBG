@@ -160,27 +160,14 @@ char complement(char c)
 	return comp[c];
 }
 
-void collectEndSmers(std::vector<bool>& endSmer, const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const bool hpc)
+void collectEndSmers(std::vector<bool>& endSmer, const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const ReadpartIterator& partIterator)
 {
 	size_t smerSize = kmerSize - windowSize + 1;
 	size_t addedEndSmers = 0;
 	std::cerr << "Collecting end k-mers" << std::endl;
-	iterateReadsMultithreaded(files, 1, [&endSmer, smerSize, hpc, &addedEndSmers](size_t thread, FastQ& read)
+	iterateReadsMultithreaded(files, 1, [&endSmer, smerSize, &addedEndSmers, &partIterator](size_t thread, FastQ& read)
 	{
-		if (read.sequence.size() <= smerSize) return;
-		std::vector<std::pair<std::string, std::vector<uint16_t>>> parts;
-		if (hpc)
-		{
-			parts = runLengthEncode(read.sequence);
-		}
-		else
-		{
-			parts = noRunLengthEncode(read.sequence);
-		}
-		for (size_t i = 0; i < parts.size(); i++)
-		{
-			std::string& seq = parts[i].first;
-			if (seq.size() <= smerSize) continue;
+		partIterator.iterateParts(read, [&endSmer, smerSize, &addedEndSmers](const std::string& seq, const std::vector<uint16_t>& lens) {
 			FastHasher startKmer { smerSize };
 			FastHasher endKmer { smerSize };
 			for (size_t i = 0; i < smerSize; i++)
@@ -192,7 +179,7 @@ void collectEndSmers(std::vector<bool>& endSmer, const std::vector<std::string>&
 			if (!endSmer[endKmer.hash() % endSmer.size()]) addedEndSmers += 1;
 			endSmer[startKmer.hash() % endSmer.size()] = true;
 			endSmer[endKmer.hash() % endSmer.size()] = true;
-		}
+		});
 	});
 	std::cerr << addedEndSmers << " end k-mers" << std::endl;
 }
@@ -1658,7 +1645,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 			std::exit(1);
 		}
 	}
-	std::vector<bool> endSmer;
+	ReadpartIterator partIterator { kmerSize, windowSize, hpc };
 	if (includeEndKmers)
 	{
 		// 2^32 arbitrarily, should be big enough for a human genome
@@ -1666,10 +1653,11 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		// so a human genome will have about 10000000-12000000 set bits
 		// so about ~0.3% filled -> ~0.3% of kmers have a hash collision and are picked even though they are not edge k-mers
 		// note that this also limits the effective window size to 250-300 regardless of what parameter is given
+		std::vector<bool> endSmer;
 		endSmer.resize(4294967296, false);
-		collectEndSmers(endSmer, inputReads, kmerSize, windowSize, hpc);
+		collectEndSmers(endSmer, inputReads, kmerSize, windowSize, partIterator);
+		std::swap(endSmer, partIterator.endSmers);
 	}
-	ReadpartIterator partIterator { kmerSize, windowSize, hpc, endSmer };
 	HashList reads { kmerSize, collapseRunLengths, numThreads };
 	loadReadsAsHashesMultithread(reads, inputReads, kmerSize, partIterator, numThreads);
 	auto beforeUnitigs = getTime();

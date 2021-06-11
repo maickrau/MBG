@@ -67,11 +67,10 @@ uint64_t findSyncmerPositions(const std::string& sequence, size_t kmerSize, size
 class ReadpartIterator
 {
 public:
-	ReadpartIterator(const size_t kmerSize, const size_t windowSize, const bool hpc, const std::vector<bool>& endSmers) :
+	ReadpartIterator(const size_t kmerSize, const size_t windowSize, const bool hpc) :
 	kmerSize(kmerSize),
 	windowSize(windowSize),
-	hpc(hpc),
-	endSmers(endSmers)
+	hpc(hpc)
 	{
 	}
 	template <typename F>
@@ -96,6 +95,10 @@ public:
 			// iterateNoRLE(read.sequence, callback);
 		}
 	}
+	const size_t kmerSize;
+	const size_t windowSize;
+	const bool hpc;
+	std::vector<bool> endSmers;
 private:
 	template <typename F>
 	void iterateRLE(const std::string& seq, F callback) const
@@ -254,11 +257,6 @@ private:
 		}
 		callback(seq, lens, minHash, positions);
 	}
-	const size_t kmerSize;
-	const size_t windowSize;
-	const bool hpc;
-	const std::vector<bool>& endSmers;
-
 };
 
 template <typename F>
