@@ -92,9 +92,7 @@ public:
 		}
 		else
 		{
-			assert(false);
-			// todo fix
-			// iterateNoRLE(read.sequence, callback);
+			iterateNoRLE(read.sequence, callback);
 		}
 	}
 	const size_t kmerSize;
@@ -223,6 +221,51 @@ private:
 						default:
 							assert(false);
 					}
+			}
+		}
+		if (currentSeq.size() > 0)
+		{
+			callback(currentSeq, currentLens);
+		}
+	}
+	template <typename F>
+	void iterateNoRLE(const std::string& seq, F callback) const
+	{
+		std::string currentSeq;
+		std::vector<uint16_t> currentLens;
+		currentSeq.reserve(seq.size());
+		currentLens.reserve(seq.size());
+		size_t i = 0;
+		assert(currentSeq.size() == 0);
+		assert(currentLens.size() == 0);
+		for (; i < seq.size(); i++)
+		{
+			switch(seq[i])
+			{
+				case 'a':
+				case 'A':
+					currentSeq.push_back(1);
+					currentLens.push_back(1);
+					break;
+				case 'c':
+				case 'C':
+					currentSeq.push_back(2);
+					currentLens.push_back(1);
+					break;
+				case 'g':
+				case 'G':
+					currentSeq.push_back(3);
+					currentLens.push_back(1);
+					break;
+				case 't':
+				case 'T':
+					currentSeq.push_back(4);
+					currentLens.push_back(1);
+					break;
+				default:
+					if (currentSeq.size() > 0) callback(currentSeq, currentLens);
+					currentSeq.clear();
+					currentLens.clear();
 			}
 		}
 		if (currentSeq.size() > 0)

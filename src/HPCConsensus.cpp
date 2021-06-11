@@ -29,7 +29,6 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 		runLengthCounts[i].resize(offset + kmerSize, 0);
 		rleSize += result[i].first.size();
 	}
-	std::cerr << "rle size " << rleSize << std::endl;
 	iterateReadsMultithreaded(filenames, 1, [&result, &runLengthCounts, &partIterator, &hashlist, &kmerPosition, kmerSize](size_t thread, FastQ& read)
 	{
 		partIterator.iteratePartKmers(read, [&result, &runLengthCounts, &hashlist, &kmerPosition, kmerSize](const std::string& seq, const std::vector<uint16_t>& lens, uint64_t minHash, const std::vector<size_t>& positions)
@@ -83,7 +82,6 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 			expandedSize += result[i].second[j];
 		}
 	}
-	std::cerr << "expanded size " << expandedSize << std::endl;
 	return result;
 }
 

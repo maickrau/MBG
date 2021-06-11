@@ -1555,7 +1555,7 @@ void printUnitigKmerCount(const UnitigGraph& unitigs)
 	std::cerr << unitigKmers << " distinct selected k-mers in unitigs after filtering" << std::endl;
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc, const bool collapseRunLengths, const bool blunt, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc, const bool blunt, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths)
 {
 	auto beforeReading = getTime();
 	// check that all files actually exist
@@ -1610,7 +1610,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		// if (windowSize > 1) forceEdgeDeterminism(reads, unitigs, unitigSequences, kmerSize, minUnitigCoverage);
 		beforeConsistency = getTime();
 		//todo fix
-		// if (!collapseRunLengths) forceEdgeConsistency(unitigs, reads, unitigSequences, kmerSize);
+		// if (hpc) forceEdgeConsistency(unitigs, reads, unitigSequences, kmerSize);
 		beforeWrite = getTime();
 		std::cerr << "Writing graph to " << outputGraph << std::endl;
 		stats = writeGraph(unitigs, outputGraph, reads, unitigSequences, kmerSize);
@@ -1630,7 +1630,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforeSequences) << std::endl;
 	std::cerr << "building unitig sequences took " << formatTime(beforeSequences, beforeDeterminism) << std::endl;
 	if (!blunt && windowSize > 1) std::cerr << "forcing edge determinism took " << formatTime(beforeDeterminism, beforeConsistency) << std::endl;
-	if (!blunt && !collapseRunLengths) std::cerr << "forcing edge consistency took " << formatTime(beforeConsistency, beforeWrite) << std::endl;
+	if (!blunt && hpc) std::cerr << "forcing edge consistency took " << formatTime(beforeConsistency, beforeWrite) << std::endl;
 	std::cerr << "writing the graph and calculating stats took " << formatTime(beforeWrite, afterWrite) << std::endl;
 	if (outputSequencePaths != "") std::cerr << "writing sequence paths took " << formatTime(afterWrite, afterPaths) << std::endl;
 	std::cerr << "nodes: " << stats.nodes << std::endl;
