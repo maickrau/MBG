@@ -392,8 +392,8 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 	{
 		threads[i].join();
 	}
-	std::cerr << totalNodes << " nodes" << std::endl;
-	std::cerr << result.size() << " distinct fw/bw sequence nodes" << std::endl;
+	std::cerr << totalNodes << " total selected k-mers in reads" << std::endl;
+	std::cerr << result.size() << " distinct selected k-mers in reads" << std::endl;
 }
 
 std::vector<size_t> getRLEExpandedPositions(const std::string& seq, const std::vector<uint16_t>& lens)
@@ -1861,6 +1861,16 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t km
 	}
 }
 
+void printUnitigKmerCount(const UnitigGraph& unitigs)
+{
+	size_t unitigKmers = 0;
+	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
+	{
+		unitigKmers += unitigs.unitigs[i].size();
+	}
+	std::cerr << unitigKmers << " distinct selected k-mers in unitigs after filtering" << std::endl;
+}
+
 void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const bool hpc, const bool collapseRunLengths, const bool blunt, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths)
 {
 	auto beforeReading = getTime();
@@ -1870,6 +1880,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	auto unitigs = getUnitigGraph(reads, minCoverage);
 	auto beforeFilter = getTime();
 	if (minUnitigCoverage > minCoverage) unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage));
+	printUnitigKmerCount(unitigs);
 	auto beforeDeterminism = getTime();
 	auto beforeConsistency = getTime();
 	auto beforeWrite = getTime();
