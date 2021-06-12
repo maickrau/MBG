@@ -1580,7 +1580,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	auto beforeSequences = getTime();
 	std::cerr << "Getting unitig sequences" << std::endl;
 	std::vector<std::pair<std::string, std::vector<uint16_t>>> unitigSequences;
-	unitigSequences = getHPCUnitigSequences(reads, unitigs, inputReads, kmerSize, partIterator);
+	unitigSequences = getHPCUnitigSequences(reads, unitigs, inputReads, kmerSize, partIterator, numThreads);
 	auto beforeDeterminism = getTime();
 	auto beforeConsistency = getTime();
 	auto beforeWrite = getTime();

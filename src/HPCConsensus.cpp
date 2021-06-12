@@ -1,7 +1,18 @@
 #include <limits>
 #include "HPCConsensus.h"
 
-std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& filenames, const size_t kmerSize, const ReadpartIterator& partIterator)
+// allow multiple threads to update the same contig sequence but in different regions
+// each mutex covers MutexLength bp in one contig, overlap by half
+// ------
+//    ------
+//       ------
+// etc
+// size arbitrarily 1Mbp, so ~(3000 + num_contigs) mutexes in a human genome, hopefully not too many
+// and the chance of random hifis falling in the same 1Mbp bucket is ~.3% so hopefully not too much waiting
+constexpr size_t MutexLength = 1000000;
+constexpr size_t MutexSpan = MutexLength / 2;
+
+std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& filenames, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	std::vector<std::pair<std::string, std::vector<uint16_t>>> result;
 	std::vector<std::vector<uint8_t>> runLengthCounts;
@@ -9,6 +20,8 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 	runLengthCounts.resize(unitigs.unitigs.size());
 	std::vector<std::tuple<size_t, size_t, bool>> kmerPosition;
 	kmerPosition.resize(hashlist.size(), std::tuple<size_t, size_t, bool> { std::numeric_limits<size_t>::max(), 0, true });
+	std::vector<std::mutex*> seqMutexes;
+	seqMutexes.resize(unitigs.unitigs.size());
 	size_t rleSize = 0;
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
@@ -28,10 +41,17 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 		result[i].second.resize(offset + kmerSize, 0);
 		runLengthCounts[i].resize(offset + kmerSize, 0);
 		rleSize += result[i].first.size();
+		size_t numMutexes = 0;
+		for (size_t j = 0; j < offset + kmerSize; j += MutexSpan)
+		{
+			numMutexes += 1;
+		}
+		assert(numMutexes > 0);
+		seqMutexes[i] = new std::mutex[numMutexes];
 	}
-	iterateReadsMultithreaded(filenames, 1, [&result, &runLengthCounts, &partIterator, &hashlist, &kmerPosition, kmerSize](size_t thread, FastQ& read)
+	iterateReadsMultithreaded(filenames, numThreads, [&result, &seqMutexes, &runLengthCounts, &partIterator, &hashlist, &kmerPosition, kmerSize](size_t thread, FastQ& read)
 	{
-		partIterator.iteratePartKmers(read, [&result, &runLengthCounts, &hashlist, &kmerPosition, kmerSize](const std::string& seq, const std::vector<uint16_t>& lens, uint64_t minHash, const std::vector<size_t>& positions)
+		partIterator.iteratePartKmers(read, [&result, &seqMutexes, &runLengthCounts, &hashlist, &kmerPosition, kmerSize](const std::string& seq, const std::vector<uint16_t>& lens, uint64_t minHash, const std::vector<size_t>& positions)
 		{
 			std::string revSeq = revCompRLE(seq);
 			for (auto pos : positions)
@@ -46,6 +66,13 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 				size_t offset = std::get<1>(kmerPosition[current.first]);
 				bool fw = std::get<2>(kmerPosition[current.first]);
 				if (!current.second) fw = !fw;
+				size_t lowMutexIndex = offset / MutexSpan;
+				size_t highMutexIndex = (offset + kmerSize) / MutexSpan;
+				std::vector<std::lock_guard<std::mutex>*> guards;
+				for (size_t i = lowMutexIndex; i < highMutexIndex; i++)
+				{
+					guards.emplace_back(new std::lock_guard<std::mutex>{seqMutexes[unitig][i]});
+				}
 				for (size_t i = 0; i < kmerSize; i++)
 				{
 					size_t off = offset + i;
@@ -69,6 +96,10 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 					result[unitig].second[off] += lens[pos+i];
 					runLengthCounts[unitig][off] += 1;
 				}
+				for (size_t i = 0; i < guards.size(); i++)
+				{
+					delete guards[i];
+				}
 			};
 		});
 	});
@@ -81,6 +112,10 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 			result[i].second[j] = (result[i].second[j] + runLengthCounts[i][j] / 2) / runLengthCounts[i][j];
 			expandedSize += result[i].second[j];
 		}
+	}
+	for (size_t i = 0; i < seqMutexes.size(); i++)
+	{
+		delete [] seqMutexes[i];
 	}
 	return result;
 }
