@@ -24,7 +24,7 @@ public:
 	void addEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to);
 	size_t size() const;
 	std::pair<size_t, bool> getNodeOrNull(std::string_view sequence) const;
-	std::pair<std::pair<size_t, bool>, HashType> addNode(std::string_view sequence, std::string_view reverse, const std::vector<uint16_t>& sequenceCharacterLength, size_t seqCharLenStart, size_t seqCharLenEnd, HashType previousHash, size_t overlap, uint64_t bucketHash);
+	std::pair<std::pair<size_t, bool>, HashType> addNode(std::string_view sequence, std::string_view reverse, HashType previousHash, size_t overlap, uint64_t bucketHash);
 private:
 	std::mutex indexMutex;
 	const size_t kmerSize;
