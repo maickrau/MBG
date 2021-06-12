@@ -1117,146 +1117,120 @@ AssemblyStats getSizeAndN50(const BluntGraph& graph)
 	return result;
 }
 
-std::pair<NodeType, size_t> find(std::unordered_map<NodeType, std::vector<std::pair<NodeType, size_t>>>& parent, std::pair<NodeType, size_t> key)
+std::pair<NodeType, size_t> find(std::vector<std::vector<std::pair<NodeType, size_t>>>& parent, std::pair<NodeType, size_t> key)
 {
 	while (true)
 	{
-		assert(parent.count(key.first) == 1);
+		assert(key.first < parent.size());
 		auto foundParent = parent[key.first][key.second];
-		assert(parent.count(foundParent.first) == 1);
+		assert(foundParent.first < parent.size());
 		if (parent[key.first][key.second] == parent[foundParent.first][foundParent.second]) return parent[key.first][key.second];
 		parent[key.first][key.second] = parent[foundParent.first][foundParent.second];
 	}
 }
 
-void merge(std::unordered_map<NodeType, std::vector<std::pair<NodeType, size_t>>>& parent, std::unordered_map<NodeType, std::vector<size_t>>& rank, std::pair<NodeType, size_t> left, std::pair<NodeType, size_t> right)
+void merge(std::vector<std::vector<std::pair<NodeType, size_t>>>& parent, std::vector<std::vector<size_t>>& rank, std::pair<NodeType, size_t> left, std::pair<NodeType, size_t> right)
 {
 	left = find(parent, left);
 	right = find(parent, right);
 	assert(parent[left.first][left.second] == left);
 	assert(parent[right.first][right.second] == right);
-	assert(rank.count(left.first) == 1);
-	assert(rank.count(right.first) == 1);
 	if (rank[right.first][right.second] > rank[left.first][left.second]) std::swap(left, right);
 	parent[right.first][right.second] = left;
 	assert(rank[right.first][right.second] <= rank[left.first][left.second]);
 	if (rank[right.first][right.second] == rank[left.first][left.second]) rank[left.first][left.second] += 1;
 }
 
-void merge(std::unordered_map<NodeType, std::vector<std::pair<NodeType, size_t>>>& parent, std::unordered_map<NodeType, std::vector<size_t>>& rank, NodeType leftNode, size_t leftOffset, NodeType rightNode, size_t rightOffset)
+void merge(std::vector<std::vector<std::pair<NodeType, size_t>>>& parent, std::vector<std::vector<size_t>>& rank, NodeType leftNode, size_t leftOffset, NodeType rightNode, size_t rightOffset)
 {
 	merge(parent, rank, std::make_pair(leftNode, leftOffset), std::make_pair(rightNode, rightOffset));
 }
 
-// void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, const size_t kmerSize)
-// {
-// 	std::unordered_map<NodeType, std::vector<std::pair<NodeType, size_t>>> parent;
-// 	std::unordered_map<NodeType, std::vector<size_t>> rank;
-// 	for (const auto& unitig : unitigs.unitigs)
-// 	{
-// 		assert(unitig.size() > 0);
-// 		assert(parent.count(unitig[0].first) == 0);
-// 		assert(parent.count(unitig.back().first) == 0);
-// 		assert(rank.count(unitig[0].first) == 0);
-// 		assert(rank.count(unitig.back().first) == 0);
-// 		for (size_t i = 0; i < kmerSize; i++)
-// 		{
-// 			parent[unitig[0].first].emplace_back(unitig[0].first, i);
-// 			rank[unitig[0].first].emplace_back(0);
-// 			if (unitig.size() > 1)
-// 			{
-// 				parent[unitig.back().first].emplace_back(unitig.back().first, i);
-// 				rank[unitig.back().first].emplace_back(0);
-// 			}
-// 		}
-// 		if (unitig.size() == 1) continue;
-// 		size_t firstToLastOverlap = kmerSize;
-// 		for (size_t i = 1; i < unitig.size(); i++)
-// 		{
-// 			size_t overlap = hashlist.getOverlap(unitig[i-1], unitig[i]);
-// 			assert(overlap < kmerSize);
-// 			size_t removeOverlap = kmerSize - overlap;
-// 			if (removeOverlap >= firstToLastOverlap)
-// 			{
-// 				firstToLastOverlap = 0;
-// 				break;
-// 			}
-// 			firstToLastOverlap -= removeOverlap;
-// 			if (i == unitig.size()-1) break;
-// 		}
-// 		if (firstToLastOverlap > 0)
-// 		{
-// 			assert(firstToLastOverlap < kmerSize);
-// 			for (size_t i = 0; i < firstToLastOverlap; i++)
-// 			{
-// 				size_t firstOffset = kmerSize - firstToLastOverlap + i;
-// 				assert(firstOffset < kmerSize);
-// 				if (!unitig[0].second) firstOffset = kmerSize - 1 - firstOffset;
-// 				assert(firstOffset < kmerSize);
-// 				size_t secondOffset = i;
-// 				if (!unitig.back().second) secondOffset = kmerSize - 1 - secondOffset;
-// 				assert(secondOffset < kmerSize);
-// 				merge(parent, rank, unitig[0].first, firstOffset, unitig.back().first, secondOffset);
-// 			}
-// 		}
-// 	}
-// 	for (size_t unitig = 0; unitig < unitigs.edges.size(); unitig++)
-// 	{
-// 		std::pair<size_t, bool> fw { unitig, true };
-// 		std::pair<size_t, bool> bw { unitig, false };
-// 		for (auto target : unitigs.edges[fw])
-// 		{
-// 			std::pair<NodeType, bool> from = unitigs.unitigs[unitig].back();
-// 			std::pair<NodeType, bool> to = unitigs.unitigs[target.first][0];
-// 			if (!target.second) to = reverse(unitigs.unitigs[target.first].back());
-// 			size_t overlap = hashlist.getOverlap(from, to);
-// 			for (size_t i = 0; i < overlap; i++)
-// 			{
-// 				size_t firstOffset = kmerSize - overlap + i;
-// 				assert(firstOffset < kmerSize);
-// 				if (!from.second) firstOffset = kmerSize - 1 - firstOffset;
-// 				assert(firstOffset < kmerSize);
-// 				size_t secondOffset = i;
-// 				if (!to.second) secondOffset = kmerSize - 1 - secondOffset;
-// 				assert(secondOffset < kmerSize);
-// 				merge(parent, rank, from.first, firstOffset, to.first, secondOffset);
-// 			}
-// 		}
-// 		for (auto target : unitigs.edges[bw])
-// 		{
-// 			std::pair<NodeType, bool> from = reverse(unitigs.unitigs[unitig][0]);
-// 			std::pair<NodeType, bool> to = unitigs.unitigs[target.first][0];
-// 			if (!target.second) to = reverse(unitigs.unitigs[target.first].back());
-// 			size_t overlap = hashlist.getOverlap(from, to);
-// 			for (size_t i = 0; i < overlap; i++)
-// 			{
-// 				size_t firstOffset = kmerSize - overlap + i;
-// 				assert(firstOffset < kmerSize);
-// 				if (!from.second) firstOffset = kmerSize - 1 - firstOffset;
-// 				assert(firstOffset < kmerSize);
-// 				size_t secondOffset = i;
-// 				if (!to.second) secondOffset = kmerSize - 1 - secondOffset;
-// 				assert(secondOffset < kmerSize);
-// 				merge(parent, rank, from.first, firstOffset, to.first, secondOffset);
-// 			}
-// 		}
-// 	}
-// 	std::unordered_set<NodeType> keys;
-// 	for (auto pair : parent)
-// 	{
-// 		keys.emplace(pair.first);
-// 	}
-// 	for (auto node : keys)
-// 	{
-// 		for (size_t i = 0; i < kmerSize; i++)
-// 		{
-// 			auto found = find(parent, std::make_pair(node, i));
-// 			size_t length = hashlist.getRunLength(found.first, found.second);
-// 			assert(length > 0);
-// 			hashlist.setRunLength(node, i, length);
-// 		}
-// 	}
-// }
+void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, std::vector<std::pair<std::string, std::vector<uint16_t>>>& unitigSequences, const size_t kmerSize)
+{
+	std::vector<std::vector<std::pair<NodeType, size_t>>> parent;
+	std::vector<std::vector<size_t>> rank;
+	parent.resize(unitigSequences.size());
+	rank.resize(unitigSequences.size());
+	for (size_t i = 0; i < unitigSequences.size(); i++)
+	{
+		if (unitigSequences[i].first.size() >= 2 * kmerSize)
+		{
+			for (size_t j = 0; j < 2 * kmerSize; j++)
+			{
+				parent[i].emplace_back(i, j);
+				rank[i].emplace_back(0);
+			}
+		}
+		else
+		{
+			for (size_t j = 0; j < unitigSequences[i].first.size(); j++)
+			{
+				parent[i].emplace_back(i, j);
+				rank[i].emplace_back(0);
+			}
+		}
+	}
+	for (size_t unitig = 0; unitig < unitigs.edges.size(); unitig++)
+	{
+		std::pair<size_t, bool> fw { unitig, true };
+		std::pair<size_t, bool> bw { unitig, false };
+		for (auto target : unitigs.edges[fw])
+		{
+			std::pair<NodeType, bool> from = unitigs.unitigs[unitig].back();
+			std::pair<NodeType, bool> to = unitigs.unitigs[target.first][0];
+			if (!target.second) to = reverse(unitigs.unitigs[target.first].back());
+			size_t overlap = hashlist.getOverlap(from, to);
+			for (size_t i = 0; i < overlap; i++)
+			{
+				size_t firstOffset = parent[unitig].size() - overlap + i;
+				size_t secondOffset = i;
+				if (!target.second) secondOffset = parent[target.first].size() - 1 - i;
+				merge(parent, rank, unitig, firstOffset, target.first, secondOffset);
+			}
+		}
+		for (auto target : unitigs.edges[bw])
+		{
+			std::pair<NodeType, bool> from = reverse(unitigs.unitigs[unitig][0]);
+			std::pair<NodeType, bool> to = unitigs.unitigs[target.first][0];
+			if (!target.second) to = reverse(unitigs.unitigs[target.first].back());
+			size_t overlap = hashlist.getOverlap(from, to);
+			for (size_t i = 0; i < overlap; i++)
+			{
+				size_t firstOffset = overlap - 1 - i;
+				size_t secondOffset = i;
+				if (!target.second) secondOffset = parent[target.first].size() - 1 - i;
+				merge(parent, rank, unitig, firstOffset, target.first, secondOffset);
+			}
+		}
+	}
+	for (size_t i = 0; i < parent.size(); i++)
+	{
+		for (size_t j = 0; j < parent[i].size(); j++)
+		{
+			auto found = find(parent, std::make_pair(i, j));
+			size_t secondPos = found.second;
+			assert(secondPos < 2 * kmerSize);
+			if (secondPos >= kmerSize)
+			{
+				size_t secondFromEnd = parent[found.first].size() - 1 - secondPos;
+				assert(secondFromEnd < kmerSize);
+				secondPos = unitigSequences[found.first].first.size() - 1 - secondFromEnd;
+			}
+			size_t length = unitigSequences[found.first].second[secondPos];
+			assert(length > 0);
+			size_t firstPos = j;
+			assert(firstPos < 2 * kmerSize);
+			if (firstPos >= kmerSize)
+			{
+				size_t firstFromEnd = parent[i].size() - 1 - firstPos;
+				assert(firstFromEnd < kmerSize);
+				firstPos = unitigSequences[i].first.size() - 1 - firstFromEnd;
+			}
+			unitigSequences[i].second[firstPos] = length;
+		}
+	}
+}
 
 // void collectApproxNeighbors(std::unordered_map<uint64_t, unsigned char>& approxNeighbors, HashList& hashlist, const size_t kmerSize, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
 // {
@@ -1622,8 +1596,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		//todo fix
 		// if (windowSize > 1) forceEdgeDeterminism(reads, unitigs, unitigSequences, kmerSize, minUnitigCoverage);
 		beforeConsistency = getTime();
-		//todo fix
-		// if (hpc) forceEdgeConsistency(unitigs, reads, unitigSequences, kmerSize);
+		if (hpc) forceEdgeConsistency(unitigs, reads, unitigSequences, kmerSize);
 		beforeWrite = getTime();
 		std::cerr << "Writing graph to " << outputGraph << std::endl;
 		stats = writeGraph(unitigs, outputGraph, reads, unitigSequences, kmerSize);
