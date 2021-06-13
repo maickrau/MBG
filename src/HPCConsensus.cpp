@@ -8,7 +8,7 @@
 //       ------
 // etc
 // size arbitrarily 1Mbp, so ~(3000 + num_contigs) mutexes in a human genome, hopefully not too many
-// and the chance of random hifis falling in the same 1Mbp bucket is ~.3% so hopefully not too much waiting
+// and the chance of two random hifis falling in the same 1Mbp bucket is ~.3% so hopefully not too much waiting
 constexpr size_t MutexLength = 1000000;
 constexpr size_t MutexSpan = MutexLength / 2;
 
@@ -16,8 +16,10 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 {
 	std::vector<std::pair<std::string, std::vector<uint16_t>>> result;
 	std::vector<std::vector<uint8_t>> runLengthCounts;
+	std::vector<std::vector<bool>> locked;
 	result.resize(unitigs.unitigs.size());
 	runLengthCounts.resize(unitigs.unitigs.size());
+	locked.resize(unitigs.unitigs.size());
 	std::vector<std::tuple<size_t, size_t, bool>> kmerPosition;
 	kmerPosition.resize(hashlist.size(), std::tuple<size_t, size_t, bool> { std::numeric_limits<size_t>::max(), 0, true });
 	std::vector<std::mutex*> seqMutexes;
@@ -40,6 +42,7 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 		result[i].first.resize(offset + kmerSize, 0);
 		result[i].second.resize(offset + kmerSize, 0);
 		runLengthCounts[i].resize(offset + kmerSize, 0);
+		locked[i].resize(offset + kmerSize, false);
 		rleSize += result[i].first.size();
 		size_t numMutexes = 0;
 		for (size_t j = 0; j < offset + kmerSize; j += MutexSpan)
@@ -49,9 +52,9 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 		assert(numMutexes > 0);
 		seqMutexes[i] = new std::mutex[numMutexes];
 	}
-	iterateReadsMultithreaded(filenames, numThreads, [&result, &seqMutexes, &runLengthCounts, &partIterator, &hashlist, &kmerPosition, kmerSize](size_t thread, FastQ& read)
+	iterateReadsMultithreaded(filenames, numThreads, [&result, &locked, &seqMutexes, &runLengthCounts, &partIterator, &hashlist, &kmerPosition, kmerSize](size_t thread, FastQ& read)
 	{
-		partIterator.iteratePartKmers(read, [&result, &seqMutexes, &runLengthCounts, &hashlist, &kmerPosition, kmerSize](const std::string& seq, const std::vector<uint16_t>& lens, uint64_t minHash, const std::vector<size_t>& positions)
+		partIterator.iteratePartKmers(read, [&result, &locked, &seqMutexes, &runLengthCounts, &hashlist, &kmerPosition, kmerSize](const std::string& seq, const std::vector<uint16_t>& lens, uint64_t minHash, const std::vector<size_t>& positions)
 		{
 			std::string revSeq = revCompRLE(seq);
 			for (auto pos : positions)
@@ -77,6 +80,7 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 				{
 					size_t off = offset + i;
 					if (!fw) off = offset + kmerSize - 1 - i;
+					if (locked[unitig][off]) continue;
 					if (result[unitig].first[off] == 0)
 					{
 						if (fw)
@@ -92,6 +96,16 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 					{
 						assert(!fw || result[unitig].first[off] == seq[pos + i]);
 						assert(fw || result[unitig].first[off] == 5 - seq[pos + i]);
+					}
+					if (std::numeric_limits<uint16_t>::max() - result[unitig].second[off] < lens[pos+i])
+					{
+						locked[unitig][off] = true;
+						continue;
+					}
+					if (std::numeric_limits<uint8_t>::max() - runLengthCounts[unitig][off] < 1)
+					{
+						locked[unitig][off] = true;
+						continue;
 					}
 					result[unitig].second[off] += lens[pos+i];
 					runLengthCounts[unitig][off] += 1;
