@@ -12,6 +12,57 @@
 constexpr size_t MutexLength = 1000000;
 constexpr size_t MutexSpan = MutexLength / 2;
 
+void addCounts(std::vector<std::pair<std::string, std::vector<uint16_t>>>& result, std::vector<std::vector<uint8_t>>& runLengthCounts, std::vector<std::vector<bool>>& locked, std::vector<std::mutex*>& seqMutexes, const std::string& seq, const std::vector<uint16_t>& lens, const size_t seqStart, const size_t seqEnd, const size_t unitig, const size_t unitigStart, const size_t unitigEnd, const bool fw)
+{
+	assert(unitigEnd - unitigStart == seqEnd - seqStart);
+	size_t lowMutexIndex = unitigStart / MutexSpan;
+	size_t highMutexIndex = (unitigEnd) / MutexSpan;
+	std::vector<std::lock_guard<std::mutex>*> guards;
+	for (size_t i = lowMutexIndex; i < highMutexIndex; i++)
+	{
+		guards.emplace_back(new std::lock_guard<std::mutex>{seqMutexes[unitig][i]});
+	}
+	for (size_t i = 0; i < seqEnd - seqStart; i++)
+	{
+		size_t off = unitigStart + i;
+		if (!fw) off = unitigEnd - 1 - i;
+		assert(off < result[unitig].first.size());
+		if (locked[unitig][off]) continue;
+		if (result[unitig].first[off] == 0)
+		{
+			if (fw)
+			{
+				result[unitig].first[off] = seq[seqStart+i];
+			}
+			else
+			{
+				result[unitig].first[off] = 5 - seq[seqStart+i];
+			}
+		}
+		else
+		{
+			assert(!fw || result[unitig].first[off] == seq[seqStart + i]);
+			assert(fw || result[unitig].first[off] == 5 - seq[seqStart + i]);
+		}
+		if (std::numeric_limits<uint16_t>::max() - result[unitig].second[off] < lens[seqStart+i])
+		{
+			locked[unitig][off] = true;
+			continue;
+		}
+		if (std::numeric_limits<uint8_t>::max() - runLengthCounts[unitig][off] < 1)
+		{
+			locked[unitig][off] = true;
+			continue;
+		}
+		result[unitig].second[off] += lens[seqStart+i];
+		runLengthCounts[unitig][off] += 1;
+	}
+	for (size_t i = 0; i < guards.size(); i++)
+	{
+		delete guards[i];
+	}
+}
+
 std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& filenames, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	std::vector<std::pair<std::string, std::vector<uint16_t>>> result;
@@ -56,7 +107,14 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 	{
 		partIterator.iteratePartKmers(read, [&result, &locked, &seqMutexes, &runLengthCounts, &hashlist, &kmerPosition, kmerSize](const std::string& seq, const std::vector<uint16_t>& lens, uint64_t minHash, const std::vector<size_t>& positions)
 		{
-			std::string revSeq = revCompRLE(seq);
+			size_t currentSeqStart = 0;
+			size_t currentSeqEnd = 0;
+			size_t currentUnitig = std::numeric_limits<size_t>::max();
+			size_t currentUnitigStart = 0;
+			size_t currentUnitigEnd = 0;
+			size_t currentDiagonal = 0;
+			bool currentUnitigForward = true;
+			std::vector<std::tuple<size_t, size_t, size_t>> matchBlocks;
 			for (auto pos : positions)
 			{
 				std::string_view minimizerSequence { seq.data() + pos, kmerSize };
@@ -64,57 +122,63 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 				current = hashlist.getNodeOrNull(minimizerSequence);
 				assert(current.first != std::numeric_limits<size_t>::max());
 				assert(current.first < kmerPosition.size());
-				if (std::get<0>(kmerPosition[current.first]) == std::numeric_limits<size_t>::max()) continue;
+				if (std::get<0>(kmerPosition[current.first]) == std::numeric_limits<size_t>::max())
+				{
+					currentUnitig = std::numeric_limits<size_t>::max();
+				}
 				size_t unitig = std::get<0>(kmerPosition[current.first]);
 				size_t offset = std::get<1>(kmerPosition[current.first]);
 				bool fw = std::get<2>(kmerPosition[current.first]);
 				if (!current.second) fw = !fw;
-				size_t lowMutexIndex = offset / MutexSpan;
-				size_t highMutexIndex = (offset + kmerSize) / MutexSpan;
-				std::vector<std::lock_guard<std::mutex>*> guards;
-				for (size_t i = lowMutexIndex; i < highMutexIndex; i++)
+				size_t diagonal;
+				if (fw)
 				{
-					guards.emplace_back(new std::lock_guard<std::mutex>{seqMutexes[unitig][i]});
+					diagonal = pos - offset;
 				}
-				for (size_t i = 0; i < kmerSize; i++)
+				else
 				{
-					size_t off = offset + i;
-					if (!fw) off = offset + kmerSize - 1 - i;
-					if (locked[unitig][off]) continue;
-					if (result[unitig].first[off] == 0)
+					diagonal = pos + offset;
+				}
+				if (unitig == currentUnitig && currentUnitigForward == fw && diagonal == currentDiagonal && pos <= currentSeqEnd)
+				{
+					assert(pos + kmerSize > currentSeqEnd);
+					currentSeqEnd = pos + kmerSize;
+					if (fw)
 					{
-						if (fw)
-						{
-							result[unitig].first[off] = seq[pos+i];
-						}
-						else
-						{
-							result[unitig].first[off] = 5 - seq[pos+i];
-						}
+						assert(offset + kmerSize > currentUnitigEnd);
+						currentUnitigEnd = offset + kmerSize;
 					}
 					else
 					{
-						assert(!fw || result[unitig].first[off] == seq[pos + i]);
-						assert(fw || result[unitig].first[off] == 5 - seq[pos + i]);
+						assert(offset < currentUnitigStart);
+						currentUnitigStart = offset;
 					}
-					if (std::numeric_limits<uint16_t>::max() - result[unitig].second[off] < lens[pos+i])
-					{
-						locked[unitig][off] = true;
-						continue;
-					}
-					if (std::numeric_limits<uint8_t>::max() - runLengthCounts[unitig][off] < 1)
-					{
-						locked[unitig][off] = true;
-						continue;
-					}
-					result[unitig].second[off] += lens[pos+i];
-					runLengthCounts[unitig][off] += 1;
+					continue;
 				}
-				for (size_t i = 0; i < guards.size(); i++)
+				if (currentUnitig == std::numeric_limits<size_t>::max())
 				{
-					delete guards[i];
+					currentUnitig = unitig;
+					currentSeqStart = pos;
+					currentSeqEnd = pos + kmerSize;
+					currentUnitigStart = offset;
+					currentUnitigEnd = offset + kmerSize;
+					currentDiagonal = diagonal;
+					currentUnitigForward = fw;
+					continue;
 				}
+				addCounts(result, runLengthCounts, locked, seqMutexes, seq, lens, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
+				currentUnitig = unitig;
+				currentSeqStart = pos;
+				currentSeqEnd = pos + kmerSize;
+				currentUnitigStart = offset;
+				currentUnitigEnd = offset + kmerSize;
+				currentDiagonal = diagonal;
+				currentUnitigForward = fw;
 			};
+			if (currentUnitig != std::numeric_limits<size_t>::max())
+			{
+				addCounts(result, runLengthCounts, locked, seqMutexes, seq, lens, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
+			}
 		});
 	});
 	size_t expandedSize = 0;
