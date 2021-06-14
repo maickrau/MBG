@@ -175,7 +175,6 @@ void collectEndSmers(std::vector<bool>& endSmer, const std::vector<std::string>&
 {
 	size_t smerSize = kmerSize - windowSize + 1;
 	size_t addedEndSmers = 0;
-	std::cerr << "Collecting end k-mers" << std::endl;
 	iterateReadsMultithreaded(files, 1, [&endSmer, smerSize, &addedEndSmers, &partIterator](size_t thread, FastQ& read)
 	{
 		partIterator.iterateParts(read, [&endSmer, smerSize, &addedEndSmers](const std::string& seq, const std::vector<uint16_t>& lens) {
@@ -198,7 +197,6 @@ void collectEndSmers(std::vector<bool>& endSmer, const std::vector<std::string>&
 void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::string>& files, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	std::atomic<size_t> totalNodes = 0;
-	std::cerr << "Collecting selected k-mers" << std::endl;
 	iterateReadsMultithreaded(files, numThreads, [&result, &totalNodes, kmerSize, &partIterator](size_t thread, FastQ& read)
 	{
 		partIterator.iteratePartKmers(read, [&result, &totalNodes, kmerSize](const std::string& seq, const std::vector<uint16_t>& lens, uint64_t minHash, const std::vector<size_t>& positions)
@@ -1228,311 +1226,578 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, std::v
 				firstPos = unitigSequences[i].first.size() - 1 - firstFromEnd;
 			}
 			unitigSequences[i].second[firstPos] = length;
+			assert(unitigSequences[i].first[firstPos] == unitigSequences[found.first].first[secondPos] || unitigSequences[i].first[firstPos] == 5 - unitigSequences[found.first].first[secondPos]);
 		}
 	}
 }
 
-// void collectApproxNeighbors(std::unordered_map<uint64_t, unsigned char>& approxNeighbors, HashList& hashlist, const size_t kmerSize, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
-// {
-// 	std::string fromSequence = hashlist.getHashSequenceRLE(fromKmer.first).toString();
-// 	if (!fromKmer.second) fromSequence = revCompRLE(fromSequence);
-// 	std::string toSequence = hashlist.getHashSequenceRLE(toKmer.first).toString();
-// 	if (!toKmer.second) toSequence = revCompRLE(toSequence);
-// 	size_t overlap = hashlist.getOverlap(fromKmer, toKmer);
-// 	std::string edgeSequence = fromSequence + toSequence.substr(overlap);
-// 	assert(edgeSequence.size() > kmerSize);
-// 	assert(edgeSequence.size() == kmerSize + kmerSize - overlap);
-// 	assert(edgeSequence.size() < 2 * kmerSize);
-// 	if (edgeSequence.size() == kmerSize + 1) return;
-// 	FastHasher fwkmerHasher { kmerSize };
-// 	for (size_t i = 0; i < kmerSize; i++)
-// 	{
-// 		fwkmerHasher.addChar(edgeSequence[i]);
-// 	}
-// 	for (size_t i = kmerSize; i < edgeSequence.size(); i++)
-// 	{
-// 		auto oldFwHash = fwkmerHasher.getFwHash();
-// 		fwkmerHasher.addChar(edgeSequence[i]);
-// 		fwkmerHasher.removeChar(edgeSequence[i-kmerSize]);
-// 		auto newBwHash = fwkmerHasher.getBwHash();
-// 		if (approxNeighbors.count(oldFwHash) == 1 && approxNeighbors.at(oldFwHash) != edgeSequence[i]) approxNeighbors[oldFwHash] = std::numeric_limits<unsigned char>::max();
-// 		if (approxNeighbors.count(oldFwHash) == 0) approxNeighbors[oldFwHash] = edgeSequence[i];
-// 		if (approxNeighbors.count(newBwHash) == 1 && approxNeighbors.at(newBwHash) != revCompRLE(edgeSequence[i-kmerSize])) approxNeighbors[newBwHash] = std::numeric_limits<unsigned char>::max();
-// 		if (approxNeighbors.count(newBwHash) == 0) approxNeighbors[newBwHash] = revCompRLE(edgeSequence[i-kmerSize]);
-// 	}
-// }
+void collectApproxNeighbors(std::unordered_map<uint64_t, unsigned char>& approxNeighbors, std::vector<std::pair<std::string, std::vector<uint16_t>>>& unitigSequences, const size_t kmerSize, std::pair<NodeType, bool> fromUnitig, std::pair<NodeType, bool> toUnitig, const size_t overlap)
+{
+	std::string edgeSequence;
+	if (fromUnitig.second)
+	{
+		edgeSequence = unitigSequences[fromUnitig.first].first.substr(unitigSequences[fromUnitig.first].first.size() - kmerSize);
+	}
+	else
+	{
+		edgeSequence = unitigSequences[fromUnitig.first].first.substr(0, kmerSize);
+		edgeSequence = revCompRLE(edgeSequence);
+	}
+	if (toUnitig.second)
+	{
+		edgeSequence += unitigSequences[toUnitig.first].first.substr(overlap, kmerSize - overlap);
+	}
+	else
+	{
+		std::string add = unitigSequences[toUnitig.first].first.substr(unitigSequences[toUnitig.first].first.size() - kmerSize, kmerSize - overlap);
+		add = revCompRLE(add);
+		edgeSequence += add;
+	}
+	assert(edgeSequence.size() > kmerSize);
+	assert(edgeSequence.size() == kmerSize + kmerSize - overlap);
+	assert(edgeSequence.size() < 2 * kmerSize);
+	if (edgeSequence.size() == kmerSize + 1) return;
+	FastHasher fwkmerHasher { kmerSize };
+	for (size_t i = 0; i < kmerSize; i++)
+	{
+		fwkmerHasher.addChar(edgeSequence[i]);
+	}
+	for (size_t i = kmerSize; i < edgeSequence.size(); i++)
+	{
+		auto oldFwHash = fwkmerHasher.getFwHash();
+		fwkmerHasher.addChar(edgeSequence[i]);
+		fwkmerHasher.removeChar(edgeSequence[i-kmerSize]);
+		auto newBwHash = fwkmerHasher.getBwHash();
+		if (approxNeighbors.count(oldFwHash) == 1 && approxNeighbors.at(oldFwHash) != edgeSequence[i]) approxNeighbors[oldFwHash] = std::numeric_limits<unsigned char>::max();
+		if (approxNeighbors.count(oldFwHash) == 0) approxNeighbors[oldFwHash] = edgeSequence[i];
+		if (approxNeighbors.count(newBwHash) == 1 && approxNeighbors.at(newBwHash) != revCompRLE(edgeSequence[i-kmerSize])) approxNeighbors[newBwHash] = std::numeric_limits<unsigned char>::max();
+		if (approxNeighbors.count(newBwHash) == 0) approxNeighbors[newBwHash] = revCompRLE(edgeSequence[i-kmerSize]);
+	}
+}
 
-// void collectExactNeighbors(const std::unordered_map<uint64_t, unsigned char>& approxNeighbors, std::unordered_map<HashType, unsigned char>& exactNeighbors, HashList& hashlist, const size_t kmerSize, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
-// {
-// 	std::string fromSequence = hashlist.getHashSequenceRLE(fromKmer.first).toString();
-// 	if (!fromKmer.second) fromSequence = revCompRLE(fromSequence);
-// 	std::string toSequence = hashlist.getHashSequenceRLE(toKmer.first).toString();
-// 	if (!toKmer.second) toSequence = revCompRLE(toSequence);
-// 	size_t overlap = hashlist.getOverlap(fromKmer, toKmer);
-// 	std::string edgeSequence = fromSequence + toSequence.substr(overlap);
-// 	assert(edgeSequence.size() > kmerSize);
-// 	assert(edgeSequence.size() == kmerSize + kmerSize - overlap);
-// 	assert(edgeSequence.size() < 2 * kmerSize);
-// 	if (edgeSequence.size() == kmerSize + 1) return;
-// 	FastHasher fwkmerHasher { kmerSize };
-// 	for (size_t i = 0; i < kmerSize; i++)
-// 	{
-// 		fwkmerHasher.addChar(edgeSequence[i]);
-// 	}
-// 	for (size_t i = kmerSize; i < edgeSequence.size(); i++)
-// 	{
-// 		auto oldFwHash = fwkmerHasher.getFwHash();
-// 		fwkmerHasher.addChar(edgeSequence[i]);
-// 		fwkmerHasher.removeChar(edgeSequence[i-kmerSize]);
-// 		auto newBwHash = fwkmerHasher.getBwHash();
-// 		assert(approxNeighbors.count(oldFwHash) == 1);
-// 		assert(approxNeighbors.count(newBwHash) == 1);
-// 		// neither is a junction node if both not in approx
-// 		if (approxNeighbors.at(oldFwHash) != std::numeric_limits<unsigned char>::max() && approxNeighbors.at(newBwHash) != std::numeric_limits<unsigned char>::max()) continue;
-// 		HashType oldFwExactHash = hash(edgeSequence.substr(i-kmerSize, kmerSize));
-// 		HashType newBwExactHash = hash(revCompRLE(edgeSequence.substr(i-kmerSize+1, kmerSize)));
-// 		if (exactNeighbors.count(oldFwExactHash) == 1 && exactNeighbors.at(oldFwExactHash) != edgeSequence[i]) exactNeighbors[oldFwExactHash] = std::numeric_limits<unsigned char>::max();
-// 		if (exactNeighbors.count(oldFwExactHash) == 0) exactNeighbors[oldFwExactHash] = edgeSequence[i];
-// 		if (exactNeighbors.count(newBwExactHash) == 1 && exactNeighbors.at(newBwExactHash) != revCompRLE(edgeSequence[i-kmerSize])) exactNeighbors[newBwExactHash] = std::numeric_limits<unsigned char>::max();
-// 		if (exactNeighbors.count(newBwExactHash) == 0) exactNeighbors[newBwExactHash] = revCompRLE(edgeSequence[i-kmerSize]);
-// 	}
-// }
+void collectJunctionHashes(const std::unordered_map<uint64_t, unsigned char>& approxNeighbors, std::unordered_set<uint64_t>& approxHashes, std::vector<std::pair<std::string, std::vector<uint16_t>>>& unitigSequences, const size_t kmerSize, std::pair<NodeType, bool> fromUnitig, std::pair<NodeType, bool> toUnitig, const size_t overlap)
+{
+	std::string edgeSequence;
+	if (fromUnitig.second)
+	{
+		edgeSequence = unitigSequences[fromUnitig.first].first.substr(unitigSequences[fromUnitig.first].first.size() - kmerSize);
+	}
+	else
+	{
+		edgeSequence = unitigSequences[fromUnitig.first].first.substr(0, kmerSize);
+		edgeSequence = revCompRLE(edgeSequence);
+	}
+	if (toUnitig.second)
+	{
+		edgeSequence += unitigSequences[toUnitig.first].first.substr(overlap, kmerSize - overlap);
+	}
+	else
+	{
+		std::string add = unitigSequences[toUnitig.first].first.substr(unitigSequences[toUnitig.first].first.size() - kmerSize, kmerSize - overlap);
+		add = revCompRLE(add);
+		edgeSequence += add;
+	}
+	assert(edgeSequence.size() > kmerSize);
+	assert(edgeSequence.size() == kmerSize + kmerSize - overlap);
+	assert(edgeSequence.size() < 2 * kmerSize);
+	if (edgeSequence.size() == kmerSize + 1) return;
+	FastHasher fwkmerHasher { kmerSize };
+	for (size_t i = 0; i < kmerSize; i++)
+	{
+		fwkmerHasher.addChar(edgeSequence[i]);
+	}
+	for (size_t i = kmerSize; i < edgeSequence.size(); i++)
+	{
+		auto oldFwHash = fwkmerHasher.getFwHash();
+		auto oldHash = fwkmerHasher.hash();
+		fwkmerHasher.addChar(edgeSequence[i]);
+		fwkmerHasher.removeChar(edgeSequence[i-kmerSize]);
+		auto newBwHash = fwkmerHasher.getBwHash();
+		assert(approxNeighbors.count(oldFwHash) == 1);
+		assert(approxNeighbors.count(newBwHash) == 1);
+		// neither is a junction node if both not in approx
+		if (approxNeighbors.at(oldFwHash) != std::numeric_limits<unsigned char>::max() && approxNeighbors.at(newBwHash) != std::numeric_limits<unsigned char>::max()) continue;
+		auto newHash = fwkmerHasher.hash();
+		approxHashes.insert(oldHash);
+		approxHashes.insert(newHash);
+	}
+}
 
-// void collectJunctionHashes(const std::unordered_map<uint64_t, unsigned char>& approxNeighbors, std::unordered_set<uint64_t>& approxHashes, HashList& hashlist, const size_t kmerSize, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
-// {
-// 	std::string fromSequence = hashlist.getHashSequenceRLE(fromKmer.first).toString();
-// 	if (!fromKmer.second) fromSequence = revCompRLE(fromSequence);
-// 	std::string toSequence = hashlist.getHashSequenceRLE(toKmer.first).toString();
-// 	if (!toKmer.second) toSequence = revCompRLE(toSequence);
-// 	size_t overlap = hashlist.getOverlap(fromKmer, toKmer);
-// 	std::string edgeSequence = fromSequence + toSequence.substr(overlap);
-// 	assert(edgeSequence.size() > kmerSize);
-// 	assert(edgeSequence.size() == kmerSize + kmerSize - overlap);
-// 	assert(edgeSequence.size() < 2 * kmerSize);
-// 	if (edgeSequence.size() == kmerSize + 1) return;
-// 	FastHasher fwkmerHasher { kmerSize };
-// 	for (size_t i = 0; i < kmerSize; i++)
-// 	{
-// 		fwkmerHasher.addChar(edgeSequence[i]);
-// 	}
-// 	for (size_t i = kmerSize; i < edgeSequence.size(); i++)
-// 	{
-// 		auto oldFwHash = fwkmerHasher.getFwHash();
-// 		auto oldHash = fwkmerHasher.hash();
-// 		fwkmerHasher.addChar(edgeSequence[i]);
-// 		fwkmerHasher.removeChar(edgeSequence[i-kmerSize]);
-// 		auto newBwHash = fwkmerHasher.getBwHash();
-// 		assert(approxNeighbors.count(oldFwHash) == 1);
-// 		assert(approxNeighbors.count(newBwHash) == 1);
-// 		// neither is a junction node if both not in approx
-// 		if (approxNeighbors.at(oldFwHash) != std::numeric_limits<unsigned char>::max() && approxNeighbors.at(newBwHash) != std::numeric_limits<unsigned char>::max()) continue;
-// 		auto newHash = fwkmerHasher.hash();
-// 		approxHashes.insert(oldHash);
-// 		approxHashes.insert(newHash);
-// 	}
-// }
+bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, std::unordered_map<NodeType, std::pair<size_t, bool>>& belongsToUnitig, HashList& hashlist, UnitigGraph& newUnitigs, std::vector<std::pair<std::string, std::vector<uint16_t>>>& unitigSequences, const size_t kmerSize, const std::pair<size_t, bool> fromUnitig, const std::pair<size_t, bool> toUnitig, const std::pair<size_t, bool> fromKmer, const std::pair<size_t, bool> toKmer, std::unordered_map<std::pair<size_t, bool>, std::unordered_set<std::pair<size_t, bool>>>& connectionsToOld, const size_t edgeCoverage, const size_t unitigOverlap, const size_t zeroKmer, std::vector<std::pair<std::string, std::vector<uint16_t>>>& addedKmerSequences)
+{
+	std::string edgeSequence;
+	if (fromUnitig.second)
+	{
+		edgeSequence = unitigSequences[fromUnitig.first].first.substr(unitigSequences[fromUnitig.first].first.size() - kmerSize);
+	}
+	else
+	{
+		edgeSequence = unitigSequences[fromUnitig.first].first.substr(0, kmerSize);
+		edgeSequence = revCompRLE(edgeSequence);
+	}
+	if (toUnitig.second)
+	{
+		edgeSequence += unitigSequences[toUnitig.first].first.substr(unitigOverlap, kmerSize - unitigOverlap);
+	}
+	else
+	{
+		std::string add = unitigSequences[toUnitig.first].first.substr(unitigSequences[toUnitig.first].first.size() - kmerSize, kmerSize - unitigOverlap);
+		add = revCompRLE(add);
+		edgeSequence += add;
+	}
+	assert(unitigOverlap < kmerSize);
+	assert(edgeSequence.size() > kmerSize);
+	assert(edgeSequence.size() == kmerSize + kmerSize - unitigOverlap);
+	assert(edgeSequence.size() < 2 * kmerSize);
+	if (edgeSequence.size() == kmerSize + 1) return false;
+	std::string revSeq = revCompRLE(edgeSequence);
+	std::vector<uint16_t> lens;
+	if (fromUnitig.second)
+	{
+		lens.insert(lens.end(), unitigSequences[fromUnitig.first].second.end() - kmerSize, unitigSequences[fromUnitig.first].second.end());
+	}
+	else
+	{
+		lens.insert(lens.end(), unitigSequences[fromUnitig.first].second.begin(), unitigSequences[fromUnitig.first].second.begin() + kmerSize);
+		std::reverse(lens.begin(), lens.end());
+	}
+	if (toUnitig.second)
+	{
+		lens.insert(lens.end(), unitigSequences[toUnitig.first].second.begin() + unitigOverlap, unitigSequences[toUnitig.first].second.begin() + kmerSize);
+	}
+	else
+	{
+		std::vector<uint16_t> add;
+		add.insert(add.end(), unitigSequences[toUnitig.first].second.end() - kmerSize, unitigSequences[toUnitig.first].second.end() - unitigOverlap);
+		std::reverse(add.begin(), add.end());
+		lens.insert(lens.end(), add.begin(), add.end());
+	}
+	assert(lens.size() == edgeSequence.size());
+	FastHasher fwkmerHasher { kmerSize };
+	for (size_t i = 0; i < kmerSize; i++)
+	{
+		fwkmerHasher.addChar(edgeSequence[i]);
+	}
+	std::pair<NodeType, bool> lastKmer = fromKmer;
+	std::pair<NodeType, bool> lastUnitig { std::numeric_limits<size_t>::max(), true };
+	size_t lastPosition = 0;
+	bool addedAny = false;
+	assert(edgeCoverage > 0);
+	for (size_t i = kmerSize; i < edgeSequence.size()-1; i++)
+	{
+		fwkmerHasher.addChar(edgeSequence[i]);
+		fwkmerHasher.removeChar(edgeSequence[i-kmerSize]);
+		if (approxHashes.count(fwkmerHasher.hash()) == 0) continue;
+		size_t kmerStartPos = i - kmerSize + 1;
 
-// bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, std::unordered_map<NodeType, std::pair<size_t, bool>>& belongsToUnitig, std::set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>>& addEdges, HashList& hashlist, UnitigGraph& unitigs, const size_t kmerSize, std::pair<size_t, bool> unitigPosition, std::pair<size_t, bool> toUnitigPosition, std::pair<NodeType, bool> fromKmer, std::pair<NodeType, bool> toKmer)
-// {
-// 	std::string fromSequence = hashlist.getHashSequenceRLE(fromKmer.first).toString();
-// 	if (!fromKmer.second) fromSequence = revCompRLE(fromSequence);
-// 	std::string toSequence = hashlist.getHashSequenceRLE(toKmer.first).toString();
-// 	if (!toKmer.second) toSequence = revCompRLE(toSequence);
-// 	size_t bigOverlap = hashlist.getOverlap(fromKmer, toKmer); // actually the smallest overlap in the entire function
-// 	assert(bigOverlap < kmerSize);
-// 	std::string edgeSequence = fromSequence + toSequence.substr(bigOverlap);
-// 	assert(edgeSequence.size() > kmerSize);
-// 	assert(edgeSequence.size() < 2 * kmerSize);
-// 	if (edgeSequence.size() == kmerSize + 1) return false;
-// 	std::string revSeq = revCompRLE(edgeSequence);
-// 	std::vector<uint16_t> lens;
-// 	lens = hashlist.getHashCharacterLength(fromKmer.first);
-// 	if (!fromKmer.second) std::reverse(lens.begin(), lens.end());
-// 	std::vector<uint16_t> tolens;
-// 	tolens = hashlist.getHashCharacterLength(toKmer.first);
-// 	if (!toKmer.second) std::reverse(tolens.begin(), tolens.end());
-// 	lens.insert(lens.end(), tolens.begin() + bigOverlap, tolens.end());
-// 	assert(lens.size() == edgeSequence.size());
-// 	FastHasher fwkmerHasher { kmerSize };
-// 	for (size_t i = 0; i < kmerSize; i++)
-// 	{
-// 		fwkmerHasher.addChar(edgeSequence[i]);
-// 	}
-// 	std::pair<NodeType, bool> lastKmer = fromKmer;
-// 	std::pair<NodeType, bool> lastUnitig = unitigPosition;
-// 	size_t lastPosition = 0;
-// 	bool addedAny = false;
-// 	size_t edgeCoverage = unitigs.edgeCoverage(unitigPosition, toUnitigPosition);
-// 	assert(edgeCoverage > 0);
-// 	for (size_t i = kmerSize; i < edgeSequence.size()-1; i++)
-// 	{
-// 		fwkmerHasher.addChar(edgeSequence[i]);
-// 		fwkmerHasher.removeChar(edgeSequence[i-kmerSize]);
-// 		if (approxHashes.count(fwkmerHasher.hash()) == 0) continue;
-// 		size_t kmerStartPos = i - kmerSize + 1;
+		size_t overlap = kmerSize - kmerStartPos + lastPosition;
+		assert(overlap < kmerSize);
+		HashType lastHash = 0;
+		uint64_t minHash = 0;
 
-// 		size_t overlap = kmerSize - kmerStartPos + lastPosition;
-// 		assert(overlap < kmerSize);
-// 		HashType lastHash = 0;
-// 		uint64_t minHash = 0;
+		std::string_view minimizerSequence { edgeSequence.data() + kmerStartPos, kmerSize };
+		size_t revPos = edgeSequence.size() - (kmerStartPos + kmerSize);
+		std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
+		std::pair<size_t, bool> current;
+		std::tie(current, lastHash) = hashlist.addNode(minimizerSequence, revMinimizerSequence, lastHash, overlap, minHash);
+		assert(current.first >= zeroKmer);
+		assert(current.first <= zeroKmer + addedKmerSequences.size());
+		if (current.first == zeroKmer + addedKmerSequences.size())
+		{
+			addedKmerSequences.emplace_back();
+			addedKmerSequences.back().first.insert(addedKmerSequences.back().first.end(), edgeSequence.begin() + kmerStartPos, edgeSequence.begin() + kmerStartPos + kmerSize);
+			addedKmerSequences.back().second.insert(addedKmerSequences.back().second.end(), lens.begin() + kmerStartPos, lens.begin() + kmerStartPos + kmerSize);
+		}
+		hashlist.addSequenceOverlap(lastKmer, current, overlap);
+		std::pair<size_t, bool> newUnitigPosition { std::numeric_limits<size_t>::max(), true };
+		if (belongsToUnitig.count(current.first) == 0)
+		{
+			newUnitigs.unitigs.emplace_back();
+			newUnitigs.unitigs.back().emplace_back(current.first, true);
+			newUnitigs.unitigCoverage.emplace_back();
+			newUnitigs.unitigCoverage.back().emplace_back(0);
+			newUnitigs.unitigCoverage.back()[0] += edgeCoverage;
+			newUnitigs.edges.emplace_back();
+			newUnitigs.edgeCov.emplace_back();
+			belongsToUnitig[current.first] = std::make_pair(newUnitigs.unitigs.size()-1, true);
+			newUnitigPosition = std::make_pair(newUnitigs.unitigs.size()-1, true);
+			if (!current.second) newUnitigPosition.second = !newUnitigPosition.second;
+		}
+		else
+		{
+			newUnitigPosition = belongsToUnitig.at(current.first);
+			if (!current.second) newUnitigPosition.second = !newUnitigPosition.second;
+			assert(newUnitigs.unitigCoverage[newUnitigPosition.first].size() == 1);
+			newUnitigs.unitigCoverage[newUnitigPosition.first][0] += edgeCoverage;
+		}
+		assert(newUnitigPosition.first != std::numeric_limits<size_t>::max());
+		if (lastPosition == 0) connectionsToOld[fromUnitig].insert(newUnitigPosition);
+		if (lastUnitig.first != std::numeric_limits<size_t>::max())
+		{
+			newUnitigs.edgeCoverage(lastUnitig, newUnitigPosition) += edgeCoverage;
+			auto key = canon(lastUnitig, newUnitigPosition);
+			newUnitigs.edges[key.first].insert(key.second);
+			newUnitigs.edges[reverse(key.second)].insert(reverse(key.first));
+		}
+		lastUnitig = newUnitigPosition;
+		lastKmer = current;
+		lastPosition = kmerStartPos;
+		addedAny = true;
+	}
+	if (lastPosition != 0)
+	{
+		connectionsToOld[reverse(toUnitig)].insert(reverse(lastUnitig));
+		size_t kmerStartPos = edgeSequence.size() - 1 - kmerSize + 1;
+		size_t overlap = kmerSize - kmerStartPos + lastPosition;
+		assert(overlap < kmerSize);
+		hashlist.addSequenceOverlap(lastKmer, toKmer, overlap);
+	}
+	return addedAny;
+}
 
-// 		std::string_view minimizerSequence { edgeSequence.data() + kmerStartPos, kmerSize };
-// 		size_t revPos = edgeSequence.size() - (kmerStartPos + kmerSize);
-// 		std::string_view revMinimizerSequence { revSeq.data() + revPos, kmerSize };
-// 		std::pair<size_t, bool> current;
-// 		std::tie(current, lastHash) = hashlist.addNode(minimizerSequence, revMinimizerSequence, lens, kmerStartPos, kmerStartPos+kmerSize, lastHash, overlap, minHash);
-// 		hashlist.addSequenceOverlap(lastKmer, current, overlap);
-// 		std::pair<size_t, bool> newUnitigPosition { std::numeric_limits<size_t>::max(), true };
-// 		if (belongsToUnitig.count(current.first) == 0)
-// 		{
-// 			unitigs.unitigs.emplace_back();
-// 			unitigs.unitigs.back().emplace_back(current.first, true);
-// 			unitigs.unitigCoverage.emplace_back();
-// 			unitigs.unitigCoverage.back().emplace_back(0);
-// 			unitigs.unitigCoverage.back()[0] += edgeCoverage;
-// 			unitigs.edges.emplace_back();
-// 			unitigs.edgeCov.emplace_back();
-// 			belongsToUnitig[current.first] = std::make_pair(unitigs.unitigs.size()-1, true);
-// 			newUnitigPosition = std::make_pair(unitigs.unitigs.size()-1, true);
-// 			if (!current.second) newUnitigPosition.second = !newUnitigPosition.second;
-// 		}
-// 		else
-// 		{
-// 			newUnitigPosition = belongsToUnitig.at(current.first);
-// 			if (!current.second) newUnitigPosition.second = !newUnitigPosition.second;
-// 			assert(unitigs.unitigCoverage[newUnitigPosition.first].size() == 1);
-// 			unitigs.unitigCoverage[newUnitigPosition.first][0] += edgeCoverage;
-// 		}
-// 		assert(newUnitigPosition.first != std::numeric_limits<size_t>::max());
-// 		unitigs.edgeCoverage(lastUnitig, newUnitigPosition) += edgeCoverage;
-// 		auto key = canon(lastUnitig, newUnitigPosition);
-// 		addEdges.insert(key);
-// 		lastUnitig = newUnitigPosition;
-// 		lastKmer = current;
-// 		lastPosition = kmerStartPos;
-// 		addedAny = true;
-// 	}
-// 	if (lastPosition != 0)
-// 	{
-// 		assert(lastKmer != fromKmer);
-// 		assert(lastUnitig != unitigPosition);
-// 		assert(lastPosition != 0);
-// 		assert(addedAny);
-// 		size_t overlap = kmerSize - (edgeSequence.size() - kmerSize) + lastPosition;
-// 		assert(overlap < kmerSize);
-// 		hashlist.addSequenceOverlap(lastKmer, toKmer, overlap);
-// 		unitigs.edgeCoverage(lastUnitig, toUnitigPosition) += edgeCoverage;
-// 		auto key = canon(lastUnitig, toUnitigPosition);
-// 		addEdges.insert(key);
-// 	}
-// 	return addedAny;
-// }
+void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, std::vector<std::pair<std::string, std::vector<uint16_t>>>& unitigSequences, const size_t kmerSize, const double minUnitigCoverage)
+{
+	std::unordered_map<uint64_t, unsigned char> approxNeighbors;
+	for (size_t i = 0; i < unitigs.edges.size(); i++)
+	{
+		std::pair<size_t, bool> fw { i, true };
+		auto fromKmer = unitigs.unitigs[i].back();
+		for (auto edge : unitigs.edges[fw])
+		{
+			if (canon(fw, edge) != std::make_pair(fw, edge)) continue;
+			auto toKmer = unitigs.unitigs[edge.first][0];
+			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
+			size_t overlap = reads.getOverlap(fromKmer, toKmer);
+			collectApproxNeighbors(approxNeighbors, unitigSequences, kmerSize, fw, edge, overlap);
+		}
+		std::pair<size_t, bool> bw { i, false };
+		fromKmer = reverse(unitigs.unitigs[i][0]);
+		for (auto edge : unitigs.edges[bw])
+		{
+			if (canon(bw, edge) != std::make_pair(bw, edge)) continue;
+			auto toKmer = unitigs.unitigs[edge.first][0];
+			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
+			size_t overlap = reads.getOverlap(fromKmer, toKmer);
+			collectApproxNeighbors(approxNeighbors, unitigSequences, kmerSize, bw, edge, overlap);
+		}
+	}
+	std::unordered_set<uint64_t> approxJunctionHashes;
+	for (size_t i = 0; i < unitigs.edges.size(); i++)
+	{
+		std::pair<size_t, bool> fw { i, true };
+		auto fromKmer = unitigs.unitigs[i].back();
+		for (auto edge : unitigs.edges[fw])
+		{
+			if (canon(fw, edge) != std::make_pair(fw, edge)) continue;
+			auto toKmer = unitigs.unitigs[edge.first][0];
+			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
+			size_t overlap = reads.getOverlap(fromKmer, toKmer);
+			collectJunctionHashes(approxNeighbors, approxJunctionHashes, unitigSequences, kmerSize, fw, edge, overlap);
+		}
+		std::pair<size_t, bool> bw { i, false };
+		fromKmer = reverse(unitigs.unitigs[i][0]);
+		for (auto edge : unitigs.edges[bw])
+		{
+			if (canon(bw, edge) != std::make_pair(bw, edge)) continue;
+			auto toKmer = unitigs.unitigs[edge.first][0];
+			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
+			size_t overlap = reads.getOverlap(fromKmer, toKmer);
+			collectJunctionHashes(approxNeighbors, approxJunctionHashes, unitigSequences, kmerSize, bw, edge, overlap);
+		}
+	}
+	UnitigGraph newUnitigs;
+	std::unordered_map<NodeType, std::pair<size_t, bool>> belongsToUnitig;
+	std::set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> removeEdges;
+	std::vector<std::pair<std::string, std::vector<uint16_t>>> addedKmerSequences;
+	std::unordered_map<std::pair<size_t, bool>, std::unordered_set<std::pair<size_t, bool>>> connectionsToOld;
+	size_t zeroKmer = reads.size();
+	for (size_t i = 0; i < unitigs.edges.size(); i++)
+	{
+		std::pair<size_t, bool> fw { i, true };
+		auto fromKmer = unitigs.unitigs[i].back();
+		for (auto edge : unitigs.edges[fw])
+		{
+			if (canon(fw, edge) != std::make_pair(fw, edge))
+			{
+				assert(unitigs.edges[reverse(edge)].count(reverse(fw)) == 1);
+				continue;
+			}
+			auto toKmer = unitigs.unitigs[edge.first][0];
+			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
+			size_t overlap = reads.getOverlap(fromKmer, toKmer);
+			if (addJunctionsToHashes(approxJunctionHashes, belongsToUnitig, reads, newUnitigs, unitigSequences, kmerSize, fw, edge, fromKmer, toKmer, connectionsToOld, unitigs.edgeCoverage(fw, edge), overlap, zeroKmer, addedKmerSequences))
+			{
+				removeEdges.emplace(fw, edge);
+			}
+		}
+		std::pair<size_t, bool> bw { i, false };
+		fromKmer = reverse(unitigs.unitigs[i][0]);
+		for (auto edge : unitigs.edges[bw])
+		{
+			if (canon(bw, edge) != std::make_pair(bw, edge))
+			{
+				assert(unitigs.edges[reverse(edge)].count(reverse(bw)) == 1);
+				continue;
+			}
+			auto toKmer = unitigs.unitigs[edge.first][0];
+			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
+			size_t overlap = reads.getOverlap(fromKmer, toKmer);
+			if (addJunctionsToHashes(approxJunctionHashes, belongsToUnitig, reads, newUnitigs, unitigSequences, kmerSize, bw, edge, fromKmer, toKmer, connectionsToOld,unitigs.edgeCoverage(bw, edge), overlap, zeroKmer, addedKmerSequences))
+			{
+				removeEdges.emplace(bw, edge);
+			}
+		}
+	}
+	assert((newUnitigs.unitigs.size() == 0) == (removeEdges.size() == 0) && (removeEdges.size() == 0) == (connectionsToOld.size() == 0));
+	if (newUnitigs.unitigs.size() == 0) return;
+	std::unordered_map<std::pair<size_t, bool>, std::pair<size_t, bool>> kmerOriginalUnitig;
+	for (auto pair : connectionsToOld)
+	{
+		std::pair<size_t, bool> kmer = unitigs.unitigs[pair.first.first].back();
+		if (!pair.first.second) kmer = reverse(unitigs.unitigs[pair.first.first][0]);
+		kmerOriginalUnitig[kmer] = pair.first;
+	}
+	for (const auto& pair : connectionsToOld)
+	{
+		std::pair<size_t, bool> fromKmer = unitigs.unitigs[pair.first.first].back();
+		if (!pair.first.second) fromKmer = reverse(unitigs.unitigs[pair.first.first][0]);
+		size_t newIndex = newUnitigs.unitigs.size();
+		newUnitigs.unitigs.emplace_back();
+		newUnitigs.unitigs.back().emplace_back(fromKmer);
+		newUnitigs.edges.emplace_back();
+		newUnitigs.unitigCoverage.emplace_back();
+		newUnitigs.unitigCoverage.back().emplace_back(ceil(minUnitigCoverage)); // should take it from the edge coverage, but use this for now
+		newUnitigs.edgeCov.emplace_back();
+		for (auto toUnitig : pair.second)
+		{
+			auto key = canon(std::make_pair(newIndex, true), toUnitig);
+			newUnitigs.edges[key.first].insert(key.second);
+			newUnitigs.edges[reverse(key.second)].insert(reverse(key.first));
+			newUnitigs.edgeCoverage(key.first, key.second) = ceil(minUnitigCoverage);
+		}
+	}
+	for (auto pair : removeEdges)
+	{
+		if (unitigs.edges[pair.first].count(pair.second) == 1)
+		{
+			unitigs.edges[pair.first].erase(pair.second);
+		}
+		if (unitigs.edges[reverse(pair.second)].count(reverse(pair.first)) == 1)
+		{
+			unitigs.edges[reverse(pair.second)].erase(reverse(pair.first));
+		}
+	}
+	newUnitigs = getUnitigs(newUnitigs);
+	if (minUnitigCoverage > 1)
+	{
+		size_t oldSize = newUnitigs.unitigs.size();
+		newUnitigs = newUnitigs.filterUnitigsByCoverage(minUnitigCoverage);
+		if (newUnitigs.unitigs.size() != oldSize) newUnitigs = getUnitigs(newUnitigs);
+	}
+	std::unordered_map<size_t, std::pair<size_t, bool>> newUnitigIndex;
+	for (size_t i = 0; i < newUnitigs.unitigs.size(); i++)
+	{
+		assert(newUnitigIndex.count(i) == 0);
+		for (size_t j = 1; j < newUnitigs.unitigs[i].size()-1; j++)
+		{
+			assert(kmerOriginalUnitig.count(newUnitigs.unitigs[i][j]) == 0);
+			assert(kmerOriginalUnitig.count(reverse(newUnitigs.unitigs[i][j])) == 0);
+		}
+		std::string seqHere;
+		std::vector<uint16_t> lensHere;
+		for (size_t j = 0; j < newUnitigs.unitigs[i].size(); j++)
+		{
+			size_t overlap = 0;
+			if (j > 0 && newUnitigs.unitigs[i][j-1].first >= zeroKmer) overlap = reads.getOverlap(newUnitigs.unitigs[i][j-1], newUnitigs.unitigs[i][j]);
+			if (newUnitigs.unitigs[i][j].first < zeroKmer)
+			{
+				assert(j == 0 || j == newUnitigs.unitigs[i].size()-1);
+				continue;
+			}
+			size_t k = newUnitigs.unitigs[i][j].first - zeroKmer;
+			if (newUnitigs.unitigs[i][j].second)
+			{
+				seqHere.insert(seqHere.end(), addedKmerSequences[k].first.begin() + overlap, addedKmerSequences[k].first.end());
+				lensHere.insert(lensHere.end(), addedKmerSequences[k].second.begin() + overlap, addedKmerSequences[k].second.end());
+			}
+			else
+			{
+				std::string addSeq { addedKmerSequences[k].first.begin(), addedKmerSequences[k].first.end() - overlap };
+				std::string addLens { addedKmerSequences[k].second.begin(), addedKmerSequences[k].second.end() - overlap };
+				addSeq = revCompRLE(addSeq);
+				std::reverse(addLens.begin(), addLens.end());
+				seqHere.insert(seqHere.end(), addSeq.begin(), addSeq.end());
+				lensHere.insert(lensHere.end(), addLens.begin(), addLens.end());
+			}
+		}
+		if (newUnitigs.unitigs[i].size() >= 2 && kmerOriginalUnitig.count(newUnitigs.unitigs[i][0]) == 1 && kmerOriginalUnitig.count(reverse(newUnitigs.unitigs[i].back())) == 1)
+		{
+			std::pair<size_t, bool> originalUnitig = kmerOriginalUnitig.at(newUnitigs.unitigs[i][0]);
+			std::pair<size_t, bool> otherUnitig = reverse(kmerOriginalUnitig.at(reverse(newUnitigs.unitigs[i].back())));
+			unitigs.edgeCoverage(originalUnitig, otherUnitig) += ceil(newUnitigs.averageCoverage(i));
+			auto key = canon(originalUnitig, otherUnitig);
+			unitigs.edges[key.first].insert(key.second);
+			unitigs.edges[reverse(key.second)].insert(reverse(key.first));
 
-// void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, const size_t kmerSize, const double minUnitigCoverage)
-// {
-// 	std::unordered_map<uint64_t, unsigned char> approxNeighbors;
-// 	for (size_t i = 0; i < unitigs.edges.size(); i++)
-// 	{
-// 		std::pair<size_t, bool> fw { i, true };
-// 		auto fromKmer = unitigs.unitigs[i].back();
-// 		for (auto edge : unitigs.edges[fw])
-// 		{
-// 			if (canon(fw, edge) != std::make_pair(fw, edge)) continue;
-// 			auto toKmer = unitigs.unitigs[edge.first][0];
-// 			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-// 			collectApproxNeighbors(approxNeighbors, reads, kmerSize, fromKmer, toKmer);
-// 		}
-// 		std::pair<size_t, bool> bw { i, false };
-// 		fromKmer = reverse(unitigs.unitigs[i][0]);
-// 		for (auto edge : unitigs.edges[bw])
-// 		{
-// 			if (canon(bw, edge) != std::make_pair(bw, edge)) continue;
-// 			auto toKmer = unitigs.unitigs[edge.first][0];
-// 			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-// 			collectApproxNeighbors(approxNeighbors, reads, kmerSize, fromKmer, toKmer);
-// 		}
-// 	}
-// 	std::unordered_set<uint64_t> approxJunctionHashes;
-// 	for (size_t i = 0; i < unitigs.edges.size(); i++)
-// 	{
-// 		std::pair<size_t, bool> fw { i, true };
-// 		auto fromKmer = unitigs.unitigs[i].back();
-// 		for (auto edge : unitigs.edges[fw])
-// 		{
-// 			if (canon(fw, edge) != std::make_pair(fw, edge)) continue;
-// 			auto toKmer = unitigs.unitigs[edge.first][0];
-// 			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-// 			collectJunctionHashes(approxNeighbors, approxJunctionHashes, reads, kmerSize, fromKmer, toKmer);
-// 		}
-// 		std::pair<size_t, bool> bw { i, false };
-// 		fromKmer = reverse(unitigs.unitigs[i][0]);
-// 		for (auto edge : unitigs.edges[bw])
-// 		{
-// 			if (canon(bw, edge) != std::make_pair(bw, edge)) continue;
-// 			auto toKmer = unitigs.unitigs[edge.first][0];
-// 			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-// 			collectJunctionHashes(approxNeighbors, approxJunctionHashes, reads, kmerSize, fromKmer, toKmer);
-// 		}
-// 	}
-// 	std::unordered_map<NodeType, std::pair<size_t, bool>> belongsToUnitig;
-// 	std::set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> removeEdges;
-// 	std::set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> addEdges;
-// 	for (size_t i = 0; i < unitigs.edges.size(); i++)
-// 	{
-// 		std::pair<size_t, bool> fw { i, true };
-// 		auto fromKmer = unitigs.unitigs[i].back();
-// 		for (auto edge : unitigs.edges[fw])
-// 		{
-// 			if (canon(fw, edge) != std::make_pair(fw, edge)) continue;
-// 			auto toKmer = unitigs.unitigs[edge.first][0];
-// 			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-// 			if (addJunctionsToHashes(approxJunctionHashes, belongsToUnitig, addEdges, reads, unitigs, kmerSize, fw, edge, fromKmer, toKmer))
-// 			{
-// 				removeEdges.emplace(fw, edge);
-// 			}
-// 		}
-// 		std::pair<size_t, bool> bw { i, false };
-// 		fromKmer = reverse(unitigs.unitigs[i][0]);
-// 		for (auto edge : unitigs.edges[bw])
-// 		{
-// 			if (canon(bw, edge) != std::make_pair(bw, edge)) continue;
-// 			auto toKmer = unitigs.unitigs[edge.first][0];
-// 			if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
-// 			if (addJunctionsToHashes(approxJunctionHashes, belongsToUnitig, addEdges, reads, unitigs, kmerSize, bw, edge, fromKmer, toKmer))
-// 			{
-// 				removeEdges.emplace(bw, edge);
-// 			}
-// 		}
-// 	}
-// 	assert((addEdges.size() > 0) == (removeEdges.size() > 0));
-// 	bool addedAny = removeEdges.size() > 0;
-// 	for (auto pair : addEdges)
-// 	{
-// 		unitigs.edges[pair.first].insert(pair.second);
-// 		unitigs.edges[reverse(pair.second)].insert(reverse(pair.first));
-// 	}
-// 	for (auto pair : removeEdges)
-// 	{
-// 		if (unitigs.edges[pair.first].count(pair.second) == 1)
-// 		{
-// 			unitigs.edges[pair.first].erase(pair.second);
-// 		}
-// 		if (unitigs.edges[reverse(pair.second)].count(reverse(pair.first)) == 1)
-// 		{
-// 			unitigs.edges[reverse(pair.second)].erase(reverse(pair.first));
-// 		}
-// 	}
-// 	if (addedAny)
-// 	{
-// 		unitigs = getUnitigs(unitigs);
-// 		if (minUnitigCoverage > 1)
-// 		{
-// 			size_t oldSize = unitigs.unitigs.size();
-// 			unitigs = unitigs.filterUnitigsByCoverage(minUnitigCoverage);
-// 			if (unitigs.unitigs.size() != oldSize) unitigs = getUnitigs(unitigs);
-// 		}
-// 	}
-// }
+			assert(reads.getOverlap(newUnitigs.unitigs[i][newUnitigs.unitigs[i].size()-2], newUnitigs.unitigs[i][newUnitigs.unitigs[i].size()-1]) != 0);
+			assert(reads.getOverlap(newUnitigs.unitigs[i][0], newUnitigs.unitigs[i][1]) != 0);
+
+			if (newUnitigs.unitigs[i].size() == 2) continue;
+			newUnitigIndex[i] = originalUnitig;
+			size_t startOverlap = reads.getOverlap(newUnitigs.unitigs[i][0], newUnitigs.unitigs[i][1]);
+
+			if (originalUnitig.second)
+			{
+				assert(unitigSequences[originalUnitig.first].first.substr(unitigSequences[originalUnitig.first].first.size() - startOverlap) == seqHere.substr(0, startOverlap));
+				unitigSequences[originalUnitig.first].first.insert(unitigSequences[originalUnitig.first].first.end(), seqHere.begin() + startOverlap, seqHere.end());
+				unitigSequences[originalUnitig.first].second.insert(unitigSequences[originalUnitig.first].second.end(), lensHere.begin() + startOverlap, lensHere.end());
+				assert(unitigs.unitigs[originalUnitig.first].back() == newUnitigs.unitigs[i][0]);
+				unitigs.unitigs[originalUnitig.first].insert(unitigs.unitigs[originalUnitig.first].end(), newUnitigs.unitigs[i].begin() + 1, newUnitigs.unitigs[i].end() - 1);
+				unitigs.unitigCoverage[originalUnitig.first].insert(unitigs.unitigCoverage[originalUnitig.first].end(), newUnitigs.unitigCoverage[i].begin() + 1, newUnitigs.unitigCoverage[i].end() - 1);
+			}
+			else
+			{
+				seqHere = revCompRLE(seqHere);
+				std::reverse(lensHere.begin(), lensHere.end());
+				std::reverse(newUnitigs.unitigs[i].begin(), newUnitigs.unitigs[i].end());
+				std::reverse(newUnitigs.unitigCoverage[i].begin(), newUnitigs.unitigCoverage[i].end());
+				for (size_t j = 0; j < newUnitigs.unitigs[i].size(); j++)
+				{
+					newUnitigs.unitigs[i][j] = reverse(newUnitigs.unitigs[i][j]);
+				}
+				assert(unitigSequences[originalUnitig.first].first.substr(0, startOverlap) == seqHere.substr(seqHere.size() - startOverlap));
+				unitigSequences[originalUnitig.first].first.insert(unitigSequences[originalUnitig.first].first.begin(), seqHere.begin(), seqHere.end() - startOverlap);
+				unitigSequences[originalUnitig.first].second.insert(unitigSequences[originalUnitig.first].second.begin(), lensHere.begin(), lensHere.end() - startOverlap);
+				assert(unitigs.unitigs[originalUnitig.first][0] == newUnitigs.unitigs[i].back());
+				unitigs.unitigs[originalUnitig.first].insert(unitigs.unitigs[originalUnitig.first].begin(), newUnitigs.unitigs[i].begin() + 1, newUnitigs.unitigs[i].end() - 1);
+				unitigs.unitigCoverage[originalUnitig.first].insert(unitigs.unitigCoverage[originalUnitig.first].begin(), newUnitigs.unitigCoverage[i].begin() + 1, newUnitigs.unitigCoverage[i].end() - 1);
+			}
+
+			std::pair<size_t, bool> fromKmer = unitigs.unitigs[originalUnitig.first].back();
+			if (!originalUnitig.second) fromKmer = reverse(unitigs.unitigs[originalUnitig.first][0]);
+			std::pair<size_t, bool> toKmer = unitigs.unitigs[otherUnitig.first][0];
+			if (!otherUnitig.second) toKmer = reverse(unitigs.unitigs[otherUnitig.first].back());
+			assert(reads.getOverlap(fromKmer, toKmer) != 0);
+
+			continue;
+		}
+		if (kmerOriginalUnitig.count(newUnitigs.unitigs[i][0]) == 1)
+		{
+			std::pair<size_t, bool> originalUnitig = kmerOriginalUnitig.at(newUnitigs.unitigs[i][0]);
+			newUnitigIndex[i] = originalUnitig;
+			if (newUnitigs.unitigs[i].size() == 1) continue;
+			size_t overlap = reads.getOverlap(newUnitigs.unitigs[i][0], newUnitigs.unitigs[i][1]);
+			if (originalUnitig.second)
+			{
+				assert(unitigs.unitigs[originalUnitig.first].back() == newUnitigs.unitigs[i][0]);
+				assert(unitigSequences[originalUnitig.first].first.substr(unitigSequences[originalUnitig.first].first.size() - overlap) == seqHere.substr(0, overlap));
+				unitigSequences[originalUnitig.first].first.insert(unitigSequences[originalUnitig.first].first.end(), seqHere.begin() + overlap, seqHere.end());
+				unitigSequences[originalUnitig.first].second.insert(unitigSequences[originalUnitig.first].second.end(), lensHere.begin() + overlap, lensHere.end());
+				unitigs.unitigs[originalUnitig.first].insert(unitigs.unitigs[originalUnitig.first].end(), newUnitigs.unitigs[i].begin()+1, newUnitigs.unitigs[i].end());
+				unitigs.unitigCoverage[originalUnitig.first].insert(unitigs.unitigCoverage[originalUnitig.first].end(), newUnitigs.unitigCoverage[i].begin()+1, newUnitigs.unitigCoverage[i].end());
+			}
+			else
+			{
+				seqHere = revCompRLE(seqHere);
+				std::reverse(lensHere.begin(), lensHere.end());
+				std::reverse(newUnitigs.unitigs[i].begin(), newUnitigs.unitigs[i].end());
+				std::reverse(newUnitigs.unitigCoverage[i].begin(), newUnitigs.unitigCoverage[i].end());
+				for (size_t j = 0; j < newUnitigs.unitigs[i].size(); j++)
+				{
+					newUnitigs.unitigs[i][j] = reverse(newUnitigs.unitigs[i][j]);
+				}
+				assert(unitigs.unitigs[originalUnitig.first][0] == newUnitigs.unitigs[i].back());
+				assert(unitigSequences[originalUnitig.first].first.substr(0, overlap) == seqHere.substr(seqHere.size() - overlap));
+				unitigSequences[originalUnitig.first].first.insert(unitigSequences[originalUnitig.first].first.begin(), seqHere.begin(), seqHere.end() - overlap);
+				unitigSequences[originalUnitig.first].second.insert(unitigSequences[originalUnitig.first].second.begin(), lensHere.begin(), lensHere.end() - overlap);
+				unitigs.unitigs[originalUnitig.first].insert(unitigs.unitigs[originalUnitig.first].begin(), newUnitigs.unitigs[i].begin(), newUnitigs.unitigs[i].end() - 1);
+				unitigs.unitigCoverage[originalUnitig.first].insert(unitigs.unitigCoverage[originalUnitig.first].begin(), newUnitigs.unitigCoverage[i].begin(), newUnitigs.unitigCoverage[i].end() - 1);
+			}
+			continue;
+		}
+		if (kmerOriginalUnitig.count(reverse(newUnitigs.unitigs[i].back())) == 1)
+		{
+			std::pair<size_t, bool> originalUnitig = kmerOriginalUnitig.at(reverse(newUnitigs.unitigs[i].back()));
+			newUnitigIndex[i] = reverse(originalUnitig);
+			if (newUnitigs.unitigs[i].size() == 1) continue;
+			size_t overlap = reads.getOverlap(newUnitigs.unitigs[i][newUnitigs.unitigs[i].size()-2], newUnitigs.unitigs[i][newUnitigs.unitigs[i].size()-1]);
+			if (originalUnitig.second)
+			{
+				seqHere = revCompRLE(seqHere);
+				std::reverse(lensHere.begin(), lensHere.end());
+				std::reverse(newUnitigs.unitigs[i].begin(), newUnitigs.unitigs[i].end());
+				std::reverse(newUnitigs.unitigCoverage[i].begin(), newUnitigs.unitigCoverage[i].end());
+				for (size_t j = 0; j < newUnitigs.unitigs[i].size(); j++)
+				{
+					newUnitigs.unitigs[i][j] = reverse(newUnitigs.unitigs[i][j]);
+				}
+				assert(unitigs.unitigs[originalUnitig.first].back() == newUnitigs.unitigs[i][0]);
+				assert(unitigSequences[originalUnitig.first].first.substr(unitigSequences[originalUnitig.first].first.size() - overlap) == seqHere.substr(0, overlap));
+				unitigSequences[originalUnitig.first].first.insert(unitigSequences[originalUnitig.first].first.end(), seqHere.begin() + overlap, seqHere.end());
+				unitigSequences[originalUnitig.first].second.insert(unitigSequences[originalUnitig.first].second.end(), lensHere.begin() + overlap, lensHere.end());
+				unitigs.unitigs[originalUnitig.first].insert(unitigs.unitigs[originalUnitig.first].end(), newUnitigs.unitigs[i].begin()+1, newUnitigs.unitigs[i].end());
+				unitigs.unitigCoverage[originalUnitig.first].insert(unitigs.unitigCoverage[originalUnitig.first].end(), newUnitigs.unitigCoverage[i].begin()+1, newUnitigs.unitigCoverage[i].end());
+			}
+			else
+			{
+				assert(unitigs.unitigs[originalUnitig.first][0] == newUnitigs.unitigs[i].back());
+				assert(unitigSequences[originalUnitig.first].first.substr(0, overlap) == seqHere.substr(seqHere.size() - overlap));
+				unitigSequences[originalUnitig.first].first.insert(unitigSequences[originalUnitig.first].first.begin(), seqHere.begin(), seqHere.end() - overlap);
+				unitigSequences[originalUnitig.first].second.insert(unitigSequences[originalUnitig.first].second.begin(), lensHere.begin(), lensHere.end() - overlap);
+				unitigs.unitigs[originalUnitig.first].insert(unitigs.unitigs[originalUnitig.first].begin(), newUnitigs.unitigs[i].begin(), newUnitigs.unitigs[i].end() - 1);
+				unitigs.unitigCoverage[originalUnitig.first].insert(unitigs.unitigCoverage[originalUnitig.first].begin(), newUnitigs.unitigCoverage[i].begin(), newUnitigs.unitigCoverage[i].end() - 1);
+			}
+			continue;
+		}
+		newUnitigIndex[i] = std::make_pair(unitigs.unitigs.size(), true);
+		unitigs.unitigs.emplace_back(newUnitigs.unitigs[i]);
+		unitigs.unitigCoverage.emplace_back(newUnitigs.unitigCoverage[i]);
+		unitigs.edges.emplace_back();
+		unitigs.edgeCov.emplace_back();
+		unitigSequences.emplace_back();
+		unitigSequences.back().first = seqHere;
+		unitigSequences.back().second = lensHere;
+	}
+	for (size_t i = 0; i < newUnitigs.unitigs.size(); i++)
+	{
+		assert(newUnitigIndex.count(i) == 1);
+		std::pair<size_t, bool> fw { i, true };
+		std::pair<size_t, bool> bw { i, false };
+		assert(newUnitigIndex.at(i).first < unitigs.unitigs.size());
+		std::pair<size_t, bool> from = newUnitigIndex.at(i);
+		for (auto edge : newUnitigs.edges[fw])
+		{
+			assert(newUnitigIndex.count(edge.first) == 1);
+			assert(newUnitigIndex.at(edge.first).first != std::numeric_limits<size_t>::max());
+			std::pair<size_t, bool> to = newUnitigIndex.at(edge.first);
+			if (!edge.second) to = reverse(to);
+			auto key = canon(from, to);
+			unitigs.edges[key.first].insert(key.second);
+			unitigs.edgeCoverage(key.first, key.second) += newUnitigs.edgeCoverage(fw, edge);
+			std::pair<size_t, bool> fromKmer = unitigs.unitigs[from.first].back();
+			if (!from.second) fromKmer = reverse(unitigs.unitigs[from.first][0]);
+			std::pair<size_t, bool> toKmer = unitigs.unitigs[to.first][0];
+			if (!to.second) toKmer = reverse(unitigs.unitigs[to.first].back());
+			assert(reads.getOverlap(fromKmer, toKmer) != 0);
+		}
+		from = reverse(from);
+		for (auto edge : newUnitigs.edges[bw])
+		{
+			assert(newUnitigIndex.count(edge.first) == 1);
+			assert(newUnitigIndex.at(edge.first).first != std::numeric_limits<size_t>::max());
+			std::pair<size_t, bool> to = newUnitigIndex.at(edge.first);
+			if (!edge.second) to = reverse(to);
+			auto key = canon(from, to);
+			unitigs.edges[key.first].insert(key.second);
+			unitigs.edgeCoverage(key.first, key.second) += newUnitigs.edgeCoverage(bw, edge);
+			std::pair<size_t, bool> fromKmer = unitigs.unitigs[from.first].back();
+			if (!from.second) fromKmer = reverse(unitigs.unitigs[from.first][0]);
+			std::pair<size_t, bool> toKmer = unitigs.unitigs[to.first][0];
+			if (!to.second) toKmer = reverse(unitigs.unitigs[to.first].back());
+			assert(reads.getOverlap(fromKmer, toKmer) != 0);
+		}
+	}
+}
 
 void printUnitigKmerCount(const UnitigGraph& unitigs)
 {
@@ -1560,6 +1825,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	ReadpartIterator partIterator { kmerSize, windowSize, hpc };
 	if (includeEndKmers)
 	{
+		std::cerr << "Collecting end k-mers" << std::endl;
 		// 2^32 arbitrarily, should be big enough for a human genome
 		// a 30x coverage error-free hifi dataset will have an edge s-mer about every 250-300bp
 		// so a human genome will have about 10000000-12000000 set bits
@@ -1571,11 +1837,17 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		std::swap(endSmer, partIterator.endSmers);
 	}
 	HashList reads { kmerSize };
+	std::cerr << "Collecting selected k-mers" << std::endl;
 	loadReadsAsHashesMultithread(reads, inputReads, kmerSize, partIterator, numThreads);
 	auto beforeUnitigs = getTime();
+	std::cerr << "Unitigifying" << std::endl;
 	auto unitigs = getUnitigGraph(reads, minCoverage);
 	auto beforeFilter = getTime();
-	if (minUnitigCoverage > minCoverage) unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage));
+	if (minUnitigCoverage > minCoverage)
+	{
+		std::cerr << "Filtering by unitig coverage" << std::endl;
+		unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage));
+	}
 	printUnitigKmerCount(unitigs);
 	auto beforeSequences = getTime();
 	std::cerr << "Getting unitig sequences" << std::endl;
@@ -1593,10 +1865,17 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	}
 	else
 	{
-		//todo fix
-		// if (windowSize > 1) forceEdgeDeterminism(reads, unitigs, unitigSequences, kmerSize, minUnitigCoverage);
+		if (windowSize > 1)
+		{
+			std::cerr << "Determinizing edges" << std::endl;
+			forceEdgeDeterminism(reads, unitigs, unitigSequences, kmerSize, minUnitigCoverage);
+		}
 		beforeConsistency = getTime();
-		if (hpc) forceEdgeConsistency(unitigs, reads, unitigSequences, kmerSize);
+		if (hpc)
+		{
+			std::cerr << "Forcing edge consistency" << std::endl;
+			forceEdgeConsistency(unitigs, reads, unitigSequences, kmerSize);
+		}
 		beforeWrite = getTime();
 		std::cerr << "Writing graph to " << outputGraph << std::endl;
 		stats = writeGraph(unitigs, outputGraph, reads, unitigSequences, kmerSize);
