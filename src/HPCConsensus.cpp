@@ -124,6 +124,10 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 				assert(current.first < kmerPosition.size());
 				if (std::get<0>(kmerPosition[current.first]) == std::numeric_limits<size_t>::max())
 				{
+					if (currentUnitig != std::numeric_limits<size_t>::max())
+					{
+						addCounts(result, runLengthCounts, locked, seqMutexes, seq, lens, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
+					}
 					currentUnitig = std::numeric_limits<size_t>::max();
 				}
 				size_t unitig = std::get<0>(kmerPosition[current.first]);
