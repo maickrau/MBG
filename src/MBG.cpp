@@ -35,136 +35,6 @@ public:
 	size_t approxKmers;
 };
 
-std::vector<std::pair<std::string, std::vector<uint16_t>>> runLengthEncode(const std::string& original)
-{
-	assert(original.size() > 0);
-	std::string resultStr;
-	std::vector<uint16_t> lens;
-	std::vector<std::pair<std::string, std::vector<uint16_t>>> result;
-	resultStr.reserve(original.size());
-	lens.reserve(original.size());
-	lens.push_back(1);
-	switch(original[0])
-	{
-		case 'a':
-		case 'A':
-			resultStr.push_back(1);
-			break;
-		case 'c':
-		case 'C':
-			resultStr.push_back(2);
-			break;
-		case 'g':
-		case 'G':
-			resultStr.push_back(3);
-			break;
-		case 't':
-		case 'T':
-			resultStr.push_back(4);
-			break;
-		default:
-			break;
-	}
-	for (size_t i = 1; i < original.size(); i++)
-	{
-		switch(original[i])
-		{
-			case 'a':
-			case 'A':
-			case 'c':
-			case 'C':
-			case 'g':
-			case 'G':
-			case 't':
-			case 'T':
-			{
-				if (original[i] == original[i-1])
-				{
-					lens.back() += 1;
-					continue;
-				}
-				lens.push_back(1);
-				switch(original[i])
-				{
-					case 'a':
-					case 'A':
-						resultStr.push_back(1);
-						break;
-					case 'c':
-					case 'C':
-						resultStr.push_back(2);
-						break;
-					case 'g':
-					case 'G':
-						resultStr.push_back(3);
-						break;
-					case 't':
-					case 'T':
-						resultStr.push_back(4);
-						break;
-					default:
-						assert(false);
-						break;
-				}
-				break;
-			}
-			default:
-			{
-				if (resultStr.size() == 0) continue;
-				result.emplace_back(std::move(resultStr), std::move(lens));
-				resultStr.clear();
-				lens.clear();
-				break;
-			}
-		}
-	}
-	if (resultStr.size() > 0)
-	{
-		result.emplace_back(std::move(resultStr), std::move(lens));
-	}
-	return result;
-}
-
-std::vector<std::pair<std::string, std::vector<uint16_t>>> noRunLengthEncode(const std::string& original)
-{
-	assert(original.size() > 0);
-	std::vector<std::pair<std::string, std::vector<uint16_t>>> result;
-	std::string resultStr;
-	resultStr.reserve(original.size());
-	for (size_t i = 0; i < original.size(); i++)
-	{
-		switch(original[i])
-		{
-			case 'a':
-			case 'A':
-				resultStr.push_back(1);
-				break;
-			case 'c':
-			case 'C':
-				resultStr.push_back(2);
-				break;
-			case 'g':
-			case 'G':
-				resultStr.push_back(3);
-				break;
-			case 't':
-			case 'T':
-				resultStr.push_back(4);
-				break;
-			default:
-				if (resultStr.size() == 0) continue;
-				result.emplace_back(std::move(resultStr), std::vector<uint16_t>{});
-				resultStr.clear();
-		}
-	}
-	if (resultStr.size() > 0) result.emplace_back(std::move(resultStr), std::vector<uint16_t>{});
-	for (size_t i = 0; i < result.size(); i++)
-	{
-		result[i].second.resize(result[i].first.size(), 1);
-	}
-	return result;
-}
-
 char complement(char c)
 {
 	static std::vector<char> comp { 0, 4, 3, 2, 1 };
@@ -1242,7 +1112,7 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, std::v
 				firstPos = unitigSequences[i].first.size() - 1 - firstFromEnd;
 			}
 			unitigSequences[i].second[firstPos] = length;
-			assert(unitigSequences[i].first[firstPos] == unitigSequences[found.first].first[secondPos] || unitigSequences[i].first[firstPos] == 5 - unitigSequences[found.first].first[secondPos]);
+			assert(unitigSequences[i].first[firstPos] == unitigSequences[found.first].first[secondPos] || unitigSequences[i].first[firstPos] == complement(unitigSequences[found.first].first[secondPos]));
 		}
 	}
 }
