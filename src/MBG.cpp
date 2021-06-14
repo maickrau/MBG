@@ -16,7 +16,6 @@
 #include "MBGCommon.h"
 #include "MBG.h"
 #include "VectorWithDirection.h"
-#include "TwobitString.h"
 #include "FastHasher.h"
 #include "SparseEdgeContainer.h"
 #include "HashList.h"
@@ -34,12 +33,6 @@ public:
 	size_t N50;
 	size_t approxKmers;
 };
-
-char complement(char c)
-{
-	static std::vector<char> comp { 0, 4, 3, 2, 1 };
-	return comp[c];
-}
 
 void collectEndSmers(std::vector<bool>& endSmer, const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const ReadpartIterator& partIterator)
 {
@@ -239,7 +232,7 @@ std::unordered_set<uint64_t> collectApproxHashes(const HashList& hashlist, const
 				size_t pos = offset + k;
 				if (!fw) pos = offset + kmerSize - 1 - k;
 				int chr = unitigSequences[unitig].first[pos];
-				if (!fw) chr = revCompRLE(chr);
+				if (!fw) chr = complement(chr);
 				hasher.addChar(chr);
 			}
 			approxHashes.insert(hasher.hash());
@@ -819,20 +812,6 @@ UnitigGraph getUnitigs(const UnitigGraph& oldgraph)
 	return result;
 }
 
-size_t getOverlapFromRLE(const std::vector<std::pair<std::string, std::vector<uint8_t>>>& unitigSequences, std::pair<size_t, bool> fromUnitig, size_t rleOverlap)
-{
-	assert(fromUnitig.first < unitigSequences.size());
-	assert(rleOverlap < unitigSequences[fromUnitig.first].first.size());
-	size_t result = 0;
-	for (size_t i = 0; i < rleOverlap; i++)
-	{
-		size_t index = i;
-		if (fromUnitig.second) index = unitigSequences[fromUnitig.first].first.size() - i - 1;
-		result += unitigSequences[fromUnitig.first].second[index];
-	}
-	return result;
-}
-
 size_t getN50(std::vector<size_t>& nodeSizes, size_t totalSize)
 {
 	std::sort(nodeSizes.begin(), nodeSizes.end());
@@ -885,7 +864,7 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
 		file << "S\t" << (i+1) << "\t";
-		std::string realSequence = getHPCExpanded(unitigSequences[i].first, unitigSequences[i].second);
+		std::string realSequence = getExpandedSequence(unitigSequences[i].first, unitigSequences[i].second);
 		file << realSequence;
 		file << "\tll:f:" << unitigs.averageCoverage(i);
 		file << "\tFC:f:" << (unitigs.averageCoverage(i) * realSequence.size());
@@ -1132,8 +1111,8 @@ void collectApproxNeighbors(std::unordered_map<uint64_t, unsigned char>& approxN
 		auto newBwHash = fwkmerHasher.getBwHash();
 		if (approxNeighbors.count(oldFwHash) == 1 && approxNeighbors.at(oldFwHash) != edgeSequence[i]) approxNeighbors[oldFwHash] = std::numeric_limits<unsigned char>::max();
 		if (approxNeighbors.count(oldFwHash) == 0) approxNeighbors[oldFwHash] = edgeSequence[i];
-		if (approxNeighbors.count(newBwHash) == 1 && approxNeighbors.at(newBwHash) != revCompRLE(edgeSequence[i-kmerSize])) approxNeighbors[newBwHash] = std::numeric_limits<unsigned char>::max();
-		if (approxNeighbors.count(newBwHash) == 0) approxNeighbors[newBwHash] = revCompRLE(edgeSequence[i-kmerSize]);
+		if (approxNeighbors.count(newBwHash) == 1 && approxNeighbors.at(newBwHash) != complement(edgeSequence[i-kmerSize])) approxNeighbors[newBwHash] = std::numeric_limits<unsigned char>::max();
+		if (approxNeighbors.count(newBwHash) == 0) approxNeighbors[newBwHash] = complement(edgeSequence[i-kmerSize]);
 	}
 }
 

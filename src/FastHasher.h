@@ -5,6 +5,11 @@
 #include <cstring>
 #include <algorithm>
 
+constexpr uint64_t combineHash(uint64_t first, uint64_t second)
+{
+	return ((first << 32) | (first >> 32)) ^ second;
+}
+
 class FastHasher
 {
 public:
@@ -38,7 +43,6 @@ public:
 		return bwHash;
 	}
 private:
-	char complement(char c) const;
 	__attribute__((always_inline))
 	inline uint64_t rotlone(uint64_t val) const
 	{
@@ -80,16 +84,16 @@ private:
 	{
 		return bwRemove[(int)c];
 	}
-	uint64_t fwAdd[5];
-	uint64_t fwRemove[5];
-	uint64_t bwAdd[5];
-	uint64_t bwRemove[5];
+	uint64_t fwAdd[29];
+	uint64_t fwRemove[29];
+	uint64_t bwAdd[29];
+	uint64_t bwRemove[29];
 	// https://bioinformatics.stackexchange.com/questions/19/are-there-any-rolling-hash-functions-that-can-hash-a-dna-sequence-and-its-revers
 	static constexpr uint64_t hashA = 0x3c8bfbb395c60474;
 	static constexpr uint64_t hashC = 0x3193c18562a02b4c;
 	static constexpr uint64_t hashG = 0x20323ed082572324;
 	static constexpr uint64_t hashT = 0x295549f54be24456;
-	uint64_t charHashes[5] { 0, 0x3c8bfbb395c60474, 0x3193c18562a02b4c, 0x20323ed082572324, 0x295549f54be24456 };
+	uint64_t charHashes[29] { 0, 0x3c8bfbb395c60474, 0x3193c18562a02b4c, 0x20323ed082572324, 0x295549f54be24456, combineHash(hashA, hashC), combineHash(hashA, hashG), combineHash(hashA, hashT), combineHash(hashC, hashA), combineHash(hashC, hashG), combineHash(hashC, hashT), combineHash(hashG, hashA), combineHash(hashG, hashC), combineHash(hashG, hashT), combineHash(hashT, hashA), combineHash(hashT, hashC), combineHash(hashT, hashG), combineHash(hashA, hashC), combineHash(hashA, hashG), combineHash(hashA, hashT), combineHash(hashC, hashA), combineHash(hashC, hashG), combineHash(hashC, hashT), combineHash(hashG, hashA), combineHash(hashG, hashC), combineHash(hashG, hashT), combineHash(hashT, hashA), combineHash(hashT, hashC), combineHash(hashT, hashG) };
 	uint64_t fwHash;
 	uint64_t bwHash;
 	size_t kmerSize;

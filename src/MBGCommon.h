@@ -13,6 +13,7 @@ std::istream& operator>>(std::istream& is, HashType& t);
 std::pair<size_t, bool> reverse(std::pair<size_t, bool> pos);
 std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> canon(std::pair<size_t, bool> from, std::pair<size_t, bool> to);
 std::string revCompRLE(const std::string& original);
+unsigned char complement(const unsigned char original);
 
 namespace std
 {

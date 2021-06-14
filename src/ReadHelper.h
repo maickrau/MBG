@@ -15,6 +15,7 @@ enum ErrorMasking
 {
 	No,
 	Hpc,
+	Dinuc,
 };
 
 template <typename F, typename EdgeCheckFunction>
@@ -72,6 +73,8 @@ uint64_t findSyncmerPositions(const std::string& sequence, size_t kmerSize, size
 	return minHash;
 }
 
+std::pair<std::string, std::vector<uint8_t>> dinucRunLengthEncode(const std::string& rleString, const std::vector<uint8_t>& runLengths);
+
 class ReadpartIterator
 {
 public:
@@ -96,6 +99,10 @@ public:
 		{
 			iterateRLE(read.sequence, callback);
 		}
+		else if (errorMasking == ErrorMasking::Dinuc)
+		{
+			iterateDinuc(read.sequence, callback);
+		}
 		else
 		{
 			assert(errorMasking == ErrorMasking::No);
@@ -107,6 +114,17 @@ public:
 	const ErrorMasking errorMasking;
 	std::vector<bool> endSmers;
 private:
+	template <typename F>
+	void iterateDinuc(const std::string& seq, F callback) const
+	{
+		iterateRLE(seq, [callback](const std::string& seq, const std::vector<uint8_t>& lens)
+		{
+			std::string dinucSeq;
+			std::vector<uint8_t> dinucLens;
+			std::tie(dinucSeq, dinucLens) = dinucRunLengthEncode(seq, lens);
+			callback(dinucSeq, dinucLens);
+		});
+	}
 	template <typename F>
 	void iterateRLE(const std::string& seq, F callback) const
 	{

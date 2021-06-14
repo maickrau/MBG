@@ -6,7 +6,6 @@
 #include <mutex>
 #include <phmap.h>
 #include "MBGCommon.h"
-#include "TwobitString.h"
 #include "VectorWithDirection.h"
 
 class HashList

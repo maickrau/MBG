@@ -34,6 +34,7 @@ int main(int argc, char** argv)
 		std::cerr << "Options for --error-masking:" << std::endl;
 		std::cerr << "\tno\tNo error masking" << std::endl;
 		std::cerr << "\thpc\tMask homopolymer errors (default)" << std::endl;
+		std::cerr << "\tdinuc\tMask dinculeotide errors and collapse homopolymers" << std::endl;
 		exit(0);
 	}
 	bool paramError = false;
@@ -82,6 +83,10 @@ int main(int argc, char** argv)
 		else if (params["error-masking"].as<std::string>() == "hpc")
 		{
 			errorMasking = ErrorMasking::Hpc;
+		}
+		else if (params["error-masking"].as<std::string>() == "dinuc")
+		{
+			errorMasking = ErrorMasking::Dinuc;
 		}
 		else
 		{
@@ -135,7 +140,7 @@ int main(int argc, char** argv)
 	std::cerr << "a=" << minCoverage << ",";
 	std::cerr << "u=" << minUnitigCoverage << ",";
 	std::cerr << "t=" << numThreads << ",";
-	std::cerr << "errormasking=" << (errorMasking == ErrorMasking::No ? "no" : errorMasking == ErrorMasking::Hpc ? "hpc" : "unknown") << ",";
+	std::cerr << "errormasking=" << (errorMasking == ErrorMasking::No ? "no" : errorMasking == ErrorMasking::Hpc ? "hpc" : errorMasking == ErrorMasking::Dinuc ? "dinuc" : "unknown") << ",";
 	std::cerr << "endkmers=" << (includeEndKmers ? "yes" : "no") << ",";
 	std::cerr << "blunt=" << (blunt ? "yes" : "no") << std::endl;
 

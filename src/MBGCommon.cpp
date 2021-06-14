@@ -1,5 +1,6 @@
 #include <string_view>
 #include <algorithm>
+#include <vector>
 #include "MBGCommon.h"
 
 HashType hash(std::string_view sequence)
@@ -61,11 +62,16 @@ std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> canon(std::pair<size
 
 std::string revCompRLE(const std::string& original)
 {
-	static char mapping[5] { 0, 4, 3, 2, 1 };
 	std::string result { original.rbegin(), original.rend() };
 	for (size_t i = 0; i < result.size(); i++)
 	{
-		result[i] = mapping[(int)result[i]];
+		result[i] = complement(result[i]);
 	}
 	return result;
+}
+
+unsigned char complement(const unsigned char original)
+{
+	static std::vector<char> mapping { 0, 4, 3, 2, 1, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 25, 22, 19, 28, 21, 18, 27, 24, 17, 26, 23, 20 };
+	return mapping[original];
 }

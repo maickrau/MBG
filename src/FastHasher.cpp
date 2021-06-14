@@ -1,6 +1,6 @@
-#include "FastHasher.h"
-
 #include <vector>
+#include "FastHasher.h"
+#include "MBGCommon.h"
 
 FastHasher::FastHasher(size_t kmerSize, uint64_t fwHash, uint64_t bwHash) :
 fwHash(fwHash),
@@ -18,27 +18,21 @@ kmerSize(kmerSize % 64)
 	precalcRots();
 }
 
-char FastHasher::complement(char c) const
-{
-	static std::vector<char> comp { 0, 4, 3, 2, 1 };
-	return comp[c];
-}
-
 void FastHasher::precalcRots()
 {
-	for (int i = 0; i < 5; i++)
+	for (int i = 0; i < 29; i++)
 	{
 		fwAdd[i] = charHashes[i];
 	}
-	for (int i = 0; i < 5; i++)
+	for (int i = 0; i < 29; i++)
 	{
 		fwRemove[i] = rotlk(charHashes[i]);
 	}
-	for (int i = 0; i < 5; i++)
+	for (int i = 0; i < 29; i++)
 	{
 		bwAdd[i] = rotlkmin1(charHashes[(int)complement(i)]);
 	}
-	for (int i = 0; i < 5; i++)
+	for (int i = 0; i < 29; i++)
 	{
 		bwRemove[i] = rotrone(charHashes[(int)complement(i)]);
 	}

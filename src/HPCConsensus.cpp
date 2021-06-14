@@ -1,5 +1,6 @@
 #include <limits>
 #include "HPCConsensus.h"
+#include "MBGCommon.h"
 
 // allow multiple threads to update the same contig sequence but in different regions
 // each mutex covers MutexLength bp in one contig, overlap by half
@@ -36,13 +37,13 @@ void addCounts(std::vector<std::pair<std::string, std::vector<uint8_t>>>& result
 			}
 			else
 			{
-				result[unitig].first[off] = 5 - seq[seqStart+i];
+				result[unitig].first[off] = complement(seq[seqStart+i]);
 			}
 		}
 		else
 		{
 			assert(!fw || result[unitig].first[off] == seq[seqStart + i]);
-			assert(fw || result[unitig].first[off] == 5 - seq[seqStart + i]);
+			assert(fw || result[unitig].first[off] == complement(seq[seqStart + i]));
 		}
 		if (std::numeric_limits<uint8_t>::max() - result[unitig].second[off] < 1)
 		{
@@ -203,34 +204,153 @@ std::vector<std::pair<std::string, std::vector<uint8_t>>> getHPCUnitigSequences(
 	return result;
 }
 
-std::string getHPCExpanded(const std::string& seq, const std::vector<uint8_t>& length)
+std::string getExpandedSequence(const std::string& rle, const std::vector<uint8_t>& characterLength)
 {
-	assert(seq.size() == length.size());
 	std::string result;
-	for (size_t i = 0; i < seq.size(); i++)
+	assert(rle.size() == characterLength.size());
+	for (size_t i = 0; i < rle.size(); i++)
 	{
-		assert(length[i] > 0);
-		for (size_t j = 0; j < length[i]; j++)
+		if ((int)rle[i] >= 0 && (int)rle[i] <= 4)
 		{
-			switch(seq[i])
+			for (size_t j = 0; j < characterLength[i]; j++)
 			{
-				case 1:
-					result += 'A';
-					break;
-				case 2:
-					result += 'C';
-					break;
-				case 3:
-					result += 'G';
-					break;
-				case 4:
-					result += 'T';
-					break;
-				default:
-					assert(false);
-					break;
+				result += "-ACGT"[(int)rle[i]];
 			}
+			continue;
+		}
+		switch(rle[i])
+		{
+			case 5: // ACA
+				result += 'A';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "CA";
+				break;
+			case 6: // AGA
+				result += 'A';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "GA";
+				break;
+			case 7: // ATA
+				result += 'A';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "TA";
+				break;
+			case 8: // CAC
+				result += 'C';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "AC";
+				break;
+			case 9: // CGC
+				result += 'C';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "GC";
+				break;
+			case 10: // CTC
+				result += 'C';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "TC";
+				break;
+			case 11: // GAG
+				result += 'G';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "AG";
+				break;
+			case 12: // GCG
+				result += 'G';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "CG";
+				break;
+			case 13: // GTG
+				result += 'G';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "TG";
+				break;
+			case 14: // TAT
+				result += 'T';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "AT";
+				break;
+			case 15: // TCT
+				result += 'T';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "CT";
+				break;
+			case 16: // TGT
+				result += 'T';
+				for (size_t j = 0; j < characterLength[i]; j++) result += "GT";
+				break;
+			case 17: // AC
+				for (size_t j = 0; j < characterLength[i]; j++) result += "AC";
+				break;
+			case 18: // AG
+				for (size_t j = 0; j < characterLength[i]; j++) result += "AG";
+				break;
+			case 19: // AT
+				for (size_t j = 0; j < characterLength[i]; j++) result += "AT";
+				break;
+			case 20: // CA
+				for (size_t j = 0; j < characterLength[i]; j++) result += "CA";
+				break;
+			case 21: // CG
+				for (size_t j = 0; j < characterLength[i]; j++) result += "CG";
+				break;
+			case 22: // CT
+				for (size_t j = 0; j < characterLength[i]; j++) result += "CT";
+				break;
+			case 23: // GA
+				for (size_t j = 0; j < characterLength[i]; j++) result += "GA";
+				break;
+			case 24: // GC
+				for (size_t j = 0; j < characterLength[i]; j++) result += "GC";
+				break;
+			case 25: // GT
+				for (size_t j = 0; j < characterLength[i]; j++) result += "GT";
+				break;
+			case 26: // TA
+				for (size_t j = 0; j < characterLength[i]; j++) result += "TA";
+				break;
+			case 27: // TC
+				for (size_t j = 0; j < characterLength[i]; j++) result += "TC";
+				break;
+			case 28: // TG
+				for (size_t j = 0; j < characterLength[i]; j++) result += "TG";
+				break;
+			default:
+				assert(false);
+				break;
 		}
 	}
 	return result;
+}
+
+size_t getOverlapFromRLE(const std::vector<std::pair<std::string, std::vector<uint8_t>>>& unitigSequences, std::pair<size_t, bool> fromUnitig, size_t rleOverlap)
+{
+	if (fromUnitig.second)
+	{
+		std::string str { unitigSequences[fromUnitig.first].first.end() - rleOverlap, unitigSequences[fromUnitig.first].first.end() };
+		std::vector<uint8_t> lens { unitigSequences[fromUnitig.first].second.end() - rleOverlap, unitigSequences[fromUnitig.first].second.end() };
+		return getExpandedSequence(str, lens).size();
+	}
+	else
+	{
+		std::string str { unitigSequences[fromUnitig.first].first.begin(), unitigSequences[fromUnitig.first].first.begin() + rleOverlap };
+		str = revCompRLE(str);
+		std::vector<uint8_t> lens { unitigSequences[fromUnitig.first].second.rend() - rleOverlap, unitigSequences[fromUnitig.first].second.rend() };
+		return getExpandedSequence(str, lens).size();
+	}
+	// assert(fromUnitig.first < unitigSequences.size());
+	// assert(rleOverlap < unitigSequences[fromUnitig.first].first.size());
+	// size_t result = 0;
+	// for (size_t i = 0; i < rleOverlap; i++)
+	// {
+	// 	size_t index = i;
+	// 	if (fromUnitig.second) index = unitigSequences[fromUnitig.first].first.size() - i - 1;
+	// 	unsigned char chr = unitigSequences[fromUnitig.first].second[index];
+	// 	if (chr >= 0 && chr <= 4)
+	// 	{
+	// 		result += unitigSequences[fromUnitig.first].second[index];
+	// 	}
+	// 	else if (chr >= 5 && chr <= 16)
+	// 	{
+	// 		result += unitigSequences[fromUnitig.first].second[index] * 2 + 1;
+	// 	}
+	// 	else if (chr >= 17 && chr <= 28)
+	// 	{
+	// 		result += unitigSequences[fromUnitig.first].second[index] * 2 ;
+	// 	}
+	// 	else
+	// 	{
+	// 		assert(false);
+	// 	}
+	// }
+	// return result;
 }
