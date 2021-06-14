@@ -11,6 +11,12 @@
 #include "fastqloader.h"
 #include "FastHasher.h"
 
+enum ErrorMasking
+{
+	No,
+	Hpc,
+};
+
 template <typename F, typename EdgeCheckFunction>
 uint64_t findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, EdgeCheckFunction endSmer, F callback)
 {
@@ -69,10 +75,10 @@ uint64_t findSyncmerPositions(const std::string& sequence, size_t kmerSize, size
 class ReadpartIterator
 {
 public:
-	ReadpartIterator(const size_t kmerSize, const size_t windowSize, const bool hpc) :
+	ReadpartIterator(const size_t kmerSize, const size_t windowSize, const ErrorMasking errorMasking) :
 	kmerSize(kmerSize),
 	windowSize(windowSize),
-	hpc(hpc)
+	errorMasking(errorMasking)
 	{
 	}
 	template <typename F>
@@ -86,18 +92,19 @@ public:
 	template <typename F>
 	void iterateParts(const FastQ& read, F callback) const
 	{
-		if (hpc)
+		if (errorMasking == ErrorMasking::Hpc)
 		{
 			iterateRLE(read.sequence, callback);
 		}
 		else
 		{
+			assert(errorMasking == ErrorMasking::No);
 			iterateNoRLE(read.sequence, callback);
 		}
 	}
 	const size_t kmerSize;
 	const size_t windowSize;
-	const bool hpc;
+	const ErrorMasking errorMasking;
 	std::vector<bool> endSmers;
 private:
 	template <typename F>

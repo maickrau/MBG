@@ -69,7 +69,7 @@ int main(int argc, char** argv)
 	double minUnitigCoverage = params["u"].as<double>();
 	size_t numThreads = params["t"].as<size_t>();
 	std::string outputSequencePaths = "";
-	bool hpc = true;
+	ErrorMasking errorMasking = ErrorMasking::Hpc;
 	bool blunt = false;
 	bool includeEndKmers = false;
 	if (params.count("blunt") == 1) blunt = true;
@@ -77,10 +77,11 @@ int main(int argc, char** argv)
 	{
 		if (params["error-masking"].as<std::string>() == "no")
 		{
-			hpc = false;
+			errorMasking = ErrorMasking::No;
 		}
 		else if (params["error-masking"].as<std::string>() == "hpc")
 		{
+			errorMasking = ErrorMasking::Hpc;
 		}
 		else
 		{
@@ -134,9 +135,9 @@ int main(int argc, char** argv)
 	std::cerr << "a=" << minCoverage << ",";
 	std::cerr << "u=" << minUnitigCoverage << ",";
 	std::cerr << "t=" << numThreads << ",";
-	std::cerr << "errormasking=" << (hpc ? "hpc" : "no") << std::endl;
+	std::cerr << "errormasking=" << (errorMasking == ErrorMasking::No ? "no" : errorMasking == ErrorMasking::Hpc ? "hpc" : "unknown") << ",";
 	std::cerr << "endkmers=" << (includeEndKmers ? "yes" : "no") << ",";
-	std::cerr << "blunt=" << (blunt ? "yes" : "no") << ",";
+	std::cerr << "blunt=" << (blunt ? "yes" : "no") << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, hpc, blunt, numThreads, includeEndKmers, outputSequencePaths);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, blunt, numThreads, includeEndKmers, outputSequencePaths);
 }
