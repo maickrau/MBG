@@ -1890,7 +1890,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		// writePaths(reads, unitigs, inputReads, kmerSize, partIterator, outputSequencePaths, numThreads);
 	}
 	auto afterPaths = getTime();
-	std::cerr << "reading and hashing graph topology took " << formatTime(beforeReading, beforeUnitigs) << std::endl;
+	std::cerr << "selecting k-mers and building graph topology took " << formatTime(beforeReading, beforeUnitigs) << std::endl;
 	std::cerr << "unitigifying took " << formatTime(beforeUnitigs, beforeFilter) << std::endl;
 	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforeSequences) << std::endl;
 	std::cerr << "building unitig sequences took " << formatTime(beforeSequences, beforeDeterminism) << std::endl;
