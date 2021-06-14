@@ -12,7 +12,7 @@
 constexpr size_t MutexLength = 1000000;
 constexpr size_t MutexSpan = MutexLength / 2;
 
-void addCounts(std::vector<std::pair<std::string, std::vector<uint16_t>>>& result, std::vector<std::vector<uint8_t>>& runLengthCounts, std::vector<std::vector<bool>>& locked, std::vector<std::mutex*>& seqMutexes, const std::string& seq, const std::vector<uint16_t>& lens, const size_t seqStart, const size_t seqEnd, const size_t unitig, const size_t unitigStart, const size_t unitigEnd, const bool fw)
+void addCounts(std::vector<std::pair<std::string, std::vector<uint8_t>>>& result, std::vector<std::vector<uint16_t>>& runLengthSums, std::vector<std::vector<bool>>& locked, std::vector<std::mutex*>& seqMutexes, const std::string& seq, const std::vector<uint8_t>& lens, const size_t seqStart, const size_t seqEnd, const size_t unitig, const size_t unitigStart, const size_t unitigEnd, const bool fw)
 {
 	assert(unitigEnd - unitigStart == seqEnd - seqStart);
 	size_t lowMutexIndex = unitigStart / MutexSpan;
@@ -44,18 +44,18 @@ void addCounts(std::vector<std::pair<std::string, std::vector<uint16_t>>>& resul
 			assert(!fw || result[unitig].first[off] == seq[seqStart + i]);
 			assert(fw || result[unitig].first[off] == 5 - seq[seqStart + i]);
 		}
-		if (std::numeric_limits<uint16_t>::max() - result[unitig].second[off] < lens[seqStart+i])
+		if (std::numeric_limits<uint8_t>::max() - result[unitig].second[off] < 1)
 		{
 			locked[unitig][off] = true;
 			continue;
 		}
-		if (std::numeric_limits<uint8_t>::max() - runLengthCounts[unitig][off] < 1)
+		if (std::numeric_limits<uint16_t>::max() - runLengthSums[unitig][off] < lens[seqStart+i])
 		{
 			locked[unitig][off] = true;
 			continue;
 		}
-		result[unitig].second[off] += lens[seqStart+i];
-		runLengthCounts[unitig][off] += 1;
+		result[unitig].second[off] += 1;
+		runLengthSums[unitig][off] += lens[seqStart+i];
 	}
 	for (size_t i = 0; i < guards.size(); i++)
 	{
@@ -63,13 +63,13 @@ void addCounts(std::vector<std::pair<std::string, std::vector<uint16_t>>>& resul
 	}
 }
 
-std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& filenames, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
+std::vector<std::pair<std::string, std::vector<uint8_t>>> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& filenames, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
-	std::vector<std::pair<std::string, std::vector<uint16_t>>> result;
-	std::vector<std::vector<uint8_t>> runLengthCounts;
+	std::vector<std::pair<std::string, std::vector<uint8_t>>> result;
+	std::vector<std::vector<uint16_t>> runLengthSums;
 	std::vector<std::vector<bool>> locked;
 	result.resize(unitigs.unitigs.size());
-	runLengthCounts.resize(unitigs.unitigs.size());
+	runLengthSums.resize(unitigs.unitigs.size());
 	locked.resize(unitigs.unitigs.size());
 	std::vector<std::tuple<size_t, size_t, bool>> kmerPosition;
 	kmerPosition.resize(hashlist.size(), std::tuple<size_t, size_t, bool> { std::numeric_limits<size_t>::max(), 0, true });
@@ -92,7 +92,7 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 		}
 		result[i].first.resize(offset + kmerSize, 0);
 		result[i].second.resize(offset + kmerSize, 0);
-		runLengthCounts[i].resize(offset + kmerSize, 0);
+		runLengthSums[i].resize(offset + kmerSize, 0);
 		locked[i].resize(offset + kmerSize, false);
 		rleSize += result[i].first.size();
 		size_t numMutexes = 0;
@@ -103,9 +103,9 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 		assert(numMutexes > 0);
 		seqMutexes[i] = new std::mutex[numMutexes];
 	}
-	iterateReadsMultithreaded(filenames, numThreads, [&result, &locked, &seqMutexes, &runLengthCounts, &partIterator, &hashlist, &kmerPosition, kmerSize](size_t thread, FastQ& read)
+	iterateReadsMultithreaded(filenames, numThreads, [&result, &locked, &seqMutexes, &runLengthSums, &partIterator, &hashlist, &kmerPosition, kmerSize](size_t thread, FastQ& read)
 	{
-		partIterator.iteratePartKmers(read, [&result, &locked, &seqMutexes, &runLengthCounts, &hashlist, &kmerPosition, kmerSize](const std::string& seq, const std::vector<uint16_t>& lens, uint64_t minHash, const std::vector<size_t>& positions)
+		partIterator.iteratePartKmers(read, [&result, &locked, &seqMutexes, &runLengthSums, &hashlist, &kmerPosition, kmerSize](const std::string& seq, const std::vector<uint8_t>& lens, uint64_t minHash, const std::vector<size_t>& positions)
 		{
 			size_t currentSeqStart = 0;
 			size_t currentSeqEnd = 0;
@@ -126,7 +126,7 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 				{
 					if (currentUnitig != std::numeric_limits<size_t>::max())
 					{
-						addCounts(result, runLengthCounts, locked, seqMutexes, seq, lens, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
+						addCounts(result, runLengthSums, locked, seqMutexes, seq, lens, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
 					}
 					currentUnitig = std::numeric_limits<size_t>::max();
 				}
@@ -170,7 +170,7 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 					currentUnitigForward = fw;
 					continue;
 				}
-				addCounts(result, runLengthCounts, locked, seqMutexes, seq, lens, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
+				addCounts(result, runLengthSums, locked, seqMutexes, seq, lens, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
 				currentUnitig = unitig;
 				currentSeqStart = pos;
 				currentSeqEnd = pos + kmerSize;
@@ -181,18 +181,19 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 			};
 			if (currentUnitig != std::numeric_limits<size_t>::max())
 			{
-				addCounts(result, runLengthCounts, locked, seqMutexes, seq, lens, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
+				addCounts(result, runLengthSums, locked, seqMutexes, seq, lens, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
 			}
 		});
 	});
-	size_t expandedSize = 0;
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
 		for (size_t j = 0; j < result[i].second.size(); j++)
 		{
-			assert(runLengthCounts[i][j] > 0);
-			result[i].second[j] = (result[i].second[j] + runLengthCounts[i][j] / 2) / runLengthCounts[i][j];
-			expandedSize += result[i].second[j];
+			assert(runLengthSums[i][j] > 0);
+			assert(result[i].second[j] > 0);
+			assert(runLengthSums[i][j] >= result[i].second[j]);
+			result[i].second[j] = (runLengthSums[i][j] + result[i].second[j] / 2) / result[i].second[j];
+			assert(result[i].second[j] > 0);
 		}
 	}
 	for (size_t i = 0; i < seqMutexes.size(); i++)
@@ -202,7 +203,7 @@ std::vector<std::pair<std::string, std::vector<uint16_t>>> getHPCUnitigSequences
 	return result;
 }
 
-std::string getHPCExpanded(const std::string& seq, const std::vector<uint16_t>& length)
+std::string getHPCExpanded(const std::string& seq, const std::vector<uint8_t>& length)
 {
 	assert(seq.size() == length.size());
 	std::string result;

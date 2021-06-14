@@ -85,7 +85,7 @@ public:
 	void iteratePartKmers(const FastQ& read, F callback) const
 	{
 		if (read.sequence.size() < kmerSize) return;
-		iterateParts(read, [this, callback](const std::string& seq, const std::vector<uint16_t>& lens) {
+		iterateParts(read, [this, callback](const std::string& seq, const std::vector<uint8_t>& lens) {
 			iterateKmers(seq, lens, callback);
 		});
 	}
@@ -111,7 +111,7 @@ private:
 	void iterateRLE(const std::string& seq, F callback) const
 	{
 		std::string currentSeq;
-		std::vector<uint16_t> currentLens;
+		std::vector<uint8_t> currentLens;
 		currentSeq.reserve(seq.size());
 		currentLens.reserve(seq.size());
 		size_t i = 0;
@@ -239,7 +239,7 @@ private:
 	void iterateNoRLE(const std::string& seq, F callback) const
 	{
 		std::string currentSeq;
-		std::vector<uint16_t> currentLens;
+		std::vector<uint8_t> currentLens;
 		currentSeq.reserve(seq.size());
 		currentLens.reserve(seq.size());
 		size_t i = 0;
@@ -281,7 +281,7 @@ private:
 		}
 	}
 	template <typename F>
-	void iterateKmers(const std::string& seq, const std::vector<uint16_t>& lens, F callback) const
+	void iterateKmers(const std::string& seq, const std::vector<uint8_t>& lens, F callback) const
 	{
 		if (seq.size() < kmerSize) return;
 		// keep the same smerOrder to reduce mallocs which destroy multithreading performance
