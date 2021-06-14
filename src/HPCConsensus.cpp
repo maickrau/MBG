@@ -3,31 +3,34 @@
 #include "MBGCommon.h"
 
 // allow multiple threads to update the same contig sequence but in different regions
-// each mutex covers MutexLength bp in one contig, overlap by half
+// each mutex covers MutexLength bp in one contig
 // ------
-//    ------
 //       ------
+//             ------
 // etc
 // size arbitrarily 1Mbp, so ~(3000 + num_contigs) mutexes in a human genome, hopefully not too many
-// and the chance of two random hifis falling in the same 1Mbp bucket is ~.3% so hopefully not too much waiting
+// and the chance of two random hifis falling in the same 1Mbp bucket is ~.03% so hopefully not too much waiting
 constexpr size_t MutexLength = 1000000;
-constexpr size_t MutexSpan = MutexLength / 2;
 
-void addCounts(std::vector<std::pair<std::string, std::vector<uint8_t>>>& result, std::vector<std::vector<uint16_t>>& runLengthSums, std::vector<std::vector<bool>>& locked, std::vector<std::mutex*>& seqMutexes, const std::string& seq, const std::vector<uint8_t>& lens, const size_t seqStart, const size_t seqEnd, const size_t unitig, const size_t unitigStart, const size_t unitigEnd, const bool fw)
+void addCounts(std::vector<std::pair<std::string, std::vector<uint8_t>>>& result, std::vector<std::vector<uint16_t>>& runLengthSums, std::vector<std::vector<bool>>& locked, std::vector<std::vector<std::mutex*>>& seqMutexes, const std::string& seq, const std::vector<uint8_t>& lens, const size_t seqStart, const size_t seqEnd, const size_t unitig, const size_t unitigStart, const size_t unitigEnd, const bool fw)
 {
+	assert(unitig < locked.size());
 	assert(unitigEnd - unitigStart == seqEnd - seqStart);
-	size_t lowMutexIndex = unitigStart / MutexSpan;
-	size_t highMutexIndex = (unitigEnd) / MutexSpan;
+	size_t lowMutexIndex = unitigStart / MutexLength;
+	if (unitigStart > 64) lowMutexIndex = (unitigStart - 64) / MutexLength;
+	size_t highMutexIndex = (unitigEnd + 64 + MutexLength - 1) / MutexLength;
+	if (highMutexIndex >= seqMutexes[unitig].size()) highMutexIndex = seqMutexes[unitig].size();
 	std::vector<std::lock_guard<std::mutex>*> guards;
 	for (size_t i = lowMutexIndex; i < highMutexIndex; i++)
 	{
-		guards.emplace_back(new std::lock_guard<std::mutex>{seqMutexes[unitig][i]});
+		guards.emplace_back(new std::lock_guard<std::mutex>{*seqMutexes[unitig][i]});
 	}
 	for (size_t i = 0; i < seqEnd - seqStart; i++)
 	{
 		size_t off = unitigStart + i;
 		if (!fw) off = unitigEnd - 1 - i;
 		assert(off < result[unitig].first.size());
+		assert(off < locked[unitig].size());
 		if (locked[unitig][off]) continue;
 		if (result[unitig].first[off] == 0)
 		{
@@ -55,6 +58,9 @@ void addCounts(std::vector<std::pair<std::string, std::vector<uint8_t>>>& result
 			locked[unitig][off] = true;
 			continue;
 		}
+		assert(off < result[unitig].second.size());
+		assert(off < runLengthSums[unitig].size());
+		assert(seqStart+i < lens.size());
 		result[unitig].second[off] += 1;
 		runLengthSums[unitig][off] += lens[seqStart+i];
 	}
@@ -74,7 +80,7 @@ std::vector<std::pair<std::string, std::vector<uint8_t>>> getHPCUnitigSequences(
 	locked.resize(unitigs.unitigs.size());
 	std::vector<std::tuple<size_t, size_t, bool>> kmerPosition;
 	kmerPosition.resize(hashlist.size(), std::tuple<size_t, size_t, bool> { std::numeric_limits<size_t>::max(), 0, true });
-	std::vector<std::mutex*> seqMutexes;
+	std::vector<std::vector<std::mutex*>> seqMutexes;
 	seqMutexes.resize(unitigs.unitigs.size());
 	size_t rleSize = 0;
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
@@ -96,13 +102,10 @@ std::vector<std::pair<std::string, std::vector<uint8_t>>> getHPCUnitigSequences(
 		runLengthSums[i].resize(offset + kmerSize, 0);
 		locked[i].resize(offset + kmerSize, false);
 		rleSize += result[i].first.size();
-		size_t numMutexes = 0;
-		for (size_t j = 0; j < offset + kmerSize; j += MutexSpan)
+		for (size_t j = 0; j < offset + kmerSize; j += MutexLength)
 		{
-			numMutexes += 1;
+			seqMutexes[i].emplace_back(new std::mutex);
 		}
-		assert(numMutexes > 0);
-		seqMutexes[i] = new std::mutex[numMutexes];
 	}
 	iterateReadsMultithreaded(filenames, numThreads, [&result, &locked, &seqMutexes, &runLengthSums, &partIterator, &hashlist, &kmerPosition, kmerSize](size_t thread, FastQ& read)
 	{
@@ -199,7 +202,10 @@ std::vector<std::pair<std::string, std::vector<uint8_t>>> getHPCUnitigSequences(
 	}
 	for (size_t i = 0; i < seqMutexes.size(); i++)
 	{
-		delete [] seqMutexes[i];
+		for (size_t j = 0; j < seqMutexes[i].size(); j++)
+		{
+			delete seqMutexes[i][j];
+		}
 	}
 	return result;
 }
