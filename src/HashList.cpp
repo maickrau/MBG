@@ -5,7 +5,9 @@
 
 HashList::HashList(size_t kmerSize) :
 	kmerSize(kmerSize)
-{}
+{
+	indexMutex = std::make_shared<std::mutex>();
+}
 
 size_t HashList::numSequenceOverlaps() const
 {
@@ -34,7 +36,7 @@ size_t HashList::getOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool
 void HashList::addSequenceOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, const size_t overlap)
 {
 	std::tie(from, to) = canon(from, to);
-	std::lock_guard<std::mutex> lock { indexMutex };
+	std::lock_guard<std::mutex> lock { *indexMutex };
 	if (sequenceOverlap[from].count(to) == 1) return;
 	sequenceOverlap[from][to] = overlap;
 }
@@ -57,7 +59,7 @@ std::pair<size_t, bool> HashList::getNodeOrNull(std::string_view sequence) const
 
 void HashList::addEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to)
 {
-	std::lock_guard<std::mutex> lock { indexMutex };
+	std::lock_guard<std::mutex> lock { *indexMutex };
 	edgeCoverage[from][to] += 1;
 }
 
@@ -65,7 +67,7 @@ std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(std::string_view 
 {
 	HashType fwHash = hash(sequence);
 	{
-		std::lock_guard<std::mutex> lock { indexMutex };
+		std::lock_guard<std::mutex> lock { *indexMutex };
 		auto found = hashToNode.find(fwHash);
 		if (found != hashToNode.end())
 		{
@@ -76,7 +78,7 @@ std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(std::string_view 
 	}
 	HashType bwHash = hash(reverse);
 	{
-		std::lock_guard<std::mutex> lock { indexMutex };
+		std::lock_guard<std::mutex> lock { *indexMutex };
 		auto found = hashToNode.find(fwHash);
 		if (found != hashToNode.end())
 		{

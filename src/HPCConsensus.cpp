@@ -124,16 +124,18 @@ std::vector<std::pair<std::string, std::vector<uint8_t>>> getHPCUnitigSequences(
 				std::string_view minimizerSequence { seq.data() + pos, kmerSize };
 				std::pair<size_t, bool> current;
 				current = hashlist.getNodeOrNull(minimizerSequence);
-				assert(current.first != std::numeric_limits<size_t>::max());
-				assert(current.first < kmerPosition.size());
-				if (std::get<0>(kmerPosition[current.first]) == std::numeric_limits<size_t>::max())
+				if (current.first == std::numeric_limits<size_t>::max())
 				{
 					if (currentUnitig != std::numeric_limits<size_t>::max())
 					{
 						addCounts(result, runLengthSums, locked, seqMutexes, seq, lens, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
 					}
 					currentUnitig = std::numeric_limits<size_t>::max();
+					continue;
 				}
+				assert(current.first != std::numeric_limits<size_t>::max());
+				assert(current.first < kmerPosition.size());
+				assert(std::get<0>(kmerPosition[current.first]) != std::numeric_limits<size_t>::max());
 				size_t unitig = std::get<0>(kmerPosition[current.first]);
 				size_t offset = std::get<1>(kmerPosition[current.first]);
 				bool fw = std::get<2>(kmerPosition[current.first]);

@@ -1,6 +1,7 @@
 #ifndef AdjacentMinimizerList_h
 #define AdjacentMinimizerList_h
 
+#include <memory>
 #include <vector>
 #include <string>
 #include <mutex>
@@ -25,8 +26,8 @@ public:
 	std::pair<size_t, bool> getNodeOrNull(std::string_view sequence) const;
 	std::pair<std::pair<size_t, bool>, HashType> addNode(std::string_view sequence, std::string_view reverse, HashType previousHash, size_t overlap, uint64_t bucketHash);
 private:
-	std::mutex indexMutex;
-	const size_t kmerSize;
+	std::shared_ptr<std::mutex> indexMutex;
+	size_t kmerSize;
 };
 
 #endif
