@@ -1372,12 +1372,15 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, std::vector<std
 		newUnitigs.unitigs.back().emplace_back(fromKmer);
 		newUnitigs.edges.emplace_back();
 		newUnitigs.unitigCoverage.emplace_back();
-		newUnitigs.unitigCoverage.back().emplace_back(0);
+		// fake extra high coverage
+		// because these k-mers are a part of the existing graph
+		// so they must not be filtered out by coverage
+		// this will guarantee that their average unitig coverage is >= minUnitigCoverage after unitigifying
+		newUnitigs.unitigCoverage.back().emplace_back(kmerSize * minUnitigCoverage);
 		newUnitigs.edgeCov.emplace_back();
 		for (auto t : pair.second)
 		{
 			std::pair<size_t, bool> toUnitig { std::get<0>(t), std::get<1>(t) };
-			newUnitigs.unitigCoverage.back().back() += std::get<2>(t);
 			auto key = canon(std::make_pair(newIndex, true), toUnitig);
 			newUnitigs.edges[key.first].insert(key.second);
 			newUnitigs.edges[reverse(key.second)].insert(reverse(key.first));
@@ -1424,6 +1427,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, std::vector<std
 			seqLength += kmerSize - overlap;
 			if (fromUnitig.first == std::numeric_limits<size_t>::max())
 			{
+				assert(j == 0 || (j == 1 && newUnitigs.unitigs[i][0].first < zeroKmer));
 				size_t k = newUnitigs.unitigs[i][j].first - zeroKmer;
 				fw = newUnitigs.unitigs[i][j].second;
 				fromUnitig = std::get<0>(addedKmerSequences[k]);
@@ -1450,6 +1454,8 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, std::vector<std
 			newUnitigSequences[i].first = revCompRLE(newUnitigSequences[i].first);
 			fromKmer = reverse(unitigs.unitigs[fromUnitig.first][0]);
 		}
+		assert(newUnitigSequences[i].first.size() == kmerSize);
+		assert(newUnitigSequences[i].second.size() == kmerSize);
 		if (toUnitig.second)
 		{
 			std::pair<size_t, bool> toKmer = unitigs.unitigs[toUnitig.first][0];
@@ -1466,6 +1472,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, std::vector<std
 			newUnitigSequences[i].second.insert(newUnitigSequences[i].second.end(), unitigSequences[toUnitig.first].second.rbegin() + overlap, unitigSequences[toUnitig.first].second.rbegin() + kmerSize);
 		}
 		assert(newUnitigSequences[i].first.size() == 2 * kmerSize - overlap);
+		assert(newUnitigSequences[i].second.size() == 2 * kmerSize - overlap);
 		if (!fw)
 		{
 			newUnitigSequences[i].first = revCompRLE(newUnitigSequences[i].first);
