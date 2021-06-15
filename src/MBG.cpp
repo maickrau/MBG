@@ -1150,7 +1150,7 @@ void collectJunctionHashes(const std::unordered_map<uint64_t, unsigned char>& ap
 	}
 }
 
-bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, std::unordered_map<NodeType, std::pair<size_t, bool>>& belongsToUnitig, HashList& hashlist, UnitigGraph& newUnitigs, std::vector<std::pair<std::string, std::vector<uint8_t>>>& unitigSequences, const size_t kmerSize, const std::pair<size_t, bool> fromUnitig, const std::pair<size_t, bool> toUnitig, const std::pair<size_t, bool> fromKmer, const std::pair<size_t, bool> toKmer, std::unordered_map<std::pair<size_t, bool>, std::unordered_set<std::pair<size_t, bool>>>& connectionsToOld, const size_t edgeCoverage, const size_t unitigOverlap, const size_t zeroKmer, std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t>>& addedKmerSequences)
+bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, std::unordered_map<NodeType, std::pair<size_t, bool>>& belongsToUnitig, HashList& hashlist, UnitigGraph& newUnitigs, std::vector<std::pair<std::string, std::vector<uint8_t>>>& unitigSequences, const size_t kmerSize, const std::pair<size_t, bool> fromUnitig, const std::pair<size_t, bool> toUnitig, const std::pair<size_t, bool> fromKmer, const std::pair<size_t, bool> toKmer, std::unordered_map<std::pair<size_t, bool>, std::vector<std::tuple<size_t, bool, size_t>>>& connectionsToOld, const size_t edgeCoverage, const size_t unitigOverlap, const size_t zeroKmer, std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t>>& addedKmerSequences)
 {
 	std::string edgeSequence = getEdgeSequence(unitigSequences, fromUnitig, toUnitig, kmerSize, unitigOverlap);
 	if (edgeSequence.size() == kmerSize + 1) return false;
@@ -1237,7 +1237,7 @@ bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, std:
 			newUnitigs.unitigCoverage[newUnitigPosition.first][0] += edgeCoverage;
 		}
 		assert(newUnitigPosition.first != std::numeric_limits<size_t>::max());
-		if (lastPosition == 0) connectionsToOld[fromUnitig].insert(newUnitigPosition);
+		if (lastPosition == 0) connectionsToOld[fromUnitig].emplace_back(newUnitigPosition.first, newUnitigPosition.second, edgeCoverage);
 		if (lastUnitig.first != std::numeric_limits<size_t>::max())
 		{
 			newUnitigs.edgeCoverage(lastUnitig, newUnitigPosition) += edgeCoverage;
@@ -1252,7 +1252,7 @@ bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, std:
 	}
 	if (lastPosition != 0)
 	{
-		connectionsToOld[reverse(toUnitig)].insert(reverse(lastUnitig));
+		connectionsToOld[reverse(toUnitig)].emplace_back(lastUnitig.first, !lastUnitig.second, edgeCoverage);
 		size_t kmerStartPos = edgeSequence.size() - 1 - kmerSize + 1;
 		size_t overlap = kmerSize - kmerStartPos + lastPosition;
 		assert(overlap < kmerSize);
@@ -1315,7 +1315,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, std::vector<std
 	std::unordered_map<NodeType, std::pair<size_t, bool>> belongsToUnitig;
 	std::set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> removeEdges;
 	std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t>> addedKmerSequences;
-	std::unordered_map<std::pair<size_t, bool>, std::unordered_set<std::pair<size_t, bool>>> connectionsToOld;
+	std::unordered_map<std::pair<size_t, bool>, std::vector<std::tuple<size_t, bool, size_t>>> connectionsToOld;
 	size_t zeroKmer = reads.size();
 	for (size_t i = 0; i < unitigs.edges.size(); i++)
 	{
@@ -1372,14 +1372,16 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, std::vector<std
 		newUnitigs.unitigs.back().emplace_back(fromKmer);
 		newUnitigs.edges.emplace_back();
 		newUnitigs.unitigCoverage.emplace_back();
-		newUnitigs.unitigCoverage.back().emplace_back(ceil(minUnitigCoverage)); // should take it from the edge coverage, but use this for now
+		newUnitigs.unitigCoverage.back().emplace_back(0);
 		newUnitigs.edgeCov.emplace_back();
-		for (auto toUnitig : pair.second)
+		for (auto t : pair.second)
 		{
+			std::pair<size_t, bool> toUnitig { std::get<0>(t), std::get<1>(t) };
+			newUnitigs.unitigCoverage.back().back() += std::get<2>(t);
 			auto key = canon(std::make_pair(newIndex, true), toUnitig);
 			newUnitigs.edges[key.first].insert(key.second);
 			newUnitigs.edges[reverse(key.second)].insert(reverse(key.first));
-			newUnitigs.edgeCoverage(key.first, key.second) = ceil(minUnitigCoverage);
+			newUnitigs.edgeCoverage(key.first, key.second) = std::get<2>(t);
 		}
 	}
 	for (auto pair : removeEdges)
