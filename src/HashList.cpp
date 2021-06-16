@@ -37,7 +37,11 @@ void HashList::addSequenceOverlap(std::pair<size_t, bool> from, std::pair<size_t
 {
 	std::tie(from, to) = canon(from, to);
 	std::lock_guard<std::mutex> lock { *indexMutex };
-	if (sequenceOverlap[from].count(to) == 1) return;
+	if (sequenceOverlap[from].count(to) == 1)
+	{
+		assert(sequenceOverlap[from][to] == overlap);
+		return;
+	}
 	sequenceOverlap[from][to] = overlap;
 }
 
