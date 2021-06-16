@@ -83,6 +83,8 @@ size_t maxCode()
 
 std::pair<uint16_t, uint8_t> getCodeAndRunlength(const std::vector<uint16_t>& str, size_t start, size_t end, uint16_t motifLength)
 {
+	assert(end > start);
+	assert(end >= start + motifLength);
 	uint16_t overhang = (end - start) % motifLength;
 	uint16_t motif = 0;
 	for (size_t i = start; i < start+motifLength; i++)
