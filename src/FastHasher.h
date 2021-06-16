@@ -4,11 +4,8 @@
 #include <cstdint>
 #include <cstring>
 #include <algorithm>
-
-constexpr uint64_t combineHash(uint64_t first, uint64_t second)
-{
-	return ((first << 32) | (first >> 32)) ^ second;
-}
+#include <vector>
+#include <mutex>
 
 class FastHasher
 {
@@ -16,13 +13,13 @@ public:
 	FastHasher(size_t kmerSize, uint64_t fwHash, uint64_t bwHash);
 	FastHasher(size_t kmerSize);
 	__attribute__((always_inline))
-	inline void addChar(char c)
+	inline void addChar(uint16_t c)
 	{
 		fwHash = rotlone(fwHash) ^ fwAddHash(c);
 		bwHash = rotrone(bwHash) ^ bwAddHash(c);
 	}
 	__attribute__((always_inline))
-	inline void removeChar(char c)
+	inline void removeChar(uint16_t c)
 	{
 		fwHash ^= fwRemoveHash(c);
 		bwHash ^= bwRemoveHash(c);
@@ -65,35 +62,33 @@ private:
 	};
 	void precalcRots();
 	__attribute__((always_inline))
-	inline uint64_t fwAddHash(char c)
+	inline uint64_t fwAddHash(uint16_t c)
 	{
 		return fwAdd[(int)c];
 	}
 	__attribute__((always_inline))
-	inline uint64_t fwRemoveHash(char c)
+	inline uint64_t fwRemoveHash(uint16_t c)
 	{
 		return fwRemove[(int)c];
 	}
 	__attribute__((always_inline))
-	inline uint64_t bwAddHash(char c)
+	inline uint64_t bwAddHash(uint16_t c)
 	{
 		return bwAdd[(int)c];
 	}
 	__attribute__((always_inline))
-	inline uint64_t bwRemoveHash(char c)
+	inline uint64_t bwRemoveHash(uint16_t c)
 	{
 		return bwRemove[(int)c];
 	}
-	uint64_t fwAdd[29];
-	uint64_t fwRemove[29];
-	uint64_t bwAdd[29];
-	uint64_t bwRemove[29];
-	// https://bioinformatics.stackexchange.com/questions/19/are-there-any-rolling-hash-functions-that-can-hash-a-dna-sequence-and-its-revers
-	static constexpr uint64_t hashA = 0x3c8bfbb395c60474;
-	static constexpr uint64_t hashC = 0x3193c18562a02b4c;
-	static constexpr uint64_t hashG = 0x20323ed082572324;
-	static constexpr uint64_t hashT = 0x295549f54be24456;
-	uint64_t charHashes[29] { 0, 0x3c8bfbb395c60474, 0x3193c18562a02b4c, 0x20323ed082572324, 0x295549f54be24456, combineHash(hashA, hashC), combineHash(hashA, hashG), combineHash(hashA, hashT), combineHash(hashC, hashA), combineHash(hashC, hashG), combineHash(hashC, hashT), combineHash(hashG, hashA), combineHash(hashG, hashC), combineHash(hashG, hashT), combineHash(hashT, hashA), combineHash(hashT, hashC), combineHash(hashT, hashG), combineHash(hashA, hashC), combineHash(hashA, hashG), combineHash(hashA, hashT), combineHash(hashC, hashA), combineHash(hashC, hashG), combineHash(hashC, hashT), combineHash(hashG, hashA), combineHash(hashG, hashC), combineHash(hashG, hashT), combineHash(hashT, hashA), combineHash(hashT, hashC), combineHash(hashT, hashG) };
+
+	static std::vector<uint64_t> fwAdd;
+	static std::vector<uint64_t> fwRemove;
+	static std::vector<uint64_t> bwAdd;
+	static std::vector<uint64_t> bwRemove;
+	static std::vector<uint64_t> charHashes;
+	static size_t precalcedK;
+	static std::mutex precalcMutex;
 	uint64_t fwHash;
 	uint64_t bwHash;
 	size_t kmerSize;

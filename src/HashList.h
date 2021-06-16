@@ -23,8 +23,8 @@ public:
 	void addSequenceOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, const size_t overlap);
 	void addEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to);
 	size_t size() const;
-	std::pair<size_t, bool> getNodeOrNull(std::string_view sequence) const;
-	std::pair<std::pair<size_t, bool>, HashType> addNode(std::string_view sequence, std::string_view reverse, HashType previousHash, size_t overlap, uint64_t bucketHash);
+	std::pair<size_t, bool> getNodeOrNull(VectorView<uint16_t> sequence) const;
+	std::pair<std::pair<size_t, bool>, HashType> addNode(VectorView<uint16_t> sequence, VectorView<uint16_t> reverse, HashType previousHash, size_t overlap, uint64_t bucketHash);
 private:
 	std::shared_ptr<std::mutex> indexMutex;
 	size_t kmerSize;

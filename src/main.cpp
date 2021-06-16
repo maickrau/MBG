@@ -35,7 +35,8 @@ int main(int argc, char** argv)
 		std::cerr << "\tno\tNo error masking" << std::endl;
 		std::cerr << "\thpc\tMask homopolymer errors (default)" << std::endl;
 		std::cerr << "\tcollapse\tCollapse homopolymers" << std::endl;
-		std::cerr << "\tdinuc\tCollapse homopolymers and mask dinculeotide errors" << std::endl;
+		std::cerr << "\tdinuc\tCollapse homopolymers and mask dinucleotide errors" << std::endl;
+		std::cerr << "\tmsat\tCollapse homopolymers and mask microsatellite errors up to 6bp" << std::endl;
 		exit(0);
 	}
 	bool paramError = false;
@@ -93,6 +94,10 @@ int main(int argc, char** argv)
 		{
 			errorMasking = ErrorMasking::Collapse;
 		}
+		else if (params["error-masking"].as<std::string>() == "msat")
+		{
+			errorMasking = ErrorMasking::Microsatellite;
+		}
 		else
 		{
 			std::cerr << "unknown parameter for --error-masking: \"" << params["error-masking"].as<std::string>() << "\"" << std::endl;
@@ -145,7 +150,7 @@ int main(int argc, char** argv)
 	std::cerr << "a=" << minCoverage << ",";
 	std::cerr << "u=" << minUnitigCoverage << ",";
 	std::cerr << "t=" << numThreads << ",";
-	std::cerr << "errormasking=" << (errorMasking == ErrorMasking::No ? "no" : errorMasking == ErrorMasking::Hpc ? "hpc" : errorMasking == ErrorMasking::Dinuc ? "dinuc" : errorMasking == ErrorMasking::Collapse ? "collapse" :  "unknown") << ",";
+	std::cerr << "errormasking=" << (errorMasking == ErrorMasking::No ? "no" : errorMasking == ErrorMasking::Hpc ? "hpc" : errorMasking == ErrorMasking::Dinuc ? "dinuc" : errorMasking == ErrorMasking::Collapse ? "collapse" : errorMasking == ErrorMasking::Microsatellite ? "msat" : "unknown") << ",";
 	std::cerr << "endkmers=" << (includeEndKmers ? "yes" : "no") << ",";
 	std::cerr << "blunt=" << (blunt ? "yes" : "no") << std::endl;
 

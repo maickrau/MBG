@@ -10,6 +10,7 @@
 #include <concurrentqueue.h> //https://github.com/cameron314/concurrentqueue
 #include "fastqloader.h"
 #include "FastHasher.h"
+#include "ErrorMaskHelper.h"
 
 enum ErrorMasking
 {
@@ -17,10 +18,11 @@ enum ErrorMasking
 	Hpc,
 	Collapse,
 	Dinuc,
+	Microsatellite,
 };
 
 template <typename F, typename EdgeCheckFunction>
-uint64_t findSyncmerPositions(const std::string& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, EdgeCheckFunction endSmer, F callback)
+uint64_t findSyncmerPositions(const std::vector<uint16_t>& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, EdgeCheckFunction endSmer, F callback)
 {
 	if (sequence.size() < kmerSize) return 0;
 	assert(smerSize <= kmerSize);
@@ -74,8 +76,6 @@ uint64_t findSyncmerPositions(const std::string& sequence, size_t kmerSize, size
 	return minHash;
 }
 
-std::pair<std::string, std::vector<uint8_t>> dinucRunLengthEncode(const std::string& rleString, const std::vector<uint8_t>& runLengths);
-
 class ReadpartIterator
 {
 public:
@@ -89,7 +89,7 @@ public:
 	void iteratePartKmers(const FastQ& read, F callback) const
 	{
 		if (read.sequence.size() < kmerSize) return;
-		iterateParts(read, [this, callback](const std::string& seq, const std::vector<uint8_t>& lens) {
+		iterateParts(read, [this, callback](const std::vector<uint16_t>& seq, const std::vector<uint8_t>& lens) {
 			iterateKmers(seq, lens, callback);
 		});
 	}
@@ -108,6 +108,10 @@ public:
 		{
 			iterateDinuc(read.sequence, callback);
 		}
+		else if (errorMasking == ErrorMasking::Microsatellite)
+		{
+			iterateMicrosatellite(read.sequence, callback);
+		}
 		else
 		{
 			assert(errorMasking == ErrorMasking::No);
@@ -120,9 +124,21 @@ public:
 	std::vector<bool> endSmers;
 private:
 	template <typename F>
+	void iterateMicrosatellite(const std::string& seq, F callback) const
+	{
+		iterateRLE(seq, [callback](const std::vector<uint16_t>& seq, const std::vector<uint8_t>& lens)
+		{
+			auto pieces = multiRLECompress(seq, 6);
+			for (const auto& pair : pieces)
+			{
+				callback(pair.first, pair.second);
+			}
+		});
+	}
+	template <typename F>
 	void iterateCollapse(const std::string& seq, F callback) const
 	{
-		iterateRLE(seq, [callback](const std::string& seq, std::vector<uint8_t>& lens)
+		iterateRLE(seq, [callback](const std::vector<uint16_t>& seq, std::vector<uint8_t>& lens)
 		{
 			for (size_t i = 0; i < lens.size(); i++) lens[i] = 1;
 			callback(seq, lens);
@@ -131,18 +147,19 @@ private:
 	template <typename F>
 	void iterateDinuc(const std::string& seq, F callback) const
 	{
-		iterateRLE(seq, [callback](const std::string& seq, const std::vector<uint8_t>& lens)
+		iterateRLE(seq, [callback](const std::vector<uint16_t>& seq, const std::vector<uint8_t>& lens)
 		{
-			std::string dinucSeq;
-			std::vector<uint8_t> dinucLens;
-			std::tie(dinucSeq, dinucLens) = dinucRunLengthEncode(seq, lens);
-			callback(dinucSeq, dinucLens);
+			auto pieces = multiRLECompress(seq, 2);
+			for (const auto& pair : pieces)
+			{
+				callback(pair.first, pair.second);
+			}
 		});
 	}
 	template <typename F>
 	void iterateRLE(const std::string& seq, F callback) const
 	{
-		std::string currentSeq;
+		std::vector<uint16_t> currentSeq;
 		std::vector<uint8_t> currentLens;
 		currentSeq.reserve(seq.size());
 		currentLens.reserve(seq.size());
@@ -155,22 +172,22 @@ private:
 		{
 			case 'a':
 			case 'A':
-				currentSeq.push_back(1);
+				currentSeq.push_back(0);
 				currentLens.push_back(1);
 				break;
 			case 'c':
 			case 'C':
-				currentSeq.push_back(2);
+				currentSeq.push_back(1);
 				currentLens.push_back(1);
 				break;
 			case 'g':
 			case 'G':
-				currentSeq.push_back(3);
+				currentSeq.push_back(2);
 				currentLens.push_back(1);
 				break;
 			case 't':
 			case 'T':
-				currentSeq.push_back(4);
+				currentSeq.push_back(3);
 				currentLens.push_back(1);
 				break;
 			default:
@@ -183,6 +200,18 @@ private:
 			{
 				case 'a':
 				case 'A':
+					if (currentSeq.back() != 0)
+					{
+						currentSeq.push_back(0);
+						currentLens.push_back(1);
+					}
+					else
+					{
+						currentLens.back() += 1;
+					}
+					break;
+				case 'c':
+				case 'C':
 					if (currentSeq.back() != 1)
 					{
 						currentSeq.push_back(1);
@@ -193,8 +222,8 @@ private:
 						currentLens.back() += 1;
 					}
 					break;
-				case 'c':
-				case 'C':
+				case 'g':
+				case 'G':
 					if (currentSeq.back() != 2)
 					{
 						currentSeq.push_back(2);
@@ -205,23 +234,11 @@ private:
 						currentLens.back() += 1;
 					}
 					break;
-				case 'g':
-				case 'G':
+				case 't':
+				case 'T':
 					if (currentSeq.back() != 3)
 					{
 						currentSeq.push_back(3);
-						currentLens.push_back(1);
-					}
-					else
-					{
-						currentLens.back() += 1;
-					}
-					break;
-				case 't':
-				case 'T':
-					if (currentSeq.back() != 4)
-					{
-						currentSeq.push_back(4);
 						currentLens.push_back(1);
 					}
 					else
@@ -239,22 +256,22 @@ private:
 					{
 						case 'a':
 						case 'A':
-							currentSeq.push_back(1);
+							currentSeq.push_back(0);
 							currentLens.push_back(1);
 							break;
 						case 'c':
 						case 'C':
-							currentSeq.push_back(2);
+							currentSeq.push_back(1);
 							currentLens.push_back(1);
 							break;
 						case 'g':
 						case 'G':
-							currentSeq.push_back(3);
+							currentSeq.push_back(2);
 							currentLens.push_back(1);
 							break;
 						case 't':
 						case 'T':
-							currentSeq.push_back(4);
+							currentSeq.push_back(3);
 							currentLens.push_back(1);
 							break;
 						default:
@@ -270,7 +287,7 @@ private:
 	template <typename F>
 	void iterateNoRLE(const std::string& seq, F callback) const
 	{
-		std::string currentSeq;
+		std::vector<uint16_t> currentSeq;
 		std::vector<uint8_t> currentLens;
 		currentSeq.reserve(seq.size());
 		currentLens.reserve(seq.size());
@@ -283,22 +300,22 @@ private:
 			{
 				case 'a':
 				case 'A':
-					currentSeq.push_back(1);
+					currentSeq.push_back(0);
 					currentLens.push_back(1);
 					break;
 				case 'c':
 				case 'C':
-					currentSeq.push_back(2);
+					currentSeq.push_back(1);
 					currentLens.push_back(1);
 					break;
 				case 'g':
 				case 'G':
-					currentSeq.push_back(3);
+					currentSeq.push_back(2);
 					currentLens.push_back(1);
 					break;
 				case 't':
 				case 'T':
-					currentSeq.push_back(4);
+					currentSeq.push_back(3);
 					currentLens.push_back(1);
 					break;
 				default:
@@ -313,7 +330,7 @@ private:
 		}
 	}
 	template <typename F>
-	void iterateKmers(const std::string& seq, const std::vector<uint8_t>& lens, F callback) const
+	void iterateKmers(const std::vector<uint16_t>& seq, const std::vector<uint8_t>& lens, F callback) const
 	{
 		if (seq.size() < kmerSize) return;
 		// keep the same smerOrder to reduce mallocs which destroy multithreading performance

@@ -50,7 +50,7 @@ size_t HashList::size() const
 	return coverage.size();
 }
 
-std::pair<size_t, bool> HashList::getNodeOrNull(std::string_view sequence) const
+std::pair<size_t, bool> HashList::getNodeOrNull(VectorView<uint16_t> sequence) const
 {
 	HashType fwHash = hash(sequence);
 	auto found = hashToNode.find(fwHash);
@@ -67,7 +67,7 @@ void HashList::addEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, b
 	edgeCoverage[from][to] += 1;
 }
 
-std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(std::string_view sequence, std::string_view reverse, HashType previousHash, size_t overlap, uint64_t bucketHash)
+std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(VectorView<uint16_t> sequence, VectorView<uint16_t> reverse, HashType previousHash, size_t overlap, uint64_t bucketHash)
 {
 	HashType fwHash = hash(sequence);
 	{
