@@ -262,7 +262,8 @@ void findCollectedKmers(const std::vector<uint16_t>& seq, const size_t kmerSize,
 	}
 	if (approxHashes.count(hasher.hash()) == 1)
 	{
-		HashType exactHash = hash(std::vector<uint16_t> { seq.begin(), seq.begin() + kmerSize });
+		VectorView view { seq, 0, kmerSize };
+		HashType exactHash = hash(view);
 		if (exactHashes.count(exactHash) == 1)
 		{
 			callback(0, exactHash);
@@ -273,7 +274,8 @@ void findCollectedKmers(const std::vector<uint16_t>& seq, const size_t kmerSize,
 		hasher.addChar(seq[i]);
 		hasher.removeChar(seq[i-kmerSize]);
 		if (approxHashes.count(hasher.hash()) == 0) continue;
-		HashType exactHash = hash(std::vector<uint16_t> { seq.begin() + i - kmerSize + 1, seq.begin() + i + i });
+		VectorView view { seq, i - kmerSize + 1, i + 1 };
+		HashType exactHash = hash(view);
 		if (exactHashes.count(exactHash) == 0) continue;
 		callback(i - kmerSize + 1, exactHash);
 	}
@@ -354,6 +356,7 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 	iterateReadsMultithreaded(inputReads, numThreads, [&outPaths, kmerSize, &approxHashes, &exactHashes, &kmerUnitigIndex, &unitigLength, &kmerUnitigStart, &kmerUnitigEnd, &hashlist, &unitigs, &pathWriteMutex, &partIterator](size_t thread, FastQ& read)
 	{
 		partIterator.iterateParts(read, [&read, &outPaths, kmerSize, &approxHashes, &exactHashes, &kmerUnitigIndex, &unitigLength, &kmerUnitigStart, &kmerUnitigEnd, &hashlist, &unitigs, &pathWriteMutex](const std::vector<uint16_t>& seq, const std::vector<uint8_t>& lens) {
+			if (seq.size() < kmerSize) return;
 			auto readExpandedPositions = getRLEExpandedPositions(seq, lens);
 			size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 			std::pair<size_t, bool> lastKmer { std::numeric_limits<size_t>::max(), true };
