@@ -15,6 +15,7 @@ enum ErrorMasking
 {
 	No,
 	Hpc,
+	Collapse,
 	Dinuc,
 };
 
@@ -99,6 +100,10 @@ public:
 		{
 			iterateRLE(read.sequence, callback);
 		}
+		else if (errorMasking == ErrorMasking::Collapse)
+		{
+			iterateCollapse(read.sequence, callback);
+		}
 		else if (errorMasking == ErrorMasking::Dinuc)
 		{
 			iterateDinuc(read.sequence, callback);
@@ -114,6 +119,15 @@ public:
 	const ErrorMasking errorMasking;
 	std::vector<bool> endSmers;
 private:
+	template <typename F>
+	void iterateCollapse(const std::string& seq, F callback) const
+	{
+		iterateRLE(seq, [callback](const std::string& seq, std::vector<uint8_t>& lens)
+		{
+			for (size_t i = 0; i < lens.size(); i++) lens[i] = 1;
+			callback(seq, lens);
+		});
+	}
 	template <typename F>
 	void iterateDinuc(const std::string& seq, F callback) const
 	{
