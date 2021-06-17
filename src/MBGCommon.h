@@ -8,6 +8,10 @@
 
 using HashType = unsigned __int128;
 using NodeType = size_t;
+using CharType = uint16_t;
+using LengthType = uint8_t;
+using SequenceCharType = std::vector<CharType>;
+using SequenceLengthType = std::vector<LengthType>;
 
 HashType hash(std::string_view sequence);
 HashType hash(VectorView<uint16_t> sequence);

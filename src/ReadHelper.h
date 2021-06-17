@@ -22,7 +22,7 @@ enum ErrorMasking
 };
 
 template <typename F, typename EdgeCheckFunction>
-uint64_t findSyncmerPositions(const std::vector<uint16_t>& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, EdgeCheckFunction endSmer, F callback)
+uint64_t findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, EdgeCheckFunction endSmer, F callback)
 {
 	if (sequence.size() < kmerSize) return 0;
 	assert(smerSize <= kmerSize);
@@ -89,7 +89,7 @@ public:
 	void iteratePartKmers(const FastQ& read, F callback) const
 	{
 		if (read.sequence.size() < kmerSize) return;
-		iterateParts(read, [this, callback](const std::vector<uint16_t>& seq, const std::vector<uint8_t>& lens) {
+		iterateParts(read, [this, callback](const SequenceCharType& seq, const SequenceLengthType& lens) {
 			iterateKmers(seq, lens, callback);
 		});
 	}
@@ -126,7 +126,7 @@ private:
 	template <typename F>
 	void iterateMicrosatellite(const std::string& seq, F callback) const
 	{
-		iterateRLE(seq, [callback](const std::vector<uint16_t>& seq, const std::vector<uint8_t>& lens)
+		iterateRLE(seq, [callback](const SequenceCharType& seq, const SequenceLengthType& lens)
 		{
 			auto pieces = multiRLECompress(seq, 6);
 			for (const auto& pair : pieces)
@@ -138,7 +138,7 @@ private:
 	template <typename F>
 	void iterateCollapse(const std::string& seq, F callback) const
 	{
-		iterateRLE(seq, [callback](const std::vector<uint16_t>& seq, std::vector<uint8_t>& lens)
+		iterateRLE(seq, [callback](const SequenceCharType& seq, SequenceLengthType& lens)
 		{
 			for (size_t i = 0; i < lens.size(); i++) lens[i] = 1;
 			callback(seq, lens);
@@ -147,7 +147,7 @@ private:
 	template <typename F>
 	void iterateDinuc(const std::string& seq, F callback) const
 	{
-		iterateRLE(seq, [callback](const std::vector<uint16_t>& seq, const std::vector<uint8_t>& lens)
+		iterateRLE(seq, [callback](const SequenceCharType& seq, const SequenceLengthType& lens)
 		{
 			auto pieces = multiRLECompress(seq, 2);
 			for (const auto& pair : pieces)
@@ -159,8 +159,8 @@ private:
 	template <typename F>
 	void iterateRLE(const std::string& seq, F callback) const
 	{
-		std::vector<uint16_t> currentSeq;
-		std::vector<uint8_t> currentLens;
+		SequenceCharType currentSeq;
+		SequenceLengthType currentLens;
 		currentSeq.reserve(seq.size());
 		currentLens.reserve(seq.size());
 		size_t i = 0;
@@ -287,8 +287,8 @@ private:
 	template <typename F>
 	void iterateNoRLE(const std::string& seq, F callback) const
 	{
-		std::vector<uint16_t> currentSeq;
-		std::vector<uint8_t> currentLens;
+		SequenceCharType currentSeq;
+		SequenceLengthType currentLens;
 		currentSeq.reserve(seq.size());
 		currentLens.reserve(seq.size());
 		size_t i = 0;
@@ -330,7 +330,7 @@ private:
 		}
 	}
 	template <typename F>
-	void iterateKmers(const std::vector<uint16_t>& seq, const std::vector<uint8_t>& lens, F callback) const
+	void iterateKmers(const SequenceCharType& seq, const SequenceLengthType& lens, F callback) const
 	{
 		if (seq.size() < kmerSize) return;
 		// keep the same smerOrder to reduce mallocs which destroy multithreading performance

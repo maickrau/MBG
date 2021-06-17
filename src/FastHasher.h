@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <vector>
 #include <mutex>
+#include "MBGCommon.h"
 
 class FastHasher
 {
@@ -13,13 +14,13 @@ public:
 	FastHasher(size_t kmerSize, uint64_t fwHash, uint64_t bwHash);
 	FastHasher(size_t kmerSize);
 	__attribute__((always_inline))
-	inline void addChar(uint16_t c)
+	inline void addChar(CharType c)
 	{
 		fwHash = rotlone(fwHash) ^ fwAddHash(c);
 		bwHash = rotrone(bwHash) ^ bwAddHash(c);
 	}
 	__attribute__((always_inline))
-	inline void removeChar(uint16_t c)
+	inline void removeChar(CharType c)
 	{
 		fwHash ^= fwRemoveHash(c);
 		bwHash ^= bwRemoveHash(c);
@@ -62,22 +63,22 @@ private:
 	};
 	void precalcRots();
 	__attribute__((always_inline))
-	inline uint64_t fwAddHash(uint16_t c)
+	inline uint64_t fwAddHash(CharType c)
 	{
 		return fwAdd[(int)c];
 	}
 	__attribute__((always_inline))
-	inline uint64_t fwRemoveHash(uint16_t c)
+	inline uint64_t fwRemoveHash(CharType c)
 	{
 		return fwRemove[(int)c];
 	}
 	__attribute__((always_inline))
-	inline uint64_t bwAddHash(uint16_t c)
+	inline uint64_t bwAddHash(CharType c)
 	{
 		return bwAdd[(int)c];
 	}
 	__attribute__((always_inline))
-	inline uint64_t bwRemoveHash(uint16_t c)
+	inline uint64_t bwRemoveHash(CharType c)
 	{
 		return bwRemove[(int)c];
 	}

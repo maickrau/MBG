@@ -47,7 +47,7 @@ void iterateEdges(const HashList& hashlist, const UnitigGraph& unitigs, F callba
 	}
 }
 
-BluntGraph::BluntGraph(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::pair<std::vector<uint16_t>, std::vector<uint8_t>>>& unitigSequences)
+BluntGraph::BluntGraph(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::pair<SequenceCharType, SequenceLengthType>>& unitigSequences)
 {
 	VectorWithDirection<size_t> maxOverlap = getMaxOverlaps(hashlist, unitigs);
 	initializeNodes(unitigSequences, maxOverlap, unitigs);
@@ -55,7 +55,7 @@ BluntGraph::BluntGraph(const HashList& hashlist, const UnitigGraph& unitigs, con
 	assert(nodes.size() == nodeAvgCoverage.size());
 }
 
-void BluntGraph::initializeEdgesAndEdgenodes(const HashList& hashlist, const UnitigGraph& unitigs, const VectorWithDirection<size_t>& maxOverlap, const std::vector<std::pair<std::vector<uint16_t>, std::vector<uint8_t>>>& unbluntSequences)
+void BluntGraph::initializeEdgesAndEdgenodes(const HashList& hashlist, const UnitigGraph& unitigs, const VectorWithDirection<size_t>& maxOverlap, const std::vector<std::pair<SequenceCharType, SequenceLengthType>>& unbluntSequences)
 {
 	VectorWithDirection<std::unordered_set<std::pair<size_t, bool>>> processedCanons;
 	processedCanons.resize(unitigs.unitigs.size());
@@ -72,8 +72,8 @@ void BluntGraph::initializeEdgesAndEdgenodes(const HashList& hashlist, const Uni
 		}
 		assert(fromClipped + toClipped > overlap);
 		size_t missingSeqSize = fromClipped + toClipped - overlap;
-		std::vector<uint16_t> missingSeq = unbluntSequences[from.first].first;
-		std::vector<uint8_t> missingLength = unbluntSequences[from.first].second;
+		SequenceCharType missingSeq = unbluntSequences[from.first].first;
+		SequenceLengthType missingLength = unbluntSequences[from.first].second;
 		if (!from.second)
 		{
 			missingSeq = revCompRLE(missingSeq);
@@ -83,8 +83,8 @@ void BluntGraph::initializeEdgesAndEdgenodes(const HashList& hashlist, const Uni
 		assert(startIndex < missingSeq.size());
 		assert(startIndex + missingSeqSize <= missingSeq.size());
 		assert(missingSeq.size() == missingLength.size());
-		missingSeq = std::vector<uint16_t> { missingSeq.begin() + startIndex, missingSeq.begin() + startIndex + missingSeqSize };
-		missingLength = std::vector<uint8_t> { missingLength.begin() + startIndex, missingLength.begin() + startIndex + missingSeqSize };
+		missingSeq = SequenceCharType { missingSeq.begin() + startIndex, missingSeq.begin() + startIndex + missingSeqSize };
+		missingLength = SequenceLengthType { missingLength.begin() + startIndex, missingLength.begin() + startIndex + missingSeqSize };
 		assert(missingSeq.size() == missingLength.size());
 		assert(missingSeq.size() > 0);
 		size_t newNodeIndex = nodes.size();
@@ -96,7 +96,7 @@ void BluntGraph::initializeEdgesAndEdgenodes(const HashList& hashlist, const Uni
 	});
 }
 
-void BluntGraph::initializeNodes(const std::vector<std::pair<std::vector<uint16_t>, std::vector<uint8_t>>>& unbluntSequences, const VectorWithDirection<size_t>& maxOverlap, const UnitigGraph& unitigs)
+void BluntGraph::initializeNodes(const std::vector<std::pair<SequenceCharType, SequenceLengthType>>& unbluntSequences, const VectorWithDirection<size_t>& maxOverlap, const UnitigGraph& unitigs)
 {
 	nodes.resize(unitigs.unitigs.size());
 	nodeAvgCoverage.resize(unitigs.unitigs.size());
@@ -104,11 +104,11 @@ void BluntGraph::initializeNodes(const std::vector<std::pair<std::vector<uint16_
 	{
 		size_t leftClip = (maxOverlap[std::make_pair(i, false)] + 1) / 2;
 		size_t rightClip = (maxOverlap[std::make_pair(i, true)] + 1) / 2;
-		std::vector<uint16_t> sequence = unbluntSequences[i].first;
-		std::vector<uint8_t> lengths = unbluntSequences[i].second;
+		SequenceCharType sequence = unbluntSequences[i].first;
+		SequenceLengthType lengths = unbluntSequences[i].second;
 		assert(leftClip + rightClip < sequence.size());
-		sequence = std::vector<uint16_t> { sequence.begin() + leftClip, sequence.end() - rightClip };
-		lengths = std::vector<uint8_t> { lengths.begin() + leftClip, lengths.end() - rightClip };
+		sequence = SequenceCharType { sequence.begin() + leftClip, sequence.end() - rightClip };
+		lengths = SequenceLengthType { lengths.begin() + leftClip, lengths.end() - rightClip };
 		nodes[i] = getExpandedSequence(sequence, lengths);
 		nodeAvgCoverage[i] = unitigs.averageCoverage(i);
 	}

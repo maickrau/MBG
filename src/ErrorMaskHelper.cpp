@@ -17,7 +17,7 @@ uint16_t getNumBefore(uint16_t motifLength)
 	return result;
 }
 
-uint16_t getReverseComplement(uint16_t code)
+CharType getReverseComplement(CharType code)
 {
 	uint16_t motifLength = 1;
 	while (getNumBefore(motifLength+1) <= code)
@@ -45,13 +45,13 @@ uint16_t getReverseComplement(uint16_t code)
 		motif >>= 2;
 	}
 	assert(newMotif < pow(4, motifLength));
-	uint16_t newCode = getNumBefore(motifLength) + newMotif * motifLength + overhang;
+	CharType newCode = getNumBefore(motifLength) + newMotif * motifLength + overhang;
 	return newCode;
 }
 
-std::vector<uint16_t> getReverseComplements()
+std::vector<CharType> getReverseComplements()
 {
-	std::vector<uint16_t> result;
+	SequenceCharType result;
 	for (uint16_t motifLength = 1; motifLength <= MaxMotifLength; motifLength++)
 	{
 		for (uint16_t i = 0; i < getNumBefore(motifLength+1) - getNumBefore(motifLength); i++)
@@ -60,7 +60,7 @@ std::vector<uint16_t> getReverseComplements()
 		}
 	}
 	assert(result.size() == getNumBefore(MaxMotifLength+1));
-	assert(result.size() <= std::numeric_limits<uint16_t>::max());
+	assert(result.size() < std::numeric_limits<CharType>::max());
 	for (size_t i = 0; i < result.size(); i++)
 	{
 		assert(result[result[i]] == i);
@@ -68,9 +68,9 @@ std::vector<uint16_t> getReverseComplements()
 	return result;
 }
 
-std::vector<uint16_t> multiRLEReverseComplements = getReverseComplements();
+std::vector<CharType> multiRLEReverseComplements = getReverseComplements();
 
-uint16_t complement(uint16_t code)
+CharType complement(CharType code)
 {
 	assert(code < multiRLEReverseComplements.size());
 	return multiRLEReverseComplements[code];
@@ -81,7 +81,7 @@ size_t maxCode()
 	return multiRLEReverseComplements.size();
 }
 
-std::pair<uint16_t, uint8_t> getCodeAndRunlength(const std::vector<uint16_t>& str, size_t start, size_t end, uint16_t motifLength)
+std::pair<CharType, LengthType> getCodeAndRunlength(const SequenceCharType& str, size_t start, size_t end, uint16_t motifLength)
 {
 	assert(end > start);
 	assert(end >= start + motifLength);
@@ -95,15 +95,15 @@ std::pair<uint16_t, uint8_t> getCodeAndRunlength(const std::vector<uint16_t>& st
 		motif <<= 2;
 		motif |= mask;
 	}
-	uint16_t code = getNumBefore(motifLength) + motif * motifLength + overhang;
-	assert((end - start) / motifLength < std::numeric_limits<uint8_t>::max()-1);
-	uint8_t runLength = ((end - start) - overhang) / motifLength;
+	CharType code = getNumBefore(motifLength) + motif * motifLength + overhang;
+	assert((end - start) / motifLength < std::numeric_limits<LengthType>::max()-1);
+	LengthType runLength = ((end - start) - overhang) / motifLength;
 	assert(runLength > 0);
 	assert((((end - start) - overhang) % motifLength) == 0);
 	return std::make_pair(code, runLength);
 }
 
-std::string getSequence(uint16_t code, size_t runLength)
+std::string getSequence(CharType code, size_t runLength)
 {
 	uint16_t motifLength = 1;
 	while (getNumBefore(motifLength+1) <= code)
@@ -143,7 +143,7 @@ std::string getSequence(uint16_t code, size_t runLength)
 	return result;
 }
 
-std::string getExpandedSequence(const std::vector<uint16_t>& codes, const std::vector<uint8_t>& lens)
+std::string getExpandedSequence(const SequenceCharType& codes, const SequenceLengthType& lens)
 {
 	assert(codes.size() == lens.size());
 	std::string result;
@@ -154,7 +154,7 @@ std::string getExpandedSequence(const std::vector<uint16_t>& codes, const std::v
 	return result;
 }
 
-std::pair<std::vector<uint16_t>, std::vector<uint8_t>> multiRLECompressOne(const std::vector<uint16_t>& str, const size_t maxMaskLength)
+std::pair<SequenceCharType, SequenceLengthType> multiRLECompressOne(const SequenceCharType& str, const size_t maxMaskLength)
 {
 	assert(maxMaskLength <= MaxMotifLength);
 	std::vector<std::tuple<size_t, size_t, uint8_t>> runs;
@@ -180,7 +180,7 @@ std::pair<std::vector<uint16_t>, std::vector<uint8_t>> multiRLECompressOne(const
 			}
 			if (!hasRepeat) continue;
 			size_t runLength = 1;
-			while (i+motifLength*runLength+motifLength <= str.size() && std::vector<uint16_t> { str.begin() + i, str.begin() + i + motifLength } == std::vector<uint16_t> { str.begin() + i + motifLength * runLength, str.begin() + i + motifLength * runLength + motifLength })
+			while (i+motifLength*runLength+motifLength <= str.size() && SequenceCharType { str.begin() + i, str.begin() + i + motifLength } == SequenceCharType { str.begin() + i + motifLength * runLength, str.begin() + i + motifLength * runLength + motifLength })
 			{
 				runLength += 1;
 			}
@@ -252,13 +252,13 @@ std::pair<std::vector<uint16_t>, std::vector<uint8_t>> multiRLECompressOne(const
 	}
 	assert(std::get<0>(nonOverlappingRuns[0]) == 0);
 	assert(std::get<1>(nonOverlappingRuns.back()) == str.size());
-	std::pair<std::vector<uint16_t>, std::vector<uint8_t>> result;
+	std::pair<SequenceCharType, SequenceLengthType> result;
 	for (size_t i = 0; i < nonOverlappingRuns.size(); i++)
 	{
 		assert(i == 0 || std::get<1>(nonOverlappingRuns[i-1]) == std::get<0>(nonOverlappingRuns[i]));
 		assert(std::get<1>(nonOverlappingRuns[i]) > std::get<0>(nonOverlappingRuns[i]));
-		uint16_t code;
-		uint8_t runLength;
+		CharType code;
+		LengthType runLength;
 		uint8_t motifLength = std::get<2>(nonOverlappingRuns[i]);
 		if (motifLength > std::get<1>(nonOverlappingRuns[i]) - std::get<0>(nonOverlappingRuns[i])) motifLength = std::get<1>(nonOverlappingRuns[i]) - std::get<0>(nonOverlappingRuns[i]);
 		std::tie(code, runLength) = getCodeAndRunlength(str, std::get<0>(nonOverlappingRuns[i]), std::get<1>(nonOverlappingRuns[i]), motifLength);
@@ -268,10 +268,10 @@ std::pair<std::vector<uint16_t>, std::vector<uint8_t>> multiRLECompressOne(const
 	return result;
 }
 
-std::vector<std::pair<std::vector<uint16_t>, std::vector<uint8_t>>> multiRLECompress(const std::vector<uint16_t>& str, const size_t maxMaskLength)
+std::vector<std::pair<SequenceCharType, SequenceLengthType>> multiRLECompress(const SequenceCharType& str, const size_t maxMaskLength)
 {
 	assert(maxMaskLength <= MaxMotifLength);
-	std::vector<std::pair<std::vector<uint16_t>, std::vector<uint8_t>>> result;
+	std::vector<std::pair<SequenceCharType, SequenceLengthType>> result;
 	size_t lastBreak = 0;
 	for (size_t i = 0; i < str.size(); i++)
 	{
@@ -283,18 +283,18 @@ std::vector<std::pair<std::vector<uint16_t>, std::vector<uint8_t>>> multiRLEComp
 			case 3:
 				break;
 			default:
-				if (i > lastBreak+1) result.emplace_back(multiRLECompressOne(std::vector<uint16_t> { str.begin() + lastBreak, str.begin() + i }, maxMaskLength));
+				if (i > lastBreak+1) result.emplace_back(multiRLECompressOne(SequenceCharType { str.begin() + lastBreak, str.begin() + i }, maxMaskLength));
 				lastBreak = i;
 				break;
 		}
 	}
-	if (lastBreak != str.size()-1) result.emplace_back(multiRLECompressOne(std::vector<uint16_t> { str.begin() + lastBreak, str.end() }, maxMaskLength));
+	if (lastBreak != str.size()-1) result.emplace_back(multiRLECompressOne(SequenceCharType { str.begin() + lastBreak, str.end() }, maxMaskLength));
 	return result;
 }
 
-std::vector<uint16_t> revCompRLE(const std::vector<uint16_t>& codes)
+SequenceCharType revCompRLE(const SequenceCharType& codes)
 {
-	std::vector<uint16_t> result;
+	SequenceCharType result;
 	result.resize(codes.size(), 0);
 	for (size_t i = 0; i < result.size(); i++)
 	{
@@ -303,7 +303,7 @@ std::vector<uint16_t> revCompRLE(const std::vector<uint16_t>& codes)
 	return result;
 }
 
-size_t getExpandedLength(uint16_t code, uint8_t length)
+size_t getExpandedLength(CharType code, LengthType length)
 {
 	uint16_t motifLength = 1;
 	while (getNumBefore(motifLength+1) <= code)
@@ -316,19 +316,19 @@ size_t getExpandedLength(uint16_t code, uint8_t length)
 	return length * motifLength + overhang;
 }
 
-size_t getOverlapFromRLE(const std::vector<std::pair<std::vector<uint16_t>, std::vector<uint8_t>>>& unitigSequences, std::pair<size_t, bool> fromUnitig, size_t rleOverlap)
+size_t getOverlapFromRLE(const std::vector<std::pair<SequenceCharType, SequenceLengthType>>& unitigSequences, std::pair<size_t, bool> fromUnitig, size_t rleOverlap)
 {
 	if (fromUnitig.second)
 	{
-		std::vector<uint16_t> str { unitigSequences[fromUnitig.first].first.end() - rleOverlap, unitigSequences[fromUnitig.first].first.end() };
-		std::vector<uint8_t> lens { unitigSequences[fromUnitig.first].second.end() - rleOverlap, unitigSequences[fromUnitig.first].second.end() };
+		SequenceCharType str { unitigSequences[fromUnitig.first].first.end() - rleOverlap, unitigSequences[fromUnitig.first].first.end() };
+		SequenceLengthType lens { unitigSequences[fromUnitig.first].second.end() - rleOverlap, unitigSequences[fromUnitig.first].second.end() };
 		return getExpandedSequence(str, lens).size();
 	}
 	else
 	{
-		std::vector<uint16_t> str { unitigSequences[fromUnitig.first].first.begin(), unitigSequences[fromUnitig.first].first.begin() + rleOverlap };
+		SequenceCharType str { unitigSequences[fromUnitig.first].first.begin(), unitigSequences[fromUnitig.first].first.begin() + rleOverlap };
 		str = revCompRLE(str);
-		std::vector<uint8_t> lens { unitigSequences[fromUnitig.first].second.rend() - rleOverlap, unitigSequences[fromUnitig.first].second.rend() };
+		SequenceLengthType lens { unitigSequences[fromUnitig.first].second.rend() - rleOverlap, unitigSequences[fromUnitig.first].second.rend() };
 		return getExpandedSequence(str, lens).size();
 	}
 	// assert(fromUnitig.first < unitigSequences.size());
@@ -359,7 +359,7 @@ size_t getOverlapFromRLE(const std::vector<std::pair<std::vector<uint16_t>, std:
 	// return result;
 }
 
-std::vector<size_t> getRLEExpandedPositions(const std::vector<uint16_t>& seq, const std::vector<uint8_t>& lens)
+std::vector<size_t> getRLEExpandedPositions(const SequenceCharType& seq, const SequenceLengthType& lens)
 {
 	std::vector<size_t> result;
 	result.resize(seq.size()+1);

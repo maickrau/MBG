@@ -44,7 +44,7 @@ uint64_t getHash(uint64_t key) {
 
 void FastHasher::precalcRots()
 {
-	assert((size_t)maxCode() < (size_t)std::numeric_limits<uint16_t>::max());
+	assert((size_t)maxCode() < (size_t)std::numeric_limits<CharType>::max());
 	charHashes.resize(maxCode());
 	fwAdd.resize(maxCode());
 	fwRemove.resize(maxCode());

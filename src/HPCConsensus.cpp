@@ -13,7 +13,7 @@
 // and the chance of two random hifis falling in the same 1Mbp bucket is ~.03% so hopefully not too much waiting
 constexpr size_t MutexLength = 1000000;
 
-void addCounts(std::vector<std::pair<std::vector<uint16_t>, std::vector<uint8_t>>>& result, std::vector<std::vector<uint16_t>>& runLengthSums, std::vector<std::vector<bool>>& locked, std::vector<std::vector<std::mutex*>>& seqMutexes, const std::vector<uint16_t>& seq, const std::vector<uint8_t>& lens, const size_t seqStart, const size_t seqEnd, const size_t unitig, const size_t unitigStart, const size_t unitigEnd, const bool fw)
+void addCounts(std::vector<std::pair<SequenceCharType, SequenceLengthType>>& result, std::vector<std::vector<uint16_t>>& runLengthSums, std::vector<std::vector<bool>>& locked, std::vector<std::vector<std::mutex*>>& seqMutexes, const SequenceCharType& seq, const SequenceLengthType& lens, const size_t seqStart, const size_t seqEnd, const size_t unitig, const size_t unitigStart, const size_t unitigEnd, const bool fw)
 {
 	assert(unitig < locked.size());
 	assert(unitigEnd - unitigStart == seqEnd - seqStart);
@@ -71,9 +71,9 @@ void addCounts(std::vector<std::pair<std::vector<uint16_t>, std::vector<uint8_t>
 	}
 }
 
-std::vector<std::pair<std::vector<uint16_t>, std::vector<uint8_t>>> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& filenames, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
+std::vector<std::pair<SequenceCharType, SequenceLengthType>> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& filenames, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
-	std::vector<std::pair<std::vector<uint16_t>, std::vector<uint8_t>>> result;
+	std::vector<std::pair<SequenceCharType, SequenceLengthType>> result;
 	std::vector<std::vector<uint16_t>> runLengthSums;
 	std::vector<std::vector<bool>> locked;
 	result.resize(unitigs.unitigs.size());
@@ -110,7 +110,7 @@ std::vector<std::pair<std::vector<uint16_t>, std::vector<uint8_t>>> getHPCUnitig
 	}
 	iterateReadsMultithreaded(filenames, numThreads, [&result, &locked, &seqMutexes, &runLengthSums, &partIterator, &hashlist, &kmerPosition, kmerSize](size_t thread, FastQ& read)
 	{
-		partIterator.iteratePartKmers(read, [&result, &locked, &seqMutexes, &runLengthSums, &hashlist, &kmerPosition, kmerSize](const std::vector<uint16_t>& seq, const std::vector<uint8_t>& lens, uint64_t minHash, const std::vector<size_t>& positions)
+		partIterator.iteratePartKmers(read, [&result, &locked, &seqMutexes, &runLengthSums, &hashlist, &kmerPosition, kmerSize](const SequenceCharType& seq, const SequenceLengthType& lens, uint64_t minHash, const std::vector<size_t>& positions)
 		{
 			size_t currentSeqStart = 0;
 			size_t currentSeqEnd = 0;
@@ -122,7 +122,7 @@ std::vector<std::pair<std::vector<uint16_t>, std::vector<uint8_t>>> getHPCUnitig
 			std::vector<std::tuple<size_t, size_t, size_t>> matchBlocks;
 			for (auto pos : positions)
 			{
-				VectorView<uint16_t> minimizerSequence { seq, pos, pos + kmerSize };
+				VectorView<CharType> minimizerSequence { seq, pos, pos + kmerSize };
 				std::pair<size_t, bool> current;
 				current = hashlist.getNodeOrNull(minimizerSequence);
 				if (current.first == std::numeric_limits<size_t>::max())
