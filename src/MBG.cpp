@@ -1629,7 +1629,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 			forceEdgeDeterminism(reads, unitigs, unitigSequences, kmerSize, minUnitigCoverage);
 		}
 		beforeConsistency = getTime();
-		if (errorMasking != ErrorMasking::No)
+		if (errorMasking != ErrorMasking::No && errorMasking != ErrorMasking::Collapse)
 		{
 			std::cerr << "Forcing edge consistency" << std::endl;
 			forceEdgeConsistency(unitigs, reads, unitigSequences, kmerSize);
@@ -1651,7 +1651,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforeSequences) << std::endl;
 	std::cerr << "building unitig sequences took " << formatTime(beforeSequences, beforeDeterminism) << std::endl;
 	if (!blunt && windowSize > 1) std::cerr << "forcing edge determinism took " << formatTime(beforeDeterminism, beforeConsistency) << std::endl;
-	if (!blunt && errorMasking != ErrorMasking::No) std::cerr << "forcing edge consistency took " << formatTime(beforeConsistency, beforeWrite) << std::endl;
+	if (!blunt && errorMasking != ErrorMasking::No && errorMasking != ErrorMasking::Collapse) std::cerr << "forcing edge consistency took " << formatTime(beforeConsistency, beforeWrite) << std::endl;
 	std::cerr << "writing the graph and calculating stats took " << formatTime(beforeWrite, afterWrite) << std::endl;
 	if (outputSequencePaths != "") std::cerr << "writing sequence paths took " << formatTime(afterWrite, afterPaths) << std::endl;
 	std::cerr << "nodes: " << stats.nodes << std::endl;
