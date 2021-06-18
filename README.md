@@ -35,8 +35,7 @@ Other options:
 - `-h`: print help
 - `-v`: print version
 - `--blunt`: output a graph without edge overlaps
-- `--no-hpc`: don't homopolymer compress the reads. Not recommended outside testing purposes
-- `--collapse-hpc`: disable homopolymer run length consensus and collapse runs to one bp. Recommended if the reads are already homopolymer compressed, otherwise not
+- `--error-masking`: mask errors in the input reads. Options are `hpc` (default) to mask homopolymer errors and call consensus on homopolymer run lengths, `no` to disable error masking, `collapse` to collapse homopolymer runs to one base pair (not recommended outside testing), `dinuc` to collapse homopolymer runs and call consensus on dinucleotide runs, `msat` to collapse homopolymer runs and call consensus on microsatellite where the repeat motif is up to 6bp long
 - `--include-end-kmers`: force k-mers at the ends of input sequences to be picked. Recommended if building from a reference of a linear genome, not recommended when building from reads or from a reference of a circular genome. Uses significantly more time and memory but prevents the last up to `w` base pairs at chromosome ends from being clipped.
 - `--output-sequence-paths`: output the paths of the input sequences as alignments in [GAF format](https://github.com/lh3/gfatools/blob/master/doc/rGFA.md#the-graph-alignment-format-gaf) to the given file. The alignments are exact in homopolymer compressed space but might differ in homopolymer run lengths.
 
