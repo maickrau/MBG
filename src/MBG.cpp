@@ -1490,21 +1490,62 @@ void printUnitigKmerCount(const UnitigGraph& unitigs)
 std::pair<UnitigGraph, HashList> filterKmersToUnitigKmers(const UnitigGraph& unitigs, const HashList& reads, const size_t kmerSize)
 {
 	HashList resultHashlist { kmerSize };
+	UnitigGraph resultUnitigs;
+	resultUnitigs.edges = unitigs.edges;
+	resultUnitigs.edgeCov = unitigs.edgeCov;
+	resultUnitigs.unitigs.resize(unitigs.unitigs.size());
+	resultUnitigs.unitigCoverage.resize(unitigs.unitigCoverage.size());
 	std::vector<size_t> newIndex;
 	newIndex.resize(reads.coverage.size(), std::numeric_limits<size_t>::max());
 	size_t count = 0;
-	for (const auto& unitig : unitigs.unitigs)
+	std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t>> newOverlaps;
+	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
-		for (const auto& pair : unitig)
+		size_t lastStart = 0;
+		size_t currentPos = 0;
+		std::pair<size_t, bool> lastKmer { std::numeric_limits<size_t>::max(), true };
+		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
 		{
-			assert(newIndex[pair.first] == std::numeric_limits<size_t>::max());
-			newIndex[pair.first] = count;
-			count += 1;
+			if (j > 0) currentPos += kmerSize - reads.getOverlap(unitigs.unitigs[i][j-1], unitigs.unitigs[i][j]);
+			bool skip = true;
+			if (j == 0 || j == unitigs.unitigs[i].size()-1)
+			{
+				skip = false;
+			}
+			else
+			{
+				assert(j+1 < unitigs.unitigs[i].size());
+				if (currentPos + (kmerSize - reads.getOverlap(unitigs.unitigs[i][j], unitigs.unitigs[i][j+1])) >= lastStart + kmerSize)
+				{
+					skip = false;
+				}
+			}
+			assert(newIndex[unitigs.unitigs[i][j].first] == std::numeric_limits<size_t>::max());
+			if (!skip)
+			{
+				newIndex[unitigs.unitigs[i][j].first] = count;
+				count += 1;
+				std::pair<size_t, bool> thisKmer { newIndex[unitigs.unitigs[i][j].first], unitigs.unitigs[i][j].second };
+				if (lastKmer.first != std::numeric_limits<size_t>::max())
+				{
+					assert(currentPos > lastStart);
+					assert(currentPos - lastStart < kmerSize);
+					newOverlaps.emplace_back(lastKmer, thisKmer, kmerSize - (currentPos - lastStart));
+				}
+				resultUnitigs.unitigs[i].push_back(thisKmer);
+				resultUnitigs.unitigCoverage[i].push_back(unitigs.unitigCoverage[i][j]);
+				lastStart = currentPos;
+				lastKmer = thisKmer;
+			}
 		}
 	}
 	resultHashlist.coverage.resize(count, 0);
 	resultHashlist.sequenceOverlap.resize(count);
 	resultHashlist.edgeCoverage.resize(count);
+	for (auto t : newOverlaps)
+	{
+		resultHashlist.addSequenceOverlap(std::get<0>(t), std::get<1>(t), std::get<2>(t));
+	}
 	for (auto pair : reads.hashToNode)
 	{
 		if (newIndex[pair.second.first] == std::numeric_limits<size_t>::max()) continue;
@@ -1552,17 +1593,6 @@ std::pair<UnitigGraph, HashList> filterKmersToUnitigKmers(const UnitigGraph& uni
 			resultHashlist.edgeCoverage[key.first][key.second] = pair.second;
 		}
 	}
-	UnitigGraph resultUnitigs = unitigs;
-	for (size_t i = 0; i < resultUnitigs.unitigs.size(); i++)
-	{
-		for (size_t j = 0; j < resultUnitigs.unitigs[i].size(); j++)
-		{
-			assert(newIndex[resultUnitigs.unitigs[i][j].first] != std::numeric_limits<size_t>::max());
-			resultUnitigs.unitigs[i][j].first = newIndex[resultUnitigs.unitigs[i][j].first];
-			assert(j == 0 || reads.getOverlap(unitigs.unitigs[i][j-1], unitigs.unitigs[i][j]) != 0);
-			assert(j == 0 || resultHashlist.getOverlap(resultUnitigs.unitigs[i][j-1], resultUnitigs.unitigs[i][j]) != 0);
-		}
-	}
 	return std::make_pair(resultUnitigs, resultHashlist);
 }
 
@@ -1605,8 +1635,8 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		std::cerr << "Filtering by unitig coverage" << std::endl;
 		unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage));
 	}
-	printUnitigKmerCount(unitigs);
 	std::tie(unitigs, reads) = filterKmersToUnitigKmers(unitigs, reads, kmerSize);
+	printUnitigKmerCount(unitigs);
 	auto beforeSequences = getTime();
 	std::cerr << "Getting unitig sequences" << std::endl;
 	std::vector<std::pair<SequenceCharType, SequenceLengthType>> unitigSequences;
