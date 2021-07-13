@@ -143,18 +143,7 @@ std::string getSequence(CharType code, size_t runLength)
 	return result;
 }
 
-std::string getExpandedSequence(const SequenceCharType& codes, const SequenceLengthType& lens)
-{
-	assert(codes.size() == lens.size());
-	std::string result;
-	for (size_t i = 0; i < codes.size(); i++)
-	{
-		result += getSequence(codes[i], lens[i]);
-	}
-	return result;
-}
-
-std::pair<SequenceCharType, SequenceLengthType> multiRLECompressOne(const SequenceCharType& str, const size_t maxMaskLength)
+std::pair<SequenceCharType, SequenceLengthType> multiRLECompressOne(const SequenceCharType& str, const SequenceLengthType& poses, const size_t maxMaskLength)
 {
 	assert(maxMaskLength <= MaxMotifLength);
 	std::vector<std::tuple<size_t, size_t, uint8_t>> runs;
@@ -263,12 +252,13 @@ std::pair<SequenceCharType, SequenceLengthType> multiRLECompressOne(const Sequen
 		if (motifLength > std::get<1>(nonOverlappingRuns[i]) - std::get<0>(nonOverlappingRuns[i])) motifLength = std::get<1>(nonOverlappingRuns[i]) - std::get<0>(nonOverlappingRuns[i]);
 		std::tie(code, runLength) = getCodeAndRunlength(str, std::get<0>(nonOverlappingRuns[i]), std::get<1>(nonOverlappingRuns[i]), motifLength);
 		result.first.emplace_back(code);
-		result.second.emplace_back(runLength);
+		result.second.emplace_back(poses[std::get<0>(nonOverlappingRuns[i])]);
 	}
+	result.second.emplace_back(poses[std::get<1>(nonOverlappingRuns.back())]);
 	return result;
 }
 
-std::vector<std::pair<SequenceCharType, SequenceLengthType>> multiRLECompress(const SequenceCharType& str, const size_t maxMaskLength)
+std::vector<std::pair<SequenceCharType, SequenceLengthType>> multiRLECompress(const SequenceCharType& str, const SequenceLengthType& poses, const size_t maxMaskLength)
 {
 	assert(maxMaskLength <= MaxMotifLength);
 	std::vector<std::pair<SequenceCharType, SequenceLengthType>> result;
@@ -283,12 +273,12 @@ std::vector<std::pair<SequenceCharType, SequenceLengthType>> multiRLECompress(co
 			case 3:
 				break;
 			default:
-				if (i > lastBreak+1) result.emplace_back(multiRLECompressOne(SequenceCharType { str.begin() + lastBreak, str.begin() + i }, maxMaskLength));
+				if (i > lastBreak+1) result.emplace_back(multiRLECompressOne(SequenceCharType { str.begin() + lastBreak, str.begin() + i }, poses, maxMaskLength));
 				lastBreak = i;
 				break;
 		}
 	}
-	if (lastBreak != str.size()-1) result.emplace_back(multiRLECompressOne(SequenceCharType { str.begin() + lastBreak, str.end() }, maxMaskLength));
+	if (lastBreak != str.size()-1) result.emplace_back(multiRLECompressOne(SequenceCharType { str.begin() + lastBreak, str.end() }, poses, maxMaskLength));
 	return result;
 }
 
@@ -299,74 +289,6 @@ SequenceCharType revCompRLE(const SequenceCharType& codes)
 	for (size_t i = 0; i < result.size(); i++)
 	{
 		result[i] = complement(codes[codes.size()-1-i]);
-	}
-	return result;
-}
-
-size_t getExpandedLength(CharType code, LengthType length)
-{
-	uint16_t motifLength = 1;
-	while (getNumBefore(motifLength+1) <= code)
-	{
-		motifLength += 1;
-		assert(motifLength <= MaxMotifLength);
-	}
-	code -= getNumBefore(motifLength);
-	uint16_t overhang = code % motifLength;
-	return length * motifLength + overhang;
-}
-
-size_t getOverlapFromRLE(const std::vector<std::pair<SequenceCharType, SequenceLengthType>>& unitigSequences, std::pair<size_t, bool> fromUnitig, size_t rleOverlap)
-{
-	if (fromUnitig.second)
-	{
-		SequenceCharType str { unitigSequences[fromUnitig.first].first.end() - rleOverlap, unitigSequences[fromUnitig.first].first.end() };
-		SequenceLengthType lens { unitigSequences[fromUnitig.first].second.end() - rleOverlap, unitigSequences[fromUnitig.first].second.end() };
-		return getExpandedSequence(str, lens).size();
-	}
-	else
-	{
-		SequenceCharType str { unitigSequences[fromUnitig.first].first.begin(), unitigSequences[fromUnitig.first].first.begin() + rleOverlap };
-		str = revCompRLE(str);
-		SequenceLengthType lens { unitigSequences[fromUnitig.first].second.rend() - rleOverlap, unitigSequences[fromUnitig.first].second.rend() };
-		return getExpandedSequence(str, lens).size();
-	}
-	// assert(fromUnitig.first < unitigSequences.size());
-	// assert(rleOverlap < unitigSequences[fromUnitig.first].first.size());
-	// size_t result = 0;
-	// for (size_t i = 0; i < rleOverlap; i++)
-	// {
-	// 	size_t index = i;
-	// 	if (fromUnitig.second) index = unitigSequences[fromUnitig.first].first.size() - i - 1;
-	// 	unsigned char chr = unitigSequences[fromUnitig.first].second[index];
-	// 	if (chr >= 0 && chr <= 4)
-	// 	{
-	// 		result += unitigSequences[fromUnitig.first].second[index];
-	// 	}
-	// 	else if (chr >= 5 && chr <= 16)
-	// 	{
-	// 		result += unitigSequences[fromUnitig.first].second[index] * 2 + 1;
-	// 	}
-	// 	else if (chr >= 17 && chr <= 28)
-	// 	{
-	// 		result += unitigSequences[fromUnitig.first].second[index] * 2 ;
-	// 	}
-	// 	else
-	// 	{
-	// 		assert(false);
-	// 	}
-	// }
-	// return result;
-}
-
-std::vector<size_t> getRLEExpandedPositions(const SequenceCharType& seq, const SequenceLengthType& lens)
-{
-	std::vector<size_t> result;
-	result.resize(seq.size()+1);
-	result[0] = 0;
-	for (size_t i = 0; i < seq.size(); i++)
-	{
-		result[i+1] = result[i] + getExpandedLength(seq[i], lens[i]);
 	}
 	return result;
 }

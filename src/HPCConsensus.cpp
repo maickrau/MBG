@@ -13,10 +13,12 @@
 // and the chance of two random hifis falling in the same 1Mbp bucket is ~.03% so hopefully not too much waiting
 constexpr size_t MutexLength = 1000000;
 
-void addCounts(std::vector<std::pair<SequenceCharType, SequenceLengthType>>& result, std::vector<std::vector<uint16_t>>& runLengthSums, std::vector<std::vector<bool>>& locked, std::vector<std::vector<std::mutex*>>& seqMutexes, const SequenceCharType& seq, const SequenceLengthType& lens, const size_t seqStart, const size_t seqEnd, const size_t unitig, const size_t unitigStart, const size_t unitigEnd, const bool fw)
+void addCounts(std::vector<CompressedSequenceType>& result, std::vector<std::vector<phmap::flat_hash_map<std::string, size_t>>>& expandedCounts, std::vector<std::vector<std::mutex*>>& seqMutexes, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const size_t seqStart, const size_t seqEnd, const size_t unitig, const size_t unitigStart, const size_t unitigEnd, const bool fw)
 {
-	assert(unitig < locked.size());
+	assert(unitig < expandedCounts.size());
 	assert(unitigEnd - unitigStart == seqEnd - seqStart);
+	assert(unitigEnd > unitigStart);
+	assert(unitigEnd <= expandedCounts[unitig].size());
 	size_t lowMutexIndex = unitigStart / MutexLength;
 	if (unitigStart > 64) lowMutexIndex = (unitigStart - 64) / MutexLength;
 	size_t highMutexIndex = (unitigEnd + 64 + MutexLength - 1) / MutexLength;
@@ -30,40 +32,41 @@ void addCounts(std::vector<std::pair<SequenceCharType, SequenceLengthType>>& res
 	{
 		size_t off = unitigStart + i;
 		if (!fw) off = unitigEnd - 1 - i;
-		assert(off < result[unitig].first.size());
-		assert(off < locked[unitig].size());
-		if (locked[unitig][off]) continue;
-		if (result[unitig].first[off] == 0)
+		assert(off < result[unitig].compressedSize());
+		if (result[unitig].getCompressed(off) == 0)
 		{
 			if (fw)
 			{
-				result[unitig].first[off] = seq[seqStart+i];
+				result[unitig].setCompressed(off, seq[seqStart+i]);
 			}
 			else
 			{
-				result[unitig].first[off] = complement(seq[seqStart+i]);
+				result[unitig].setCompressed(off, complement(seq[seqStart+i]));
 			}
 		}
 		else
 		{
-			assert(!fw || result[unitig].first[off] == seq[seqStart + i]);
-			assert(fw || result[unitig].first[off] == complement(seq[seqStart + i]));
+			assert(!fw || result[unitig].getCompressed(off) == seq[seqStart + i]);
+			assert(fw || result[unitig].getCompressed(off) == complement(seq[seqStart + i]));
 		}
-		if (std::numeric_limits<uint8_t>::max() - result[unitig].second[off] < 1)
+		assert(off < expandedCounts[unitig].size());
+		assert(seqStart+i+1 < poses.size());
+		std::string seq;
+		if (fw)
 		{
-			locked[unitig][off] = true;
-			continue;
+			size_t expandedStart = poses[seqStart+i];
+			size_t expandedEnd = poses[seqStart+i+1];
+			assert(expandedEnd > expandedStart);
+			seq = rawSeq.substr(expandedStart, expandedEnd - expandedStart);
 		}
-		if (std::numeric_limits<uint16_t>::max() - runLengthSums[unitig][off] < lens[seqStart+i])
+		else
 		{
-			locked[unitig][off] = true;
-			continue;
+			size_t expandedStart = poses[seqStart+i];
+			size_t expandedEnd = poses[seqStart+i+1];
+			assert(expandedEnd > expandedStart);
+			seq = revCompRaw(rawSeq.substr(expandedStart, expandedEnd - expandedStart));
 		}
-		assert(off < result[unitig].second.size());
-		assert(off < runLengthSums[unitig].size());
-		assert(seqStart+i < lens.size());
-		result[unitig].second[off] += 1;
-		runLengthSums[unitig][off] += lens[seqStart+i];
+		expandedCounts[unitig][off][seq] += 1;
 	}
 	for (size_t i = 0; i < guards.size(); i++)
 	{
@@ -71,14 +74,12 @@ void addCounts(std::vector<std::pair<SequenceCharType, SequenceLengthType>>& res
 	}
 }
 
-std::vector<std::pair<SequenceCharType, SequenceLengthType>> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& filenames, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
+std::vector<CompressedSequenceType> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& filenames, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
-	std::vector<std::pair<SequenceCharType, SequenceLengthType>> result;
-	std::vector<std::vector<uint16_t>> runLengthSums;
-	std::vector<std::vector<bool>> locked;
+	std::vector<CompressedSequenceType> result;
+	std::vector<std::vector<phmap::flat_hash_map<std::string, size_t>>> expandedCounts;
 	result.resize(unitigs.unitigs.size());
-	runLengthSums.resize(unitigs.unitigs.size());
-	locked.resize(unitigs.unitigs.size());
+	expandedCounts.resize(unitigs.unitigs.size());
 	std::vector<std::tuple<size_t, size_t, bool>> kmerPosition;
 	kmerPosition.resize(hashlist.size(), std::tuple<size_t, size_t, bool> { std::numeric_limits<size_t>::max(), 0, true });
 	std::vector<std::vector<std::mutex*>> seqMutexes;
@@ -98,19 +99,17 @@ std::vector<std::pair<SequenceCharType, SequenceLengthType>> getHPCUnitigSequenc
 			assert(std::get<0>(kmerPosition[unitigs.unitigs[i][j].first]) == std::numeric_limits<size_t>::max());
 			kmerPosition[unitigs.unitigs[i][j].first] = std::make_tuple(i, offset, unitigs.unitigs[i][j].second);
 		}
-		result[i].first.resize(offset + kmerSize, 0);
-		result[i].second.resize(offset + kmerSize, 0);
-		runLengthSums[i].resize(offset + kmerSize, 0);
-		locked[i].resize(offset + kmerSize, false);
-		rleSize += result[i].first.size();
+		result[i].resize(offset + kmerSize);
+		expandedCounts[i].resize(offset + kmerSize);
+		rleSize += result[i].compressedSize();
 		for (size_t j = 0; j < offset + kmerSize; j += MutexLength)
 		{
 			seqMutexes[i].emplace_back(new std::mutex);
 		}
 	}
-	iterateReadsMultithreaded(filenames, numThreads, [&result, &locked, &seqMutexes, &runLengthSums, &partIterator, &hashlist, &kmerPosition, kmerSize](size_t thread, FastQ& read)
+	iterateReadsMultithreaded(filenames, numThreads, [&result, &seqMutexes, &expandedCounts, &partIterator, &hashlist, &kmerPosition, kmerSize](size_t thread, FastQ& read)
 	{
-		partIterator.iteratePartKmers(read, [&result, &locked, &seqMutexes, &runLengthSums, &hashlist, &kmerPosition, kmerSize](const SequenceCharType& seq, const SequenceLengthType& lens, uint64_t minHash, const std::vector<size_t>& positions)
+		partIterator.iteratePartKmers(read, [&result, &seqMutexes, &expandedCounts, &hashlist, &kmerPosition, kmerSize](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
 		{
 			size_t currentSeqStart = 0;
 			size_t currentSeqEnd = 0;
@@ -129,7 +128,7 @@ std::vector<std::pair<SequenceCharType, SequenceLengthType>> getHPCUnitigSequenc
 				{
 					if (currentUnitig != std::numeric_limits<size_t>::max())
 					{
-						addCounts(result, runLengthSums, locked, seqMutexes, seq, lens, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
+						addCounts(result, expandedCounts, seqMutexes, seq, poses, rawSeq, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
 					}
 					currentUnitig = std::numeric_limits<size_t>::max();
 					continue;
@@ -177,7 +176,7 @@ std::vector<std::pair<SequenceCharType, SequenceLengthType>> getHPCUnitigSequenc
 					currentUnitigForward = fw;
 					continue;
 				}
-				addCounts(result, runLengthSums, locked, seqMutexes, seq, lens, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
+				addCounts(result, expandedCounts, seqMutexes, seq, poses, rawSeq, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
 				currentUnitig = unitig;
 				currentSeqStart = pos;
 				currentSeqEnd = pos + kmerSize;
@@ -188,19 +187,25 @@ std::vector<std::pair<SequenceCharType, SequenceLengthType>> getHPCUnitigSequenc
 			};
 			if (currentUnitig != std::numeric_limits<size_t>::max())
 			{
-				addCounts(result, runLengthSums, locked, seqMutexes, seq, lens, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
+				addCounts(result, expandedCounts, seqMutexes, seq, poses, rawSeq, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
 			}
 		});
 	});
-	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
+	assert(result.size() == expandedCounts.size());
+	for (size_t i = 0; i < expandedCounts.size(); i++)
 	{
-		for (size_t j = 0; j < result[i].second.size(); j++)
+		assert(result[i].compressedSize() == expandedCounts[i].size());
+		for (size_t j = 0; j < expandedCounts[i].size(); j++)
 		{
-			assert(runLengthSums[i][j] > 0);
-			assert(result[i].second[j] > 0);
-			assert(runLengthSums[i][j] >= result[i].second[j]);
-			result[i].second[j] = (runLengthSums[i][j] + result[i].second[j] / 2) / result[i].second[j];
-			assert(result[i].second[j] > 0);
+			size_t maxCount = 0;
+			std::string maxSeq = "";
+			for (auto pair : expandedCounts[i][j])
+			{
+				if (pair.second <= maxCount) continue;
+				maxCount = pair.second;
+				maxSeq = pair.first;
+			}
+			result[i].setExpanded(j, maxSeq);
 		}
 	}
 	for (size_t i = 0; i < seqMutexes.size(); i++)

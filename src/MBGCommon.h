@@ -5,13 +5,15 @@
 #include <tuple>
 #include <vector>
 #include "VectorView.h"
+#include "CompressedSequence.h"
 
 using HashType = unsigned __int128;
 using NodeType = size_t;
 using CharType = uint16_t;
-using LengthType = uint16_t;
+using LengthType = size_t;
 using SequenceCharType = std::vector<CharType>;
 using SequenceLengthType = std::vector<LengthType>;
+using CompressedSequenceType = CompressedSequence;
 
 HashType hash(std::string_view sequence);
 HashType hash(VectorView<uint16_t> sequence);
@@ -20,6 +22,7 @@ std::ostream& operator<<(std::ostream& os, HashType t);
 std::istream& operator>>(std::istream& is, HashType& t);
 std::pair<size_t, bool> reverse(std::pair<size_t, bool> pos);
 std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> canon(std::pair<size_t, bool> from, std::pair<size_t, bool> to);
+std::string revCompRaw(const std::string& seq);
 
 namespace std
 {

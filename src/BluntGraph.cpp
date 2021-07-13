@@ -89,7 +89,8 @@ void BluntGraph::initializeEdgesAndEdgenodes(const HashList& hashlist, const Uni
 		assert(missingSeq.size() > 0);
 		size_t newNodeIndex = nodes.size();
 		assert(nodeAvgCoverage.size() == newNodeIndex);
-		nodes.push_back(getExpandedSequence(missingSeq, missingLength));
+		// todo fix
+		// nodes.push_back(getExpandedSequence(missingSeq, missingLength));
 		nodeAvgCoverage.push_back(coverage);
 		edges.emplace_back(from.first, from.second, newNodeIndex, true, coverage);
 		edges.emplace_back(newNodeIndex, true, to.first, to.second, coverage);
@@ -109,7 +110,8 @@ void BluntGraph::initializeNodes(const std::vector<std::pair<SequenceCharType, S
 		assert(leftClip + rightClip < sequence.size());
 		sequence = SequenceCharType { sequence.begin() + leftClip, sequence.end() - rightClip };
 		lengths = SequenceLengthType { lengths.begin() + leftClip, lengths.end() - rightClip };
-		nodes[i] = getExpandedSequence(sequence, lengths);
+		// todo fix
+		// nodes[i] = getExpandedSequence(sequence, lengths);
 		nodeAvgCoverage[i] = unitigs.averageCoverage(i);
 	}
 }

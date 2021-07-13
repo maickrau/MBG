@@ -89,8 +89,8 @@ public:
 	void iteratePartKmers(const FastQ& read, F callback) const
 	{
 		if (read.sequence.size() < kmerSize) return;
-		iterateParts(read, [this, callback](const SequenceCharType& seq, const SequenceLengthType& lens) {
-			iterateKmers(seq, lens, callback);
+		iterateParts(read, [this, callback](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
+			iterateKmers(seq, rawSeq, poses, callback);
 		});
 	}
 	template <typename F>
@@ -126,33 +126,56 @@ private:
 	template <typename F>
 	void iterateMicrosatellite(const std::string& seq, F callback) const
 	{
-		iterateRLE(seq, [callback](const SequenceCharType& seq, const SequenceLengthType& lens)
+		iterateRLE(seq, [callback](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
-			auto pieces = multiRLECompress(seq, 6);
+			auto pieces = multiRLECompress(seq, poses, 6);
 			for (const auto& pair : pieces)
 			{
-				callback(pair.first, pair.second);
+				callback(pair.first, pair.second, raw);
 			}
 		});
 	}
 	template <typename F>
 	void iterateCollapse(const std::string& seq, F callback) const
 	{
-		iterateRLE(seq, [callback](const SequenceCharType& seq, SequenceLengthType& lens)
+		iterateRLE(seq, [callback](const SequenceCharType& seq, const SequenceLengthType& fakeposes, const std::string& fakeraw)
 		{
-			for (size_t i = 0; i < lens.size(); i++) lens[i] = 1;
-			callback(seq, lens);
+			std::string rawSeq;
+			SequenceLengthType poses;
+			rawSeq.resize(seq.size());
+			poses.resize(seq.size());
+			for (size_t i = 0; i < poses.size(); i++)
+			{
+				poses[i] = i;
+				assert(seq[i] >= 0 && seq[i] < 4);
+				switch(seq[i])
+				{
+					case 0:
+						rawSeq[i] = 'A';
+						break;
+					case 1:
+						rawSeq[i] = 'C';
+						break;
+					case 2:
+						rawSeq[i] = 'G';
+						break;
+					case 3:
+						rawSeq[i] = 'T';
+						break;
+				}
+			}
+			callback(seq, poses, rawSeq);
 		});
 	}
 	template <typename F>
 	void iterateDinuc(const std::string& seq, F callback) const
 	{
-		iterateRLE(seq, [callback](const SequenceCharType& seq, const SequenceLengthType& lens)
+		iterateRLE(seq, [callback](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
-			auto pieces = multiRLECompress(seq, 2);
+			auto pieces = multiRLECompress(seq, poses, 2);
 			for (const auto& pair : pieces)
 			{
-				callback(pair.first, pair.second);
+				callback(pair.first, pair.second, raw);
 			}
 		});
 	}
@@ -160,12 +183,12 @@ private:
 	void iterateRLE(const std::string& seq, F callback) const
 	{
 		SequenceCharType currentSeq;
-		SequenceLengthType currentLens;
+		SequenceLengthType currentPos;
 		currentSeq.reserve(seq.size());
-		currentLens.reserve(seq.size());
+		currentPos.reserve(seq.size());
 		size_t i = 0;
 		assert(currentSeq.size() == 0);
-		assert(currentLens.size() == 0);
+		assert(currentPos.size() == 0);
 		while (i < seq.size() && seq[i] != 'a' && seq[i] != 'A' && seq[i] != 'c' && seq[i] != 'C' && seq[i] != 'g' && seq[i] != 'G' && seq[i] != 't' && seq[i] != 'T') i += 1;
 		if (i == seq.size()) return;
 		switch(seq[i])
@@ -173,22 +196,22 @@ private:
 			case 'a':
 			case 'A':
 				currentSeq.push_back(0);
-				currentLens.push_back(1);
+				currentPos.push_back(i);
 				break;
 			case 'c':
 			case 'C':
 				currentSeq.push_back(1);
-				currentLens.push_back(1);
+				currentPos.push_back(i);
 				break;
 			case 'g':
 			case 'G':
 				currentSeq.push_back(2);
-				currentLens.push_back(1);
+				currentPos.push_back(i);
 				break;
 			case 't':
 			case 'T':
 				currentSeq.push_back(3);
-				currentLens.push_back(1);
+				currentPos.push_back(i);
 				break;
 			default:
 				assert(false);
@@ -203,11 +226,7 @@ private:
 					if (currentSeq.back() != 0)
 					{
 						currentSeq.push_back(0);
-						currentLens.push_back(1);
-					}
-					else
-					{
-						currentLens.back() += 1;
+						currentPos.push_back(i);
 					}
 					break;
 				case 'c':
@@ -215,11 +234,7 @@ private:
 					if (currentSeq.back() != 1)
 					{
 						currentSeq.push_back(1);
-						currentLens.push_back(1);
-					}
-					else
-					{
-						currentLens.back() += 1;
+						currentPos.push_back(i);
 					}
 					break;
 				case 'g':
@@ -227,11 +242,7 @@ private:
 					if (currentSeq.back() != 2)
 					{
 						currentSeq.push_back(2);
-						currentLens.push_back(1);
-					}
-					else
-					{
-						currentLens.back() += 1;
+						currentPos.push_back(i);
 					}
 					break;
 				case 't':
@@ -239,17 +250,14 @@ private:
 					if (currentSeq.back() != 3)
 					{
 						currentSeq.push_back(3);
-						currentLens.push_back(1);
-					}
-					else
-					{
-						currentLens.back() += 1;
+						currentPos.push_back(i);
 					}
 					break;
 				default:
-					callback(currentSeq, currentLens);
+					currentPos.push_back(i);
+					callback(currentSeq, currentPos, seq);
 					currentSeq.clear();
-					currentLens.clear();
+					currentPos.clear();
 					while (i < seq.size() && seq[i] != 'a' && seq[i] != 'A' && seq[i] != 'c' && seq[i] != 'C' && seq[i] != 'g' && seq[i] != 'G' && seq[i] != 't' && seq[i] != 'T') i += 1;
 					if (i == seq.size()) return;
 					switch(seq[i])
@@ -257,22 +265,22 @@ private:
 						case 'a':
 						case 'A':
 							currentSeq.push_back(0);
-							currentLens.push_back(1);
+							currentPos.push_back(i);
 							break;
 						case 'c':
 						case 'C':
 							currentSeq.push_back(1);
-							currentLens.push_back(1);
+							currentPos.push_back(i);
 							break;
 						case 'g':
 						case 'G':
 							currentSeq.push_back(2);
-							currentLens.push_back(1);
+							currentPos.push_back(i);
 							break;
 						case 't':
 						case 'T':
 							currentSeq.push_back(3);
-							currentLens.push_back(1);
+							currentPos.push_back(i);
 							break;
 						default:
 							assert(false);
@@ -281,19 +289,20 @@ private:
 		}
 		if (currentSeq.size() > 0)
 		{
-			callback(currentSeq, currentLens);
+			currentPos.push_back(seq.size());
+			callback(currentSeq, currentPos, seq);
 		}
 	}
 	template <typename F>
 	void iterateNoRLE(const std::string& seq, F callback) const
 	{
 		SequenceCharType currentSeq;
-		SequenceLengthType currentLens;
+		SequenceLengthType currentPos;
 		currentSeq.reserve(seq.size());
-		currentLens.reserve(seq.size());
+		currentPos.reserve(seq.size());
 		size_t i = 0;
 		assert(currentSeq.size() == 0);
-		assert(currentLens.size() == 0);
+		assert(currentPos.size() == 0);
 		for (; i < seq.size(); i++)
 		{
 			switch(seq[i])
@@ -301,36 +310,41 @@ private:
 				case 'a':
 				case 'A':
 					currentSeq.push_back(0);
-					currentLens.push_back(1);
+					currentPos.push_back(i);
 					break;
 				case 'c':
 				case 'C':
 					currentSeq.push_back(1);
-					currentLens.push_back(1);
+					currentPos.push_back(i);
 					break;
 				case 'g':
 				case 'G':
 					currentSeq.push_back(2);
-					currentLens.push_back(1);
+					currentPos.push_back(i);
 					break;
 				case 't':
 				case 'T':
 					currentSeq.push_back(3);
-					currentLens.push_back(1);
+					currentPos.push_back(i);
 					break;
 				default:
-					if (currentSeq.size() > 0) callback(currentSeq, currentLens);
+					if (currentSeq.size() > 0)
+					{
+						currentPos.push_back(i);
+						callback(currentSeq, currentPos, seq);
+					}
 					currentSeq.clear();
-					currentLens.clear();
+					currentPos.clear();
 			}
 		}
 		if (currentSeq.size() > 0)
 		{
-			callback(currentSeq, currentLens);
+			currentPos.push_back(i);
+			callback(currentSeq, currentPos, seq);
 		}
 	}
 	template <typename F>
-	void iterateKmers(const SequenceCharType& seq, const SequenceLengthType& lens, F callback) const
+	void iterateKmers(const SequenceCharType& seq, const std::string& rawSeq, const SequenceLengthType& poses, F callback) const
 	{
 		if (seq.size() < kmerSize) return;
 		// keep the same smerOrder to reduce mallocs which destroy multithreading performance
@@ -356,7 +370,7 @@ private:
 				positions.push_back(pos);
 			});
 		}
-		callback(seq, lens, minHash, positions);
+		callback(seq, poses, rawSeq, minHash, positions);
 	}
 };
 

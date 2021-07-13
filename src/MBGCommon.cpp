@@ -1,3 +1,4 @@
+#include <cassert>
 #include <string_view>
 #include <algorithm>
 #include <vector>
@@ -69,4 +70,35 @@ std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> canon(std::pair<size
 		return std::make_pair(reverse(to), reverse(from));
 	}
 	return std::make_pair(from, to);
+}
+
+std::string revCompRaw(const std::string& raw)
+{
+	std::string result { raw.rbegin(), raw.rend() };
+	for (size_t i = 0; i < result.size(); i++)
+	{
+		switch (result[i])
+		{
+			case 'a':
+			case 'A':
+				result[i] = 'T';
+				break;
+			case 'c':
+			case 'C':
+				result[i] = 'G';
+				break;
+			case 'g':
+			case 'G':
+				result[i] = 'C';
+				break;
+			case 't':
+			case 'T':
+				result[i] = 'A';
+				break;
+			default:
+				assert(false);
+				break;
+		}
+	}
+	return result;
 }
