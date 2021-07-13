@@ -1640,11 +1640,9 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	AssemblyStats stats;
 	if (blunt)
 	{
-		// todo fix
-		assert(false);
-		// BluntGraph blunt { reads, unitigs, unitigSequences };
+		BluntGraph blunt { reads, unitigs, unitigSequences };
 		std::cerr << "Writing graph to " << outputGraph << std::endl;
-		// stats = writeGraph(blunt, outputGraph);
+		stats = writeGraph(blunt, outputGraph);
 	}
 	else
 	{

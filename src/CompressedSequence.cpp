@@ -1,3 +1,4 @@
+#include <cassert>
 #include <algorithm>
 #include "CompressedSequence.h"
 #include "ErrorMaskHelper.h"
@@ -71,6 +72,7 @@ std::string CompressedSequence::getExpandedSequence() const
 
 CompressedSequence CompressedSequence::substr(size_t start, size_t len) const
 {
+	assert(start + len <= compressedSize());
 	CompressedSequence result;
 	result.insertEnd(beginCompressed() + start, beginCompressed() + start + len, beginExpanded() + start, beginExpanded() + start + len);
 	return result;

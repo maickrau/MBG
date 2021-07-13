@@ -12,13 +12,13 @@
 class BluntGraph
 {
 public:
-	BluntGraph(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::pair<SequenceCharType, SequenceLengthType>>& unitigSequences);
+	BluntGraph(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<CompressedSequenceType>& unitigSequences);
 	std::vector<std::string> nodes;
 	std::vector<std::tuple<size_t, bool, size_t, bool, size_t>> edges;
 	std::vector<float> nodeAvgCoverage;
 private:
-	void initializeNodes(const std::vector<std::pair<SequenceCharType, SequenceLengthType>>& unbluntSequences, const VectorWithDirection<size_t>& maxOverlap, const UnitigGraph& unitigs);
-	void initializeEdgesAndEdgenodes(const HashList& hashlist, const UnitigGraph& unitigs, const VectorWithDirection<size_t>& maxOverlap, const std::vector<std::pair<SequenceCharType, SequenceLengthType>>& unbluntSequences);
+	void initializeNodes(const std::vector<CompressedSequenceType>& unbluntSequences, const VectorWithDirection<size_t>& maxOverlap, const UnitigGraph& unitigs);
+	void initializeEdgesAndEdgenodes(const HashList& hashlist, const UnitigGraph& unitigs, const VectorWithDirection<size_t>& maxOverlap, const std::vector<CompressedSequenceType>& unbluntSequences);
 	VectorWithDirection<size_t> getMaxOverlaps(const HashList& hashlist, const UnitigGraph& unitigs) const;
 };
 
