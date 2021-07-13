@@ -241,8 +241,7 @@ std::unordered_set<HashType> collectExactHashes(const HashList& hashlist, const 
 			std::tuple<size_t, bool, size_t> unitigpos = kmerUnitigOffset.at(unitigs.unitigs[i][j].first);
 			size_t unitig = std::get<0>(unitigpos);
 			size_t offset = std::get<2>(unitigpos);
-			SequenceCharType seq;
-			seq.insert(seq.end(), unitigSequences[unitig].beginCompressed() + offset, unitigSequences[unitig].beginCompressed() + offset + kmerSize);
+			SequenceCharType seq = unitigSequences[unitig].compressedSubstr(offset, kmerSize);
 			assert(seq.size() == kmerSize);
 			exactHashes.insert(hash(seq));
 			seq = revCompRLE(seq);
@@ -1125,20 +1124,21 @@ SequenceCharType getEdgeSequence(const std::vector<CompressedSequenceType>& unit
 	SequenceCharType edgeSequence;
 	if (fromUnitig.second)
 	{
-		edgeSequence = SequenceCharType { unitigSequences[fromUnitig.first].endCompressed() - kmerSize, unitigSequences[fromUnitig.first].endCompressed() };
+		edgeSequence = unitigSequences[fromUnitig.first].compressedSubstr(unitigSequences[fromUnitig.first].compressedSize() - kmerSize, kmerSize);
 	}
 	else
 	{
-		edgeSequence = SequenceCharType { unitigSequences[fromUnitig.first].beginCompressed(), unitigSequences[fromUnitig.first].beginCompressed() + kmerSize };
+		edgeSequence = unitigSequences[fromUnitig.first].compressedSubstr(0, kmerSize);
 		edgeSequence = revCompRLE(edgeSequence);
 	}
 	if (toUnitig.second)
 	{
-		edgeSequence.insert(edgeSequence.end(), unitigSequences[toUnitig.first].beginCompressed() + overlap, unitigSequences[toUnitig.first].beginCompressed() + kmerSize);
+		SequenceCharType add = unitigSequences[toUnitig.first].compressedSubstr(overlap, kmerSize - overlap);
+		edgeSequence.insert(edgeSequence.end(), add.begin(), add.end());
 	}
 	else
 	{
-		SequenceCharType add { unitigSequences[toUnitig.first].endCompressed() - kmerSize, unitigSequences[toUnitig.first].endCompressed() - overlap };
+		SequenceCharType add = unitigSequences[toUnitig.first].compressedSubstr(unitigSequences[toUnitig.first].compressedSize() - kmerSize, kmerSize - overlap);
 		add = revCompRLE(add);
 		edgeSequence.insert(edgeSequence.end(), add.begin(), add.end());
 	}
@@ -1463,7 +1463,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, std::vector<Com
 			}
 			size_t overlap = 0;
 			if (j > 0) overlap = reads.getOverlap(unitigs.unitigs[i][j-1], unitigs.unitigs[i][j]);
-			newUnitigSequences[i].insertEnd(seqHere.beginCompressed() + overlap, seqHere.endCompressed(), seqHere.beginExpanded() + overlap, seqHere.endExpanded());
+			newUnitigSequences[i].insertEnd(seqHere.substr(overlap, seqHere.compressedSize() - overlap));
 		}
 		assert(newUnitigSequences[i].compressedSize() == length);
 	}
