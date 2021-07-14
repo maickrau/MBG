@@ -8,6 +8,8 @@
 class CompressedSequence
 {
 public:
+	CompressedSequence() = default;
+	CompressedSequence(const std::vector<uint16_t>& compressed, const std::vector<std::string>& expanded);
 	void setCompressed(size_t i, uint16_t c);
 	uint16_t getCompressed(size_t i) const;
 	std::string getExpanded(size_t i) const;

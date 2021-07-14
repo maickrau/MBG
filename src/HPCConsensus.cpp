@@ -2,89 +2,42 @@
 #include "HPCConsensus.h"
 #include "MBGCommon.h"
 #include "VectorView.h"
+#include "ConsensusMaker.h"
 
-// allow multiple threads to update the same contig sequence but in different regions
-// each mutex covers MutexLength bp in one contig
-// ------
-//       ------
-//             ------
-// etc
-// size arbitrarily 1Mbp, so ~(3000 + num_contigs) mutexes in a human genome, hopefully not too many
-// and the chance of two random hifis falling in the same 1Mbp bucket is ~.03% so hopefully not too much waiting
-constexpr size_t MutexLength = 1000000;
-
-void addCounts(std::vector<CompressedSequenceType>& result, std::vector<std::vector<phmap::flat_hash_map<std::string, size_t>>>& expandedCounts, std::vector<std::vector<std::mutex*>>& seqMutexes, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const size_t seqStart, const size_t seqEnd, const size_t unitig, const size_t unitigStart, const size_t unitigEnd, const bool fw)
+void addCounts(ConsensusMaker& consensusMaker, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const size_t seqStart, const size_t seqEnd, const size_t unitig, const size_t unitigStart, const size_t unitigEnd, const bool fw)
 {
-	assert(unitig < expandedCounts.size());
-	assert(unitigEnd - unitigStart == seqEnd - seqStart);
-	assert(unitigEnd > unitigStart);
-	assert(unitigEnd <= expandedCounts[unitig].size());
-	size_t lowMutexIndex = unitigStart / MutexLength;
-	if (unitigStart > 64) lowMutexIndex = (unitigStart - 64) / MutexLength;
-	size_t highMutexIndex = (unitigEnd + 64 + MutexLength - 1) / MutexLength;
-	if (highMutexIndex >= seqMutexes[unitig].size()) highMutexIndex = seqMutexes[unitig].size();
-	std::vector<std::lock_guard<std::mutex>*> guards;
-	for (size_t i = lowMutexIndex; i < highMutexIndex; i++)
+	consensusMaker.addStrings(unitig, unitigStart, unitigEnd, [seqStart, seqEnd, &consensusMaker, &seq, &poses, &rawSeq, fw](size_t i)
 	{
-		guards.emplace_back(new std::lock_guard<std::mutex>{*seqMutexes[unitig][i]});
-	}
-	for (size_t i = 0; i < seqEnd - seqStart; i++)
-	{
-		size_t off = unitigStart + i;
-		if (!fw) off = unitigEnd - 1 - i;
-		assert(off < result[unitig].compressedSize());
-		if (result[unitig].getCompressed(off) == 0)
-		{
-			if (fw)
-			{
-				result[unitig].setCompressed(off, seq[seqStart+i]);
-			}
-			else
-			{
-				result[unitig].setCompressed(off, complement(seq[seqStart+i]));
-			}
-		}
-		else
-		{
-			assert(!fw || result[unitig].getCompressed(off) == seq[seqStart + i]);
-			assert(fw || result[unitig].getCompressed(off) == complement(seq[seqStart + i]));
-		}
-		assert(off < expandedCounts[unitig].size());
-		assert(seqStart+i+1 < poses.size());
+		size_t seqOff = seqStart + i;
+		if (!fw) seqOff = seqEnd - 1 - i;
+		assert(seqOff < seq.size());
+		uint16_t compressed = seq[seqOff];
+		if (!fw) compressed = complement(compressed);
 		std::string seq;
 		if (fw)
 		{
-			size_t expandedStart = poses[seqStart+i];
-			size_t expandedEnd = poses[seqStart+i+1];
+			size_t expandedStart = poses[seqOff];
+			size_t expandedEnd = poses[seqOff+1];
 			assert(expandedEnd > expandedStart);
 			seq = rawSeq.substr(expandedStart, expandedEnd - expandedStart);
 		}
 		else
 		{
-			size_t expandedStart = poses[seqStart+i];
-			size_t expandedEnd = poses[seqStart+i+1];
+			size_t expandedStart = poses[seqOff];
+			size_t expandedEnd = poses[seqOff+1];
 			assert(expandedEnd > expandedStart);
 			seq = revCompRaw(rawSeq.substr(expandedStart, expandedEnd - expandedStart));
 		}
-		expandedCounts[unitig][off][seq] += 1;
-	}
-	for (size_t i = 0; i < guards.size(); i++)
-	{
-		delete guards[i];
-	}
+		return std::make_pair(compressed, seq);
+	});
 }
 
 std::vector<CompressedSequenceType> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& filenames, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
-	std::vector<CompressedSequenceType> result;
-	std::vector<std::vector<phmap::flat_hash_map<std::string, size_t>>> expandedCounts;
-	result.resize(unitigs.unitigs.size());
-	expandedCounts.resize(unitigs.unitigs.size());
+	ConsensusMaker consensusMaker;
 	std::vector<std::tuple<size_t, size_t, bool>> kmerPosition;
 	kmerPosition.resize(hashlist.size(), std::tuple<size_t, size_t, bool> { std::numeric_limits<size_t>::max(), 0, true });
-	std::vector<std::vector<std::mutex*>> seqMutexes;
-	seqMutexes.resize(unitigs.unitigs.size());
-	size_t rleSize = 0;
+	std::vector<size_t> unitigLengths;
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
 		size_t offset = 0;
@@ -99,17 +52,12 @@ std::vector<CompressedSequenceType> getHPCUnitigSequences(const HashList& hashli
 			assert(std::get<0>(kmerPosition[unitigs.unitigs[i][j].first]) == std::numeric_limits<size_t>::max());
 			kmerPosition[unitigs.unitigs[i][j].first] = std::make_tuple(i, offset, unitigs.unitigs[i][j].second);
 		}
-		result[i].resize(offset + kmerSize);
-		expandedCounts[i].resize(offset + kmerSize);
-		rleSize += result[i].compressedSize();
-		for (size_t j = 0; j < offset + kmerSize; j += MutexLength)
-		{
-			seqMutexes[i].emplace_back(new std::mutex);
-		}
+		unitigLengths.push_back(offset + kmerSize);
 	}
-	iterateReadsMultithreaded(filenames, numThreads, [&result, &seqMutexes, &expandedCounts, &partIterator, &hashlist, &kmerPosition, kmerSize](size_t thread, FastQ& read)
+	consensusMaker.init(unitigLengths);
+	iterateReadsMultithreaded(filenames, numThreads, [&consensusMaker, &partIterator, &hashlist, &kmerPosition, kmerSize](size_t thread, FastQ& read)
 	{
-		partIterator.iteratePartKmers(read, [&result, &seqMutexes, &expandedCounts, &hashlist, &kmerPosition, kmerSize](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
+		partIterator.iteratePartKmers(read, [&consensusMaker, &hashlist, &kmerPosition, kmerSize](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
 		{
 			size_t currentSeqStart = 0;
 			size_t currentSeqEnd = 0;
@@ -128,7 +76,7 @@ std::vector<CompressedSequenceType> getHPCUnitigSequences(const HashList& hashli
 				{
 					if (currentUnitig != std::numeric_limits<size_t>::max())
 					{
-						addCounts(result, expandedCounts, seqMutexes, seq, poses, rawSeq, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
+						addCounts(consensusMaker, seq, poses, rawSeq, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
 					}
 					currentUnitig = std::numeric_limits<size_t>::max();
 					continue;
@@ -176,7 +124,7 @@ std::vector<CompressedSequenceType> getHPCUnitigSequences(const HashList& hashli
 					currentUnitigForward = fw;
 					continue;
 				}
-				addCounts(result, expandedCounts, seqMutexes, seq, poses, rawSeq, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
+				addCounts(consensusMaker, seq, poses, rawSeq, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
 				currentUnitig = unitig;
 				currentSeqStart = pos;
 				currentSeqEnd = pos + kmerSize;
@@ -187,33 +135,9 @@ std::vector<CompressedSequenceType> getHPCUnitigSequences(const HashList& hashli
 			};
 			if (currentUnitig != std::numeric_limits<size_t>::max())
 			{
-				addCounts(result, expandedCounts, seqMutexes, seq, poses, rawSeq, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
+				addCounts(consensusMaker, seq, poses, rawSeq, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
 			}
 		});
 	});
-	assert(result.size() == expandedCounts.size());
-	for (size_t i = 0; i < expandedCounts.size(); i++)
-	{
-		assert(result[i].compressedSize() == expandedCounts[i].size());
-		for (size_t j = 0; j < expandedCounts[i].size(); j++)
-		{
-			size_t maxCount = 0;
-			std::string maxSeq = "";
-			for (auto pair : expandedCounts[i][j])
-			{
-				if (pair.second <= maxCount) continue;
-				maxCount = pair.second;
-				maxSeq = pair.first;
-			}
-			result[i].setExpanded(j, maxSeq);
-		}
-	}
-	for (size_t i = 0; i < seqMutexes.size(); i++)
-	{
-		for (size_t j = 0; j < seqMutexes[i].size(); j++)
-		{
-			delete seqMutexes[i][j];
-		}
-	}
-	return result;
+	return consensusMaker.getSequences();
 }

@@ -1634,6 +1634,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	std::cerr << "Getting unitig sequences" << std::endl;
 	std::vector<CompressedSequenceType> unitigSequences;
 	unitigSequences = getHPCUnitigSequences(reads, unitigs, inputReads, kmerSize, partIterator, numThreads);
+	assert(unitigSequences.size() == unitigs.unitigs.size());
 	auto beforeDeterminism = getTime();
 	auto beforeConsistency = getTime();
 	auto beforeWrite = getTime();

@@ -3,6 +3,13 @@
 #include "CompressedSequence.h"
 #include "ErrorMaskHelper.h"
 
+CompressedSequence::CompressedSequence(const std::vector<uint16_t>& compressed, const std::vector<std::string>& expanded) :
+	compressed(compressed),
+	expanded(expanded)
+{
+	assert(compressed.size() == expanded.size());
+}
+
 uint16_t CompressedSequence::getCompressed(size_t i) const
 {
 	return compressed[i];
