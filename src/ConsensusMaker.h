@@ -27,9 +27,23 @@ public:
 	template <typename F>
 	void addStrings(size_t unitig, size_t unitigStart, size_t unitigEnd, F sequenceGetter)
 	{
-		assert(unitig < expandedCounts.size());
+		assert(unitig < simpleCounts.size());
 		assert(unitigEnd > unitigStart);
-		assert(unitigEnd <= expandedCounts[unitig].size());
+		assert(unitigEnd <= simpleCounts[unitig].size());
+		std::vector<std::pair<uint16_t, uint32_t>> processedChars;
+		processedChars.resize(unitigEnd - unitigStart);
+		{
+			std::lock_guard<std::mutex> lock { stringIndexMutex };
+			for (size_t i = 0; i < unitigEnd - unitigStart; i++)
+			{
+				size_t off = unitigStart + i;
+				uint16_t compressed;
+				std::string expanded;
+				std::tie(compressed, expanded) = sequenceGetter(i);
+				processedChars[i].first = compressed;
+				processedChars[i].second = getStringIndex(compressed, expanded);
+			}
+		}
 		size_t lowMutexIndex = unitigStart / MutexLength;
 		if (unitigStart > 64) lowMutexIndex = (unitigStart - 64) / MutexLength;
 		size_t highMutexIndex = (unitigEnd + 64 + MutexLength - 1) / MutexLength;
@@ -39,25 +53,52 @@ public:
 		{
 			guards.emplace_back(new std::lock_guard<std::mutex>{*seqMutexes[unitig][i]});
 		}
-		for (size_t i = 0; i < unitigEnd - unitigStart; i++)
+		std::vector<std::pair<uint32_t, uint32_t>> addComplexes;
+		for (size_t i = 0; i < processedChars.size(); i++)
 		{
 			size_t off = unitigStart + i;
-			uint16_t compressed;
-			std::string expanded;
-			std::tie(compressed, expanded) = sequenceGetter(i);
+			uint16_t compressed = processedChars[i].first;
+			uint32_t expandedIndex = processedChars[i].second;
 			assert(compressedSequences[unitig][off] == 0 || compressedSequences[unitig][off] == compressed);
 			compressedSequences[unitig][off] = compressed;
-			expandedCounts[unitig][off][expanded] += 1;
+			bool didSimple = false;
+			if (expandedIndex < 256)
+			{
+				if (simpleCounts[unitig][off].second == 0 || (expandedIndex == simpleCounts[unitig][off].first && simpleCounts[unitig][off].second < 256))
+				{
+					simpleCounts[unitig][off].first = expandedIndex;
+					simpleCounts[unitig][off].second += 1;
+					didSimple = true;
+				}
+			}
+			if (!didSimple)
+			{
+				addComplexes.emplace_back(off, expandedIndex);
+			}
 		}
 		for (size_t i = 0; i < guards.size(); i++)
 		{
 			delete guards[i];
 		}
+		if (addComplexes.size() > 0)
+		{
+			std::lock_guard<std::mutex> lock { *complexCountMutexes[unitig] };
+			for (auto pair : addComplexes)
+			{
+				complexCounts[unitig][pair] += 1;
+			}
+		}
 	}
 private:
-	std::vector<std::vector<phmap::flat_hash_map<std::string, size_t>>> expandedCounts;
+	uint32_t getStringIndex(uint16_t compressed, const std::string& expanded);
+	std::string getString(uint16_t compressed, uint32_t index) const;
+	std::vector<std::vector<std::pair<uint8_t, uint8_t>>> simpleCounts;
+	std::vector<phmap::flat_hash_map<std::pair<uint32_t, uint32_t>, uint32_t>> complexCounts;
+	std::vector<std::mutex*> complexCountMutexes;
 	std::vector<std::vector<std::mutex*>> seqMutexes;
 	std::vector<std::vector<uint16_t>> compressedSequences;
+	std::vector<phmap::flat_hash_map<std::string, uint32_t>> stringIndices;
+	std::mutex stringIndexMutex;
 };
 
 #endif
