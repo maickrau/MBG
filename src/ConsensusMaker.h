@@ -7,6 +7,7 @@
 #include <cassert>
 #include <phmap.h>
 #include "MBGCommon.h"
+#include "StringIndex.h"
 
 class ConsensusMaker
 {
@@ -41,7 +42,7 @@ public:
 				std::string expanded;
 				std::tie(compressed, expanded) = sequenceGetter(i);
 				processedChars[i].first = compressed;
-				processedChars[i].second = getStringIndex(compressed, expanded);
+				processedChars[i].second = stringIndex.getIndex(compressed, expanded);
 			}
 		}
 		size_t lowMutexIndex = unitigStart / MutexLength;
@@ -90,14 +91,12 @@ public:
 		}
 	}
 private:
-	uint32_t getStringIndex(uint16_t compressed, const std::string& expanded);
-	std::string getString(uint16_t compressed, uint32_t index) const;
+	StringIndex stringIndex;
 	std::vector<std::vector<std::pair<uint8_t, uint8_t>>> simpleCounts;
 	std::vector<phmap::flat_hash_map<std::pair<uint32_t, uint32_t>, uint32_t>> complexCounts;
 	std::vector<std::mutex*> complexCountMutexes;
 	std::vector<std::vector<std::mutex*>> seqMutexes;
 	std::vector<std::vector<uint16_t>> compressedSequences;
-	std::vector<phmap::flat_hash_map<std::string, uint32_t>> stringIndices;
 	std::mutex stringIndexMutex;
 };
 

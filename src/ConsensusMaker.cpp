@@ -29,11 +29,12 @@ void ConsensusMaker::init(const std::vector<size_t>& unitigLengths)
 			seqMutexes[i].emplace_back(new std::mutex);
 		}
 	}
-	stringIndices.resize(maxCode());
+	stringIndex.init(maxCode());
 }
 
 std::vector<CompressedSequenceType> ConsensusMaker::getSequences()
 {
+	stringIndex.buildReverseIndex();
 	std::vector<CompressedSequenceType> result;
 	result.reserve(compressedSequences.size());
 	for (size_t i = 0; i < compressedSequences.size(); i++)
@@ -57,7 +58,7 @@ std::vector<CompressedSequenceType> ConsensusMaker::getSequences()
 				maxCount = pair.second;
 			}
 			assert(maxCount > 0);
-			expanded.push_back(getString(compressedSequences[i][j], maxIndex));
+			expanded.push_back(stringIndex.getString(compressedSequences[i][j], maxIndex));
 		}
 		assert(compressedSequences[i].size() >= 1);
 		assert(compressedSequences[i].size() == expanded.size());
@@ -72,41 +73,5 @@ std::vector<CompressedSequenceType> ConsensusMaker::getSequences()
 		}
 	}
 	assert(result.size() == compressedSequences.size());
-	return result;
-}
-
-std::string ConsensusMaker::getString(uint16_t compressed, uint32_t index) const
-{
-	if (compressed >= 0 && compressed <= 3)
-	{
-		std::string result;
-		for (size_t i = 0; i < index; i++)
-		{
-			result += "ACGT"[compressed];
-		}
-		return result;
-	}
-	// todo optimize
-	for (auto pair : stringIndices[compressed])
-	{
-		if (pair.second == index) return pair.first;
-	}
-	assert(false);
-	return "";
-}
-
-uint32_t ConsensusMaker::getStringIndex(uint16_t compressed, const std::string& expanded)
-{
-	if (compressed >= 0 && compressed <= 3)
-	{
-		return expanded.size();
-	}
-	auto found = stringIndices[compressed].find(expanded);
-	if (found != stringIndices[compressed].end())
-	{
-		return found->second;
-	}
-	uint32_t result = stringIndices[compressed].size();
-	stringIndices[compressed][expanded] = result;
 	return result;
 }
