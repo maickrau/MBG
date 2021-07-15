@@ -24,7 +24,7 @@ private:
 public:
 	~ConsensusMaker();
 	void init(const std::vector<size_t>& unitigLens);
-	std::vector<CompressedSequenceType> getSequences();
+	std::pair<std::vector<CompressedSequenceType>, StringIndex> getSequences();
 	template <typename F>
 	void addStrings(size_t unitig, size_t unitigStart, size_t unitigEnd, F sequenceGetter)
 	{
@@ -37,7 +37,6 @@ public:
 			std::lock_guard<std::mutex> lock { stringIndexMutex };
 			for (size_t i = 0; i < unitigEnd - unitigStart; i++)
 			{
-				size_t off = unitigStart + i;
 				uint16_t compressed;
 				std::string expanded;
 				std::tie(compressed, expanded) = sequenceGetter(i);

@@ -24,6 +24,7 @@
 #include "HPCConsensus.h"
 #include "ErrorMaskHelper.h"
 #include "VectorView.h"
+#include "StringIndex.h"
 
 struct AssemblyStats
 {
@@ -280,7 +281,7 @@ void findCollectedKmers(const SequenceCharType& seq, const size_t kmerSize, cons
 	}
 }
 
-void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<CompressedSequenceType>& unitigSequences, const std::vector<std::string>& inputReads, const size_t kmerSize, const ReadpartIterator& partIterator, const std::string& outputSequencePaths, const size_t numThreads)
+void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const std::vector<std::string>& inputReads, const size_t kmerSize, const ReadpartIterator& partIterator, const std::string& outputSequencePaths, const size_t numThreads)
 {
 	std::vector<std::tuple<size_t, bool, size_t>> kmerUnitigIndex;
 	std::vector<std::tuple<size_t, bool, size_t>> kmerUnitigOffset;
@@ -318,7 +319,7 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 	kmerUnitigEnd.resize(hashlist.size(), std::numeric_limits<size_t>::max());
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
-		std::vector<size_t> RLEposes = unitigSequences[i].getExpandedPositions();
+		std::vector<size_t> RLEposes = unitigSequences[i].getExpandedPositions(stringIndex);
 
 		unitigLength[i] = RLEposes.back();
 		size_t seqPos = 0;
@@ -844,27 +845,27 @@ AssemblyStats writeGraph(const BluntGraph& graph, const std::string& filename)
 	return stats;
 }
 
-size_t getOverlapFromRLE(const std::vector<CompressedSequenceType>& unitigSequences, std::pair<size_t, bool> fromUnitig, size_t rleOverlap)
+size_t getOverlapFromRLE(const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, std::pair<size_t, bool> fromUnitig, size_t rleOverlap)
 {
 	size_t overlap = 0;
 	if (fromUnitig.second)
 	{
 		for (size_t i = 0; i < rleOverlap; i++)
 		{
-			overlap += unitigSequences[fromUnitig.first].getExpanded(unitigSequences[fromUnitig.first].compressedSize() - 1 - i).size();
+			overlap += unitigSequences[fromUnitig.first].getExpandedStr(unitigSequences[fromUnitig.first].compressedSize() - 1 - i, stringIndex).size();
 		}
 	}
 	else
 	{
 		for (size_t i = 0; i < rleOverlap; i++)
 		{
-			overlap += unitigSequences[fromUnitig.first].getExpanded(i).size();
+			overlap += unitigSequences[fromUnitig.first].getExpandedStr(i, stringIndex).size();
 		}
 	}
 	return overlap;
 }
 
-AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename, const HashList& hashlist, const std::vector<CompressedSequenceType>& unitigSequences, const size_t kmerSize)
+AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename, const HashList& hashlist, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const size_t kmerSize)
 {
 	AssemblyStats stats;
 	stats.size = 0;
@@ -878,7 +879,7 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
 		file << "S\t" << (i+1) << "\t";
-		std::string realSequence = unitigSequences[i].getExpandedSequence();
+		std::string realSequence = unitigSequences[i].getExpandedSequence(stringIndex);
 		file << realSequence;
 		file << "\tll:f:" << unitigs.averageCoverage(i);
 		file << "\tFC:f:" << (unitigs.averageCoverage(i) * realSequence.size());
@@ -904,7 +905,7 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 				first = reverse(unitigs.unitigs[to.first].back());
 			}
 			size_t rleOverlap = hashlist.getOverlap(last, first);
-			size_t overlap = getOverlapFromRLE(unitigSequences, fw, rleOverlap);
+			size_t overlap = getOverlapFromRLE(unitigSequences, stringIndex, fw, rleOverlap);
 			file << "L\t" << (fw.first+1) << "\t" << (fw.second ? "+" : "-") << "\t" << (to.first+1) << "\t" << (to.second ? "+" : "-") << "\t" << overlap << "M\tec:i:" << unitigs.edgeCoverage(fw, to) << std::endl;
 		}
 		for (auto to : unitigs.edges[bw])
@@ -921,7 +922,7 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 				first = reverse(unitigs.unitigs[to.first].back());
 			}
 			size_t rleOverlap = hashlist.getOverlap(last, first);
-			size_t overlap = getOverlapFromRLE(unitigSequences, bw, rleOverlap);
+			size_t overlap = getOverlapFromRLE(unitigSequences, stringIndex, bw, rleOverlap);
 			file << "L\t" << (bw.first+1) << "\t" << (bw.second ? "+" : "-") << "\t" << (to.first+1) << "\t" << (to.second ? "+" : "-") << "\t" << overlap << "M\tec:i:" << unitigs.edgeCoverage(bw, to) << std::endl;
 		}
 	}
@@ -1103,7 +1104,7 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, std::v
 				assert(firstFromEnd < kmerSize);
 				firstPos = unitigSequences[i].compressedSize() - 1 - firstFromEnd;
 			}
-			auto seq = unitigSequences[secondUnitig].getExpanded(secondPos);
+			uint32_t seq = unitigSequences[secondUnitig].getExpanded(secondPos);
 			if (std::get<2>(found))
 			{
 				assert(unitigSequences[i].getCompressed(firstPos) == unitigSequences[secondUnitig].getCompressed(secondPos));
@@ -1111,9 +1112,9 @@ void forceEdgeConsistency(const UnitigGraph& unitigs, HashList& hashlist, std::v
 			else
 			{
 				assert(unitigSequences[i].getCompressed(firstPos) == complement(unitigSequences[secondUnitig].getCompressed(secondPos)));
-				seq = revCompRaw(seq);
 			}
-			assert(seq.size() > 0);
+			assert(secondUnitig < unitigSequences.size());
+			assert(i < unitigSequences.size());
 			unitigSequences[i].setExpanded(firstPos, seq);
 		}
 	}
@@ -1633,7 +1634,8 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	auto beforeSequences = getTime();
 	std::cerr << "Getting unitig sequences" << std::endl;
 	std::vector<CompressedSequenceType> unitigSequences;
-	unitigSequences = getHPCUnitigSequences(reads, unitigs, inputReads, kmerSize, partIterator, numThreads);
+	StringIndex stringIndex;
+	std::tie(unitigSequences, stringIndex) = getHPCUnitigSequences(reads, unitigs, inputReads, kmerSize, partIterator, numThreads);
 	assert(unitigSequences.size() == unitigs.unitigs.size());
 	auto beforeDeterminism = getTime();
 	auto beforeConsistency = getTime();
@@ -1641,7 +1643,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	AssemblyStats stats;
 	if (blunt)
 	{
-		BluntGraph blunt { reads, unitigs, unitigSequences };
+		BluntGraph blunt { reads, unitigs, unitigSequences, stringIndex };
 		std::cerr << "Writing graph to " << outputGraph << std::endl;
 		stats = writeGraph(blunt, outputGraph);
 	}
@@ -1660,14 +1662,14 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		}
 		beforeWrite = getTime();
 		std::cerr << "Writing graph to " << outputGraph << std::endl;
-		stats = writeGraph(unitigs, outputGraph, reads, unitigSequences, kmerSize);
+		stats = writeGraph(unitigs, outputGraph, reads, unitigSequences, stringIndex, kmerSize);
 	}
 	auto afterWrite = getTime();
 	if (outputSequencePaths != "")
 	{
 		assert(!blunt);
 		std::cerr << "Writing paths to " << outputSequencePaths << std::endl;
-		writePaths(reads, unitigs, unitigSequences, inputReads, kmerSize, partIterator, outputSequencePaths, numThreads);
+		writePaths(reads, unitigs, unitigSequences, stringIndex, inputReads, kmerSize, partIterator, outputSequencePaths, numThreads);
 	}
 	auto afterPaths = getTime();
 	std::cerr << "selecting k-mers and building graph topology took " << formatTime(beforeReading, beforeUnitigs) << std::endl;

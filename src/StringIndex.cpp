@@ -1,4 +1,5 @@
 #include "StringIndex.h"
+#include "ErrorMaskHelper.h"
 
 void StringIndex::init(size_t maxCode)
 {
@@ -14,6 +15,7 @@ void StringIndex::buildReverseIndex()
 		for (auto pair : index[i])
 		{
 			assert(reverseIndex[i][pair.second] == "");
+			assert(pair.second < reverseIndex[i].size());
 			reverseIndex[i][pair.second] = pair.first;
 		}
 		for (size_t j = 0; j < reverseIndex[i].size(); j++)
@@ -34,23 +36,38 @@ std::string StringIndex::getString(uint16_t compressed, uint32_t index) const
 		}
 		return result;
 	}
-	assert(compressed < reverseIndex.size());
-	assert(index < reverseIndex[compressed].size());
-	return reverseIndex[compressed][index];
+	if (complement(compressed) < compressed)
+	{
+		compressed = complement(compressed);
+		assert(compressed < reverseIndex.size());
+		assert(index < reverseIndex[compressed].size());
+		return revCompRaw(reverseIndex[compressed][index]);
+	}
+	else
+	{
+		assert(compressed < reverseIndex.size());
+		assert(index < reverseIndex[compressed].size());
+		return reverseIndex[compressed][index];
+	}
 }
 
-uint32_t StringIndex::getIndex(uint16_t compressed, const std::string& expanded)
+uint32_t StringIndex::getIndex(uint16_t compressed, std::string expanded)
 {
 	if (compressed >= 0 && compressed <= 3)
 	{
 		return expanded.size();
 	}
+	if (complement(compressed) < compressed)
+	{
+		compressed = complement(compressed);
+		expanded = revCompRaw(expanded);
+	}
+	uint32_t maybeResult = index[compressed].size();
 	auto found = index[compressed].find(expanded);
 	if (found != index[compressed].end())
 	{
 		return found->second;
 	}
-	uint32_t result = index[compressed].size();
-	index[compressed][expanded] = result;
-	return result;
+	index[compressed][expanded] = maybeResult;
+	return maybeResult;
 }

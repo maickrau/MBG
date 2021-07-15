@@ -47,19 +47,19 @@ void iterateEdges(const HashList& hashlist, const UnitigGraph& unitigs, F callba
 	}
 }
 
-BluntGraph::BluntGraph(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<CompressedSequenceType>& unitigSequences)
+BluntGraph::BluntGraph(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex)
 {
 	VectorWithDirection<size_t> maxOverlap = getMaxOverlaps(hashlist, unitigs);
-	initializeNodes(unitigSequences, maxOverlap, unitigs);
-	initializeEdgesAndEdgenodes(hashlist, unitigs, maxOverlap, unitigSequences);
+	initializeNodes(unitigSequences, stringIndex, maxOverlap, unitigs);
+	initializeEdgesAndEdgenodes(hashlist, unitigs, maxOverlap, unitigSequences, stringIndex);
 	assert(nodes.size() == nodeAvgCoverage.size());
 }
 
-void BluntGraph::initializeEdgesAndEdgenodes(const HashList& hashlist, const UnitigGraph& unitigs, const VectorWithDirection<size_t>& maxOverlap, const std::vector<CompressedSequenceType>& unbluntSequences)
+void BluntGraph::initializeEdgesAndEdgenodes(const HashList& hashlist, const UnitigGraph& unitigs, const VectorWithDirection<size_t>& maxOverlap, const std::vector<CompressedSequenceType>& unbluntSequences, const StringIndex& stringIndex)
 {
 	VectorWithDirection<std::unordered_set<std::pair<size_t, bool>>> processedCanons;
 	processedCanons.resize(unitigs.unitigs.size());
-	iterateEdges(hashlist, unitigs, [this, &maxOverlap, &unbluntSequences, &processedCanons](const std::pair<size_t, bool> from, const std::pair<size_t, bool> to, const size_t overlap, const size_t coverage) {
+	iterateEdges(hashlist, unitigs, [this, &maxOverlap, &unbluntSequences, &stringIndex, &processedCanons](const std::pair<size_t, bool> from, const std::pair<size_t, bool> to, const size_t overlap, const size_t coverage) {
 		auto canonDir = canon(from, to);
 		if (processedCanons[canonDir.first].count(canonDir.second) == 1) return;
 		processedCanons[canonDir.first].insert(canonDir.second);
@@ -85,14 +85,14 @@ void BluntGraph::initializeEdgesAndEdgenodes(const HashList& hashlist, const Uni
 		assert(missingSeq.compressedSize() == missingSeqSize);
 		size_t newNodeIndex = nodes.size();
 		assert(nodeAvgCoverage.size() == newNodeIndex);
-		nodes.push_back(missingSeq.getExpandedSequence());
+		nodes.push_back(missingSeq.getExpandedSequence(stringIndex));
 		nodeAvgCoverage.push_back(coverage);
 		edges.emplace_back(from.first, from.second, newNodeIndex, true, coverage);
 		edges.emplace_back(newNodeIndex, true, to.first, to.second, coverage);
 	});
 }
 
-void BluntGraph::initializeNodes(const std::vector<CompressedSequenceType>& unbluntSequences, const VectorWithDirection<size_t>& maxOverlap, const UnitigGraph& unitigs)
+void BluntGraph::initializeNodes(const std::vector<CompressedSequenceType>& unbluntSequences, const StringIndex& stringIndex, const VectorWithDirection<size_t>& maxOverlap, const UnitigGraph& unitigs)
 {
 	nodes.resize(unitigs.unitigs.size());
 	nodeAvgCoverage.resize(unitigs.unitigs.size());
@@ -103,7 +103,7 @@ void BluntGraph::initializeNodes(const std::vector<CompressedSequenceType>& unbl
 		assert(leftClip + rightClip < unbluntSequences[i].compressedSize());
 		CompressedSequenceType sequence = unbluntSequences[i].substr(leftClip, unbluntSequences[i].compressedSize() - leftClip - rightClip);
 		assert(sequence.compressedSize() >= 1);
-		nodes[i] = sequence.getExpandedSequence();
+		nodes[i] = sequence.getExpandedSequence(stringIndex);
 		nodeAvgCoverage[i] = unitigs.averageCoverage(i);
 	}
 }

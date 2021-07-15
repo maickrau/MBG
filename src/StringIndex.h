@@ -9,7 +9,7 @@ class StringIndex
 {
 public:
 	void init(size_t maxCode);
-	uint32_t getIndex(uint16_t compressed, const std::string& expanded);
+	uint32_t getIndex(uint16_t compressed, std::string expanded);
 	std::string getString(uint16_t compressed, uint32_t index) const;
 	void buildReverseIndex();
 private:

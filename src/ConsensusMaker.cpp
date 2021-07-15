@@ -32,14 +32,14 @@ void ConsensusMaker::init(const std::vector<size_t>& unitigLengths)
 	stringIndex.init(maxCode());
 }
 
-std::vector<CompressedSequenceType> ConsensusMaker::getSequences()
+std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getSequences()
 {
 	stringIndex.buildReverseIndex();
 	std::vector<CompressedSequenceType> result;
 	result.reserve(compressedSequences.size());
 	for (size_t i = 0; i < compressedSequences.size(); i++)
 	{
-		std::vector<std::string> expanded;
+		std::vector<uint32_t> expanded;
 		std::vector<std::vector<std::pair<uint32_t, uint32_t>>> complexCountsHere;
 		complexCountsHere.resize(compressedSequences[i].size());
 		for (auto pair : complexCounts[i])
@@ -58,7 +58,8 @@ std::vector<CompressedSequenceType> ConsensusMaker::getSequences()
 				maxCount = pair.second;
 			}
 			assert(maxCount > 0);
-			expanded.push_back(stringIndex.getString(compressedSequences[i][j], maxIndex));
+			assert(stringIndex.getString(compressedSequences[i][j], maxIndex) != "");
+			expanded.push_back(maxIndex);
 		}
 		assert(compressedSequences[i].size() >= 1);
 		assert(compressedSequences[i].size() == expanded.size());
@@ -73,5 +74,5 @@ std::vector<CompressedSequenceType> ConsensusMaker::getSequences()
 		}
 	}
 	assert(result.size() == compressedSequences.size());
-	return result;
+	return std::make_pair(result, stringIndex);
 }
