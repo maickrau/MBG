@@ -561,38 +561,38 @@ void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, 
 	unitigStart[reverse(pos)] = true;
 }
 
+std::vector<std::pair<size_t, bool>> getUnitigHashes(const std::pair<size_t, bool> start, const SparseEdgeContainer& edges)
+{
+	std::vector<std::pair<size_t, bool>> result;
+	result.emplace_back(start);
+	while (true)
+	{
+		if (edges[result.back()].size() != 1) break;
+		auto newPos = edges[result.back()][0];
+		auto revPos = std::make_pair(newPos.first, !newPos.second);
+		if (edges[revPos].size() != 1) break;
+		if (newPos == start) break;
+		if (newPos.first == result.back().first) break;
+		result.emplace_back(newPos);
+	}
+	return result;
+}
+
 void startUnitig(UnitigGraph& result, std::pair<size_t, bool> start, const SparseEdgeContainer& edges, std::vector<bool>& belongsToUnitig, const HashList& hashlist, size_t minCoverage)
 {
+	std::vector<std::pair<size_t, bool>> hashes = getUnitigHashes(start, edges);
 	result.unitigs.emplace_back();
 	result.unitigCoverage.emplace_back();
 	result.edges.emplace_back();
 	result.edgeCov.emplace_back();
-	std::pair<size_t, bool> pos = start;
-	assert(!belongsToUnitig[pos.first]);
-	belongsToUnitig[pos.first] = true;
-	result.unitigs.back().emplace_back(pos);
-	result.unitigCoverage.back().emplace_back(hashlist.coverage[pos.first]);
-	while (true)
+	result.unitigs.back().reserve(hashes.size());
+	result.unitigCoverage.back().reserve(hashes.size());
+	for (auto pos : hashes)
 	{
-		if (edges[pos].size() != 1) break;
-		auto newPos = edges[pos][0];
-		auto revPos = std::make_pair(newPos.first, !newPos.second);
-		if (edges[revPos].size() != 1) break;
-		if (newPos == start)
-		{
-			break;
-		}
-		if (belongsToUnitig[newPos.first])
-		{
-			assert(newPos.first == pos.first);
-			assert(newPos.second != pos.second);
-			break;
-		}
-		pos = newPos;
-		assert(!belongsToUnitig[pos.first]);
-		belongsToUnitig[pos.first] = true;
 		result.unitigs.back().emplace_back(pos);
 		result.unitigCoverage.back().emplace_back(hashlist.coverage[pos.first]);
+		assert(!belongsToUnitig[pos.first]);
+		belongsToUnitig[pos.first] = true;
 	}
 }
 
