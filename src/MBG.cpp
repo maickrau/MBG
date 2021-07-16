@@ -1481,9 +1481,64 @@ void printUnitigKmerCount(const UnitigGraph& unitigs)
 	std::cerr << unitigKmers << " distinct selected k-mers in unitigs after filtering" << std::endl;
 }
 
-std::pair<UnitigGraph, HashList> filterKmersToUnitigKmers(const UnitigGraph& unitigs, const HashList& reads, const size_t kmerSize)
+HashList filterHashes(const HashList& reads, const size_t kmerSize, const std::vector<size_t>& newIndex, size_t maxCount)
 {
 	HashList resultHashlist { kmerSize };
+	resultHashlist.coverage.resize(maxCount, 0);
+	resultHashlist.sequenceOverlap.resize(maxCount);
+	resultHashlist.edgeCoverage.resize(maxCount);
+	for (auto pair : reads.hashToNode)
+	{
+		if (newIndex[pair.second.first] == std::numeric_limits<size_t>::max()) continue;
+		resultHashlist.hashToNode[pair.first] = std::make_pair(newIndex[pair.second.first], pair.second.second);
+	}
+	assert(reads.coverage.size() == reads.sequenceOverlap.size());
+	assert(reads.coverage.size() == reads.edgeCoverage.size());
+	for (size_t i = 0; i < reads.coverage.size(); i++)
+	{
+		if (newIndex[i] == std::numeric_limits<size_t>::max()) continue;
+		size_t newI = newIndex[i];
+		resultHashlist.coverage[newI] = reads.coverage[i];
+		std::pair<size_t, bool> fw { i, true };
+		std::pair<size_t, bool> newFw { newI, true };
+		for (auto pair : reads.sequenceOverlap[fw])
+		{
+			std::pair<size_t, bool> to = pair.first;
+			if (newIndex[to.first] == std::numeric_limits<size_t>::max()) continue;
+			std::pair<size_t, bool> newTo { newIndex[to.first], to.second };
+			resultHashlist.addSequenceOverlap(newFw, newTo, pair.second);
+		}
+		for (auto pair : reads.edgeCoverage[fw])
+		{
+			std::pair<size_t, bool> to = pair.first;
+			if (newIndex[to.first] == std::numeric_limits<size_t>::max()) continue;
+			std::pair<size_t, bool> newTo { newIndex[to.first], to.second };
+			auto key = canon(newFw, newTo);
+			resultHashlist.edgeCoverage[key.first][key.second] = pair.second;
+		}
+		std::pair<size_t, bool> bw { i, false };
+		std::pair<size_t, bool> newBw { newI, false };
+		for (auto pair : reads.sequenceOverlap[bw])
+		{
+			std::pair<size_t, bool> to = pair.first;
+			if (newIndex[to.first] == std::numeric_limits<size_t>::max()) continue;
+			std::pair<size_t, bool> newTo { newIndex[to.first], to.second };
+			resultHashlist.addSequenceOverlap(newBw, newTo, pair.second);
+		}
+		for (auto pair : reads.edgeCoverage[bw])
+		{
+			std::pair<size_t, bool> to = pair.first;
+			if (newIndex[to.first] == std::numeric_limits<size_t>::max()) continue;
+			std::pair<size_t, bool> newTo { newIndex[to.first], to.second };
+			auto key = canon(newBw, newTo);
+			resultHashlist.edgeCoverage[key.first][key.second] = pair.second;
+		}
+	}
+	return resultHashlist;
+}
+
+std::pair<UnitigGraph, HashList> filterKmersToUnitigKmers(const UnitigGraph& unitigs, const HashList& reads, const size_t kmerSize)
+{
 	UnitigGraph resultUnitigs;
 	resultUnitigs.edges = unitigs.edges;
 	resultUnitigs.edgeCov = unitigs.edgeCov;
@@ -1533,59 +1588,10 @@ std::pair<UnitigGraph, HashList> filterKmersToUnitigKmers(const UnitigGraph& uni
 			}
 		}
 	}
-	resultHashlist.coverage.resize(count, 0);
-	resultHashlist.sequenceOverlap.resize(count);
-	resultHashlist.edgeCoverage.resize(count);
+	HashList resultHashlist = filterHashes(reads, kmerSize, newIndex, count);
 	for (auto t : newOverlaps)
 	{
 		resultHashlist.addSequenceOverlap(std::get<0>(t), std::get<1>(t), std::get<2>(t));
-	}
-	for (auto pair : reads.hashToNode)
-	{
-		if (newIndex[pair.second.first] == std::numeric_limits<size_t>::max()) continue;
-		resultHashlist.hashToNode[pair.first] = std::make_pair(newIndex[pair.second.first], pair.second.second);
-	}
-	assert(reads.coverage.size() == reads.sequenceOverlap.size());
-	assert(reads.coverage.size() == reads.edgeCoverage.size());
-	for (size_t i = 0; i < reads.coverage.size(); i++)
-	{
-		if (newIndex[i] == std::numeric_limits<size_t>::max()) continue;
-		size_t newI = newIndex[i];
-		resultHashlist.coverage[newI] = reads.coverage[i];
-		std::pair<size_t, bool> fw { i, true };
-		std::pair<size_t, bool> newFw { newI, true };
-		for (auto pair : reads.sequenceOverlap[fw])
-		{
-			std::pair<size_t, bool> to = pair.first;
-			if (newIndex[to.first] == std::numeric_limits<size_t>::max()) continue;
-			std::pair<size_t, bool> newTo { newIndex[to.first], to.second };
-			resultHashlist.addSequenceOverlap(newFw, newTo, pair.second);
-		}
-		for (auto pair : reads.edgeCoverage[fw])
-		{
-			std::pair<size_t, bool> to = pair.first;
-			if (newIndex[to.first] == std::numeric_limits<size_t>::max()) continue;
-			std::pair<size_t, bool> newTo { newIndex[to.first], to.second };
-			auto key = canon(newFw, newTo);
-			resultHashlist.edgeCoverage[key.first][key.second] = pair.second;
-		}
-		std::pair<size_t, bool> bw { i, false };
-		std::pair<size_t, bool> newBw { newI, false };
-		for (auto pair : reads.sequenceOverlap[bw])
-		{
-			std::pair<size_t, bool> to = pair.first;
-			if (newIndex[to.first] == std::numeric_limits<size_t>::max()) continue;
-			std::pair<size_t, bool> newTo { newIndex[to.first], to.second };
-			resultHashlist.addSequenceOverlap(newBw, newTo, pair.second);
-		}
-		for (auto pair : reads.edgeCoverage[bw])
-		{
-			std::pair<size_t, bool> to = pair.first;
-			if (newIndex[to.first] == std::numeric_limits<size_t>::max()) continue;
-			std::pair<size_t, bool> newTo { newIndex[to.first], to.second };
-			auto key = canon(newBw, newTo);
-			resultHashlist.edgeCoverage[key.first][key.second] = pair.second;
-		}
 	}
 	return std::make_pair(resultUnitigs, resultHashlist);
 }
