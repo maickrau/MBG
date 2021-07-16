@@ -590,7 +590,7 @@ void startUnitig(UnitigGraph& result, std::pair<size_t, bool> start, const Spars
 	for (auto pos : hashes)
 	{
 		result.unitigs.back().emplace_back(pos);
-		result.unitigCoverage.back().emplace_back(hashlist.coverage[pos.first]);
+		result.unitigCoverage.back().emplace_back(hashlist.coverage.get(pos.first));
 		assert(!belongsToUnitig[pos.first]);
 		belongsToUnitig[pos.first] = true;
 	}
@@ -628,7 +628,7 @@ UnitigGraph getUnitigGraph(const HashList& hashlist, size_t minCoverage)
 	auto edges = getCoveredEdges(hashlist, minCoverage);
 	for (size_t i = 0; i < hashlist.coverage.size(); i++)
 	{
-		if (hashlist.coverage[i] < minCoverage) continue;
+		if (hashlist.coverage.get(i) < minCoverage) continue;
 		std::pair<size_t, bool> fw { i, true };
 		std::pair<size_t, bool> bw { i, false };
 		auto fwEdges = edges[fw];
@@ -645,7 +645,7 @@ UnitigGraph getUnitigGraph(const HashList& hashlist, size_t minCoverage)
 			for (auto edge : bwEdges)
 			{
 				if (belongsToUnitig[edge.first]) continue;
-				assert(hashlist.coverage[edge.first] >= minCoverage);
+				assert(hashlist.coverage.get(edge.first) >= minCoverage);
 				startUnitig(result, edge, edges, belongsToUnitig, hashlist, minCoverage);
 				assert(result.unitigs.size() > 0);
 				unitigTip[result.unitigs.back().back()] = std::make_pair(result.unitigs.size()-1, true);
@@ -664,7 +664,7 @@ UnitigGraph getUnitigGraph(const HashList& hashlist, size_t minCoverage)
 			for (auto edge : fwEdges)
 			{
 				if (belongsToUnitig[edge.first]) continue;
-				assert(hashlist.coverage[edge.first] >= minCoverage);
+				assert(hashlist.coverage.get(edge.first) >= minCoverage);
 				startUnitig(result, edge, edges, belongsToUnitig, hashlist, minCoverage);
 				assert(result.unitigs.size() > 0);
 				unitigTip[result.unitigs.back().back()] = std::make_pair(result.unitigs.size()-1, true);
@@ -675,7 +675,7 @@ UnitigGraph getUnitigGraph(const HashList& hashlist, size_t minCoverage)
 	for (size_t i = 0; i < hashlist.coverage.size(); i++)
 	{
 		if (belongsToUnitig[i]) continue;
-		if (hashlist.coverage[i] < minCoverage) continue;
+		if (hashlist.coverage.get(i) < minCoverage) continue;
 		std::pair<size_t, bool> fw { i, true };
 		std::pair<size_t, bool> bw { i, false };
 		auto fwEdges = edges[fw];
@@ -690,7 +690,7 @@ UnitigGraph getUnitigGraph(const HashList& hashlist, size_t minCoverage)
 	}
 	for (size_t i = 0; i < hashlist.coverage.size(); i++)
 	{
-		if (hashlist.coverage[i] < minCoverage) continue;
+		if (hashlist.coverage.get(i) < minCoverage) continue;
 		assert(belongsToUnitig[i]);
 	}
 	for (auto tip : unitigTip)
@@ -703,8 +703,8 @@ UnitigGraph getUnitigGraph(const HashList& hashlist, size_t minCoverage)
 			auto toNodeRev = reverse(edge);
 			assert(unitigTip.count(toNodeRev) == 1);
 			auto toUnitig = reverse(unitigTip.at(toNodeRev));
-			assert(hashlist.coverage[fromNode.first] >= minCoverage);
-			assert(hashlist.coverage[toNodeFw.first] >= minCoverage);
+			assert(hashlist.coverage.get(fromNode.first) >= minCoverage);
+			assert(hashlist.coverage.get(toNodeFw.first) >= minCoverage);
 			result.edges[fromUnitig].emplace(toUnitig);
 			result.edges[reverse(toUnitig)].emplace(reverse(fromUnitig));
 			result.edgeCoverage(fromUnitig, toUnitig) = hashlist.getEdgeCoverage(fromNode, toNodeFw);
@@ -1498,7 +1498,7 @@ HashList filterHashes(const HashList& reads, const size_t kmerSize, const std::v
 	{
 		if (newIndex[i] == std::numeric_limits<size_t>::max()) continue;
 		size_t newI = newIndex[i];
-		resultHashlist.coverage[newI] = reads.coverage[i];
+		resultHashlist.coverage.set(newI, reads.coverage.get(i));
 		std::pair<size_t, bool> fw { i, true };
 		std::pair<size_t, bool> newFw { newI, true };
 		for (auto pair : reads.sequenceOverlap[fw])

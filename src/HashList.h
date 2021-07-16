@@ -8,12 +8,13 @@
 #include <phmap.h>
 #include "MBGCommon.h"
 #include "VectorWithDirection.h"
+#include "LittleBigVector.h"
 
 class HashList
 {
 public:
 	HashList(size_t kmerSize);
-	std::vector<size_t> coverage;
+	LittleBigVector<uint8_t, size_t> coverage;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> sequenceOverlap;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> edgeCoverage;
 	phmap::flat_hash_map<HashType, std::pair<size_t, bool>> hashToNode;

@@ -75,7 +75,7 @@ std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(VectorView<CharTy
 		auto found = hashToNode.find(fwHash);
 		if (found != hashToNode.end())
 		{
-			coverage[found->second.first] += 1;
+			coverage.set(found->second.first, coverage.get(found->second.first)+1);
 			return std::make_pair(found->second, fwHash);
 		}
 		assert(found == hashToNode.end());
@@ -86,7 +86,7 @@ std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(VectorView<CharTy
 		auto found = hashToNode.find(fwHash);
 		if (found != hashToNode.end())
 		{
-			coverage[found->second.first] += 1;
+			coverage.set(found->second.first, coverage.get(found->second.first)+1);
 			return std::make_pair(found->second, fwHash);
 		}
 		assert(found == hashToNode.end());
