@@ -27,10 +27,32 @@ size_t HashList::getEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t,
 	return edgeCoverage.at(from).at(to);
 }
 
+std::vector<std::pair<std::pair<size_t, bool>, size_t>> HashList::getEdgeCoverages(std::pair<size_t, bool> from) const
+{
+	return std::vector<std::pair<std::pair<size_t, bool>, size_t>> { edgeCoverage.at(from).begin(), edgeCoverage.at(from).end() };
+}
+
+void HashList::setEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to, size_t coverage)
+{
+	std::tie(from, to) = canon(from, to);
+	edgeCoverage[from][to] = coverage;
+}
+
 size_t HashList::getOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to) const
 {
 	std::tie(from, to) = canon(from, to);
 	return sequenceOverlap.at(from).at(to);
+}
+
+bool HashList::hasSequenceOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to) const
+{
+	std::tie(from, to) = canon(from, to);
+	return sequenceOverlap.at(from).count(to) == 1;
+}
+
+std::vector<std::pair<std::pair<size_t, bool>, size_t>> HashList::getSequenceOverlaps(std::pair<size_t, bool> from) const
+{
+	return std::vector<std::pair<std::pair<size_t, bool>, size_t>> { sequenceOverlap.at(from).begin(), sequenceOverlap.at(from).end() };
 }
 
 void HashList::addSequenceOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, const size_t overlap)
@@ -103,4 +125,11 @@ std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(VectorView<CharTy
 		sequenceOverlap.emplace_back();
 		return std::make_pair(std::make_pair(fwNode, true), fwHash);
 	}
+}
+
+void HashList::resize(size_t size)
+{
+	coverage.resize(size, 0);
+	sequenceOverlap.resize(size);
+	edgeCoverage.resize(size);
 }
