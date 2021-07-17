@@ -34,9 +34,11 @@ int main(int argc, char** argv)
 		std::cerr << "Options for --error-masking:" << std::endl;
 		std::cerr << "\tno\tNo error masking" << std::endl;
 		std::cerr << "\thpc\tMask homopolymer errors (default)" << std::endl;
+		std::cerr << "\tdinuc\tMask homopolymer and dinucleotide errors" << std::endl;
+		std::cerr << "\tmsat\tMask homopolymer and microsatellite errors up to 6bp" << std::endl;
 		std::cerr << "\tcollapse\tCollapse homopolymers" << std::endl;
-		std::cerr << "\tdinuc\tCollapse homopolymers and mask dinucleotide errors" << std::endl;
-		std::cerr << "\tmsat\tCollapse homopolymers and mask microsatellite errors up to 6bp" << std::endl;
+		std::cerr << "\tcollapse-dinuc\tCollapse homopolymers and mask dinucleotide errors" << std::endl;
+		std::cerr << "\tcollapse-msat\tCollapse homopolymers and mask microsatellite errors up to 6bp" << std::endl;
 		exit(0);
 	}
 	bool paramError = false;
@@ -97,6 +99,14 @@ int main(int argc, char** argv)
 		else if (params["error-masking"].as<std::string>() == "msat")
 		{
 			errorMasking = ErrorMasking::Microsatellite;
+		}
+		else if (params["error-masking"].as<std::string>() == "collapse-dinuc")
+		{
+			errorMasking = ErrorMasking::CollapseDinuc;
+		}
+		else if (params["error-masking"].as<std::string>() == "collapse-msat")
+		{
+			errorMasking = ErrorMasking::CollapseMicrosatellite;
 		}
 		else
 		{

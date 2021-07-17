@@ -19,6 +19,8 @@ enum ErrorMasking
 	Collapse,
 	Dinuc,
 	Microsatellite,
+	CollapseDinuc,
+	CollapseMicrosatellite,
 };
 
 template <typename F, typename EdgeCheckFunction>
@@ -112,6 +114,14 @@ public:
 		{
 			iterateMicrosatellite(read.sequence, callback);
 		}
+		else if (errorMasking == ErrorMasking::CollapseDinuc)
+		{
+			iterateCollapseDinuc(read.sequence, callback);
+		}
+		else if (errorMasking == ErrorMasking::CollapseMicrosatellite)
+		{
+			iterateCollapseMicrosatellite(read.sequence, callback);
+		}
 		else
 		{
 			assert(errorMasking == ErrorMasking::No);
@@ -136,6 +146,18 @@ private:
 		});
 	}
 	template <typename F>
+	void iterateCollapseMicrosatellite(const std::string& seq, F callback) const
+	{
+		iterateCollapse(seq, [callback](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
+		{
+			auto pieces = multiRLECompress(seq, poses, 6);
+			for (const auto& pair : pieces)
+			{
+				callback(pair.first, pair.second, raw);
+			}
+		});
+	}
+	template <typename F>
 	void iterateCollapse(const std::string& seq, F callback) const
 	{
 		iterateRLE(seq, [callback](const SequenceCharType& seq, const SequenceLengthType& fakeposes, const std::string& fakeraw)
@@ -143,10 +165,11 @@ private:
 			std::string rawSeq;
 			SequenceLengthType poses;
 			rawSeq.resize(seq.size());
-			poses.resize(seq.size());
-			for (size_t i = 0; i < poses.size(); i++)
+			poses.resize(seq.size()+1);
+			poses[0] = 0;
+			for (size_t i = 0; i < seq.size(); i++)
 			{
-				poses[i] = i;
+				poses[i+1] = i+1;
 				assert(seq[i] >= 0 && seq[i] < 4);
 				switch(seq[i])
 				{
@@ -171,6 +194,18 @@ private:
 	void iterateDinuc(const std::string& seq, F callback) const
 	{
 		iterateRLE(seq, [callback](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
+		{
+			auto pieces = multiRLECompress(seq, poses, 2);
+			for (const auto& pair : pieces)
+			{
+				callback(pair.first, pair.second, raw);
+			}
+		});
+	}
+	template <typename F>
+	void iterateCollapseDinuc(const std::string& seq, F callback) const
+	{
+		iterateCollapse(seq, [callback](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
 			auto pieces = multiRLECompress(seq, poses, 2);
 			for (const auto& pair : pieces)
