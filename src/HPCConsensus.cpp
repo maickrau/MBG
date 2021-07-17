@@ -67,20 +67,19 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 			size_t currentDiagonal = 0;
 			bool currentUnitigForward = true;
 			std::vector<std::tuple<size_t, size_t, size_t>> matchBlocks;
+			std::vector<std::pair<size_t, std::pair<size_t, bool>>> matchPositions;
 			for (auto pos : positions)
 			{
 				VectorView<CharType> minimizerSequence { seq, pos, pos + kmerSize };
 				std::pair<size_t, bool> current;
 				current = hashlist.getNodeOrNull(minimizerSequence);
-				if (current.first == std::numeric_limits<size_t>::max())
-				{
-					if (currentUnitig != std::numeric_limits<size_t>::max())
-					{
-						addCounts(consensusMaker, seq, poses, rawSeq, currentSeqStart, currentSeqEnd, currentUnitig, currentUnitigStart, currentUnitigEnd, currentUnitigForward);
-					}
-					currentUnitig = std::numeric_limits<size_t>::max();
-					continue;
-				}
+				if (current.first == std::numeric_limits<size_t>::max()) continue;
+				matchPositions.emplace_back(pos, current);
+			}
+			for (size_t i = 0; i < matchPositions.size(); i++)
+			{
+				size_t pos = matchPositions[i].first;
+				std::pair<size_t, bool> current = matchPositions[i].second;
 				assert(current.first != std::numeric_limits<size_t>::max());
 				assert(current.first < kmerPosition.size());
 				assert(std::get<0>(kmerPosition[current.first]) != std::numeric_limits<size_t>::max());
