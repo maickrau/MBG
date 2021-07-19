@@ -64,7 +64,7 @@ public:
 			bool didSimple = false;
 			if (expandedIndex < 256)
 			{
-				if (simpleCounts[unitig][off].second == 0 || (expandedIndex == simpleCounts[unitig][off].first && simpleCounts[unitig][off].second < 256))
+				if (simpleCounts[unitig][off].second == 0 || (expandedIndex == simpleCounts[unitig][off].first && simpleCounts[unitig][off].second < 255))
 				{
 					simpleCounts[unitig][off].first = expandedIndex;
 					simpleCounts[unitig][off].second += 1;
