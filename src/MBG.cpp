@@ -578,6 +578,25 @@ std::vector<std::pair<size_t, bool>> getUnitigHashes(const std::pair<size_t, boo
 	return result;
 }
 
+void checkUnitigHashes(const std::pair<size_t, bool> start, const SparseEdgeContainer& edges, std::vector<bool>& checked, const HashList& hashlist, const double minUnitigCoverage, std::vector<bool>& kept)
+{
+	std::vector<std::pair<size_t, bool>> hashes = getUnitigHashes(start, edges);
+	assert(hashes.size() > 0);
+	double totalCoverage = 0;
+	for (auto pos : hashes)
+	{
+		totalCoverage += hashlist.coverage.get(pos.first);
+	}
+	totalCoverage /= (double)hashes.size();
+	if (totalCoverage >= minUnitigCoverage)
+	{
+		for (auto pos : hashes)
+		{
+			kept[pos.first] = true;
+		}
+	}
+}
+
 void startUnitig(UnitigGraph& result, std::pair<size_t, bool> start, const SparseEdgeContainer& edges, std::vector<bool>& belongsToUnitig, const HashList& hashlist, size_t minCoverage)
 {
 	std::vector<std::pair<size_t, bool>> hashes = getUnitigHashes(start, edges);
@@ -619,8 +638,49 @@ SparseEdgeContainer getCoveredEdges(const HashList& hashlist, size_t minCoverage
 	return result;
 }
 
-UnitigGraph getUnitigGraph(const HashList& hashlist, size_t minCoverage)
+UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const double minUnitigCoverage)
 {
+	{
+		auto edges = getCoveredEdges(hashlist, minCoverage);
+		std::vector<bool> checked;
+		std::vector<bool> kept;
+		checked.resize(hashlist.size(), false);
+		kept.resize(hashlist.size(), false);
+		for (size_t i = 0; i < hashlist.size(); i++)
+		{
+			std::pair<size_t, bool> fw { i, true };
+			std::pair<size_t, bool> bw { i, false };
+			auto fwEdges = edges[fw];
+			auto bwEdges = edges[bw];
+			if (bwEdges.size() != 1)
+			{
+				if (!checked[i])
+				{
+					checkUnitigHashes(fw, edges, checked, hashlist, minUnitigCoverage, kept);
+				}
+				for (auto edge : bwEdges)
+				{
+					if (checked[edge.first]) continue;
+					assert(hashlist.coverage.get(edge.first) >= minCoverage);
+					checkUnitigHashes(edge, edges, checked, hashlist, minUnitigCoverage, kept);
+				}
+			}
+			if (fwEdges.size() != 1)
+			{
+				if (!checked[i])
+				{
+					checkUnitigHashes(bw, edges, checked, hashlist, minUnitigCoverage, kept);
+				}
+				for (auto edge : fwEdges)
+				{
+					if (checked[edge.first]) continue;
+					assert(hashlist.coverage.get(edge.first) >= minCoverage);
+					checkUnitigHashes(edge, edges, checked, hashlist, minUnitigCoverage, kept);
+				}
+			}
+		}
+		hashlist.filter(kept);
+	}
 	UnitigGraph result;
 	std::vector<bool> belongsToUnitig;
 	belongsToUnitig.resize(hashlist.coverage.size(), false);
@@ -1624,7 +1684,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	loadReadsAsHashesMultithread(reads, inputReads, kmerSize, partIterator, numThreads);
 	auto beforeUnitigs = getTime();
 	std::cerr << "Unitigifying" << std::endl;
-	auto unitigs = getUnitigGraph(reads, minCoverage);
+	auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage);
 	auto beforeFilter = getTime();
 	if (minUnitigCoverage > minCoverage)
 	{

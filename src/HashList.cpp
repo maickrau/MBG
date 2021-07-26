@@ -132,3 +132,75 @@ void HashList::resize(size_t size)
 	sequenceOverlap.resize(size);
 	edgeCoverage.resize(size);
 }
+
+void HashList::filter(const std::vector<bool>& kept)
+{
+	assert(kept.size() == size());
+	std::vector<size_t> newIndex;
+	newIndex.resize(size(), std::numeric_limits<size_t>::max());
+	size_t index = 0;
+	for (size_t i = 0; i < kept.size(); i++)
+	{
+		if (!kept[i]) continue;
+		newIndex[i] = index;
+		index += 1;
+	}
+	if (index == size()) return;
+	{
+		LittleBigVector<uint8_t, size_t> newCoverage;
+		newCoverage.resize(index);
+		for (size_t i = 0; i < kept.size(); i++)
+		{
+			if (!kept[i]) continue;
+			newCoverage.set(newIndex[i], coverage.get(i));
+		}
+		std::swap(coverage, newCoverage);
+	}
+	{
+		phmap::flat_hash_map<HashType, std::pair<size_t, bool>> newHashToNode;
+		for (auto pair : hashToNode)
+		{
+			if (!kept[pair.second.first]) continue;
+			newHashToNode[pair.first] = std::make_pair(newIndex[pair.second.first], pair.second.second);
+		}
+		std::swap(hashToNode, newHashToNode);
+	}
+	{
+		MostlySparse2DHashmap<size_t> newEdgeCoverage;
+		newEdgeCoverage.resize(index);
+		for (size_t i = 0; i < kept.size(); i++)
+		{
+			if (!kept[i]) continue;
+			for (auto key : edgeCoverage.getValues(std::make_pair(i, true)))
+			{
+				if (!kept[key.first.first]) continue;
+				newEdgeCoverage.set(std::make_pair(newIndex[i], true), std::make_pair(newIndex[key.first.first], key.first.second), key.second);
+			}
+			for (auto key : edgeCoverage.getValues(std::make_pair(i, false)))
+			{
+				if (!kept[key.first.first]) continue;
+				newEdgeCoverage.set(std::make_pair(newIndex[i], false), std::make_pair(newIndex[key.first.first], key.first.second), key.second);
+			}
+		}
+		std::swap(edgeCoverage, newEdgeCoverage);
+	}
+	{
+		MostlySparse2DHashmap<size_t> newSequenceOverlap;
+		newSequenceOverlap.resize(index);
+		for (size_t i = 0; i < kept.size(); i++)
+		{
+			if (!kept[i]) continue;
+			for (auto key : sequenceOverlap.getValues(std::make_pair(i, true)))
+			{
+				if (!kept[key.first.first]) continue;
+				newSequenceOverlap.set(std::make_pair(newIndex[i], true), std::make_pair(newIndex[key.first.first], key.first.second), key.second);
+			}
+			for (auto key : sequenceOverlap.getValues(std::make_pair(i, false)))
+			{
+				if (!kept[key.first.first]) continue;
+				newSequenceOverlap.set(std::make_pair(newIndex[i], false), std::make_pair(newIndex[key.first.first], key.first.second), key.second);
+			}
+		}
+		std::swap(sequenceOverlap, newSequenceOverlap);
+	}
+}
