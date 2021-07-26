@@ -25,6 +25,7 @@
 #include "ErrorMaskHelper.h"
 #include "VectorView.h"
 #include "StringIndex.h"
+#include "RankBitvector.h"
 
 struct AssemblyStats
 {
@@ -578,7 +579,7 @@ std::vector<std::pair<size_t, bool>> getUnitigHashes(const std::pair<size_t, boo
 	return result;
 }
 
-void checkUnitigHashes(const std::pair<size_t, bool> start, const SparseEdgeContainer& edges, std::vector<bool>& checked, const HashList& hashlist, const double minUnitigCoverage, std::vector<bool>& kept)
+void checkUnitigHashes(const std::pair<size_t, bool> start, const SparseEdgeContainer& edges, std::vector<bool>& checked, const HashList& hashlist, const double minUnitigCoverage, RankBitvector& kept)
 {
 	std::vector<std::pair<size_t, bool>> hashes = getUnitigHashes(start, edges);
 	assert(hashes.size() > 0);
@@ -592,7 +593,7 @@ void checkUnitigHashes(const std::pair<size_t, bool> start, const SparseEdgeCont
 	{
 		for (auto pos : hashes)
 		{
-			kept[pos.first] = true;
+			kept.set(pos.first, true);
 		}
 	}
 }
@@ -642,10 +643,9 @@ UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const d
 {
 	{
 		auto edges = getCoveredEdges(hashlist, minCoverage);
+		RankBitvector kept { hashlist.size() };
 		std::vector<bool> checked;
-		std::vector<bool> kept;
 		checked.resize(hashlist.size(), false);
-		kept.resize(hashlist.size(), false);
 		for (size_t i = 0; i < hashlist.size(); i++)
 		{
 			std::pair<size_t, bool> fw { i, true };
@@ -679,6 +679,7 @@ UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const d
 				}
 			}
 		}
+		kept.buildRanks();
 		hashlist.filter(kept);
 	}
 	UnitigGraph result;

@@ -10,6 +10,7 @@
 #include "VectorWithDirection.h"
 #include "LittleBigVector.h"
 #include "MostlySparse2DHashmap.h"
+#include "RankBitvector.h"
 
 class HashList
 {
@@ -30,7 +31,7 @@ public:
 	void resize(size_t size);
 	std::pair<size_t, bool> getNodeOrNull(VectorView<CharType> sequence) const;
 	std::pair<std::pair<size_t, bool>, HashType> addNode(VectorView<CharType> sequence, VectorView<CharType> reverse, HashType previousHash, size_t overlap, uint64_t bucketHash);
-	void filter(const std::vector<bool>& kept);
+	void filter(const RankBitvector& kept);
 private:
 	MostlySparse2DHashmap<size_t> edgeCoverage;
 	MostlySparse2DHashmap<size_t> sequenceOverlap;

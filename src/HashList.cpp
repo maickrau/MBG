@@ -133,26 +133,17 @@ void HashList::resize(size_t size)
 	edgeCoverage.resize(size);
 }
 
-void HashList::filter(const std::vector<bool>& kept)
+void HashList::filter(const RankBitvector& kept)
 {
 	assert(kept.size() == size());
-	std::vector<size_t> newIndex;
-	newIndex.resize(size(), std::numeric_limits<size_t>::max());
-	size_t index = 0;
-	for (size_t i = 0; i < kept.size(); i++)
-	{
-		if (!kept[i]) continue;
-		newIndex[i] = index;
-		index += 1;
-	}
-	if (index == size()) return;
+	if (kept.getRank(kept.size()-1) == size()-1) return;
 	{
 		LittleBigVector<uint8_t, size_t> newCoverage;
-		newCoverage.resize(index);
+		newCoverage.resize(kept.size());
 		for (size_t i = 0; i < kept.size(); i++)
 		{
-			if (!kept[i]) continue;
-			newCoverage.set(newIndex[i], coverage.get(i));
+			if (!kept.get(i)) continue;
+			newCoverage.set(kept.getRank(i), coverage.get(i));
 		}
 		std::swap(coverage, newCoverage);
 	}
@@ -160,45 +151,45 @@ void HashList::filter(const std::vector<bool>& kept)
 		phmap::flat_hash_map<HashType, std::pair<size_t, bool>> newHashToNode;
 		for (auto pair : hashToNode)
 		{
-			if (!kept[pair.second.first]) continue;
-			newHashToNode[pair.first] = std::make_pair(newIndex[pair.second.first], pair.second.second);
+			if (!kept.get(pair.second.first)) continue;
+			newHashToNode[pair.first] = std::make_pair(kept.getRank(pair.second.first), pair.second.second);
 		}
 		std::swap(hashToNode, newHashToNode);
 	}
 	{
 		MostlySparse2DHashmap<size_t> newEdgeCoverage;
-		newEdgeCoverage.resize(index);
+		newEdgeCoverage.resize(kept.size());
 		for (size_t i = 0; i < kept.size(); i++)
 		{
-			if (!kept[i]) continue;
+			if (!kept.get(i)) continue;
 			for (auto key : edgeCoverage.getValues(std::make_pair(i, true)))
 			{
-				if (!kept[key.first.first]) continue;
-				newEdgeCoverage.set(std::make_pair(newIndex[i], true), std::make_pair(newIndex[key.first.first], key.first.second), key.second);
+				if (!kept.get(key.first.first)) continue;
+				newEdgeCoverage.set(std::make_pair(kept.getRank(i), true), std::make_pair(kept.getRank(key.first.first), key.first.second), key.second);
 			}
 			for (auto key : edgeCoverage.getValues(std::make_pair(i, false)))
 			{
-				if (!kept[key.first.first]) continue;
-				newEdgeCoverage.set(std::make_pair(newIndex[i], false), std::make_pair(newIndex[key.first.first], key.first.second), key.second);
+				if (!kept.get(key.first.first)) continue;
+				newEdgeCoverage.set(std::make_pair(kept.getRank(i), false), std::make_pair(kept.getRank(key.first.first), key.first.second), key.second);
 			}
 		}
 		std::swap(edgeCoverage, newEdgeCoverage);
 	}
 	{
 		MostlySparse2DHashmap<size_t> newSequenceOverlap;
-		newSequenceOverlap.resize(index);
+		newSequenceOverlap.resize(kept.size());
 		for (size_t i = 0; i < kept.size(); i++)
 		{
-			if (!kept[i]) continue;
+			if (!kept.get(i)) continue;
 			for (auto key : sequenceOverlap.getValues(std::make_pair(i, true)))
 			{
-				if (!kept[key.first.first]) continue;
-				newSequenceOverlap.set(std::make_pair(newIndex[i], true), std::make_pair(newIndex[key.first.first], key.first.second), key.second);
+				if (!kept.get(key.first.first)) continue;
+				newSequenceOverlap.set(std::make_pair(kept.getRank(i), true), std::make_pair(kept.getRank(key.first.first), key.first.second), key.second);
 			}
 			for (auto key : sequenceOverlap.getValues(std::make_pair(i, false)))
 			{
-				if (!kept[key.first.first]) continue;
-				newSequenceOverlap.set(std::make_pair(newIndex[i], false), std::make_pair(newIndex[key.first.first], key.first.second), key.second);
+				if (!kept.get(key.first.first)) continue;
+				newSequenceOverlap.set(std::make_pair(kept.getRank(i), false), std::make_pair(kept.getRank(key.first.first), key.first.second), key.second);
 			}
 		}
 		std::swap(sequenceOverlap, newSequenceOverlap);
