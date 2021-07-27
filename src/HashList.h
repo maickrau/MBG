@@ -33,8 +33,8 @@ public:
 	std::pair<std::pair<size_t, bool>, HashType> addNode(VectorView<CharType> sequence, VectorView<CharType> reverse, HashType previousHash, size_t overlap, uint64_t bucketHash);
 	void filter(const RankBitvector& kept);
 private:
-	MostlySparse2DHashmap<size_t> edgeCoverage;
-	MostlySparse2DHashmap<size_t> sequenceOverlap;
+	MostlySparse2DHashmap<uint8_t, size_t> edgeCoverage;
+	MostlySparse2DHashmap<uint16_t, size_t> sequenceOverlap;
 	std::shared_ptr<std::mutex> indexMutex;
 	size_t kmerSize;
 };

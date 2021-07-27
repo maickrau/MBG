@@ -157,7 +157,7 @@ void HashList::filter(const RankBitvector& kept)
 		std::swap(hashToNode, newHashToNode);
 	}
 	{
-		MostlySparse2DHashmap<size_t> newEdgeCoverage;
+		MostlySparse2DHashmap<uint8_t, size_t> newEdgeCoverage;
 		newEdgeCoverage.resize(kept.size());
 		for (size_t i = 0; i < kept.size(); i++)
 		{
@@ -176,7 +176,7 @@ void HashList::filter(const RankBitvector& kept)
 		std::swap(edgeCoverage, newEdgeCoverage);
 	}
 	{
-		MostlySparse2DHashmap<size_t> newSequenceOverlap;
+		MostlySparse2DHashmap<uint16_t, size_t> newSequenceOverlap;
 		newSequenceOverlap.resize(kept.size());
 		for (size_t i = 0; i < kept.size(); i++)
 		{
