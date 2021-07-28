@@ -2,17 +2,20 @@
 
 SparseEdgeContainer::SparseEdgeContainer(size_t size)
 {
-	firstEdge.resize(size, std::make_pair(std::numeric_limits<size_t>::max(), false));
+	firstEdge.resize(size, std::numeric_limits<uint32_t>::max());
 }
 
 void SparseEdgeContainer::addEdge(std::pair<size_t, bool> from, std::pair<size_t, bool> to)
 {
-	if (firstEdge[from].first == std::numeric_limits<size_t>::max())
+	if (pairToInt(to) != std::numeric_limits<uint32_t>::max())
 	{
-		firstEdge[from] = to;
-		return;
+		if (firstEdge[from] == std::numeric_limits<uint32_t>::max())
+		{
+			firstEdge[from] = pairToInt(to);
+			return;
+		}
+		if (firstEdge[from] == pairToInt(to)) return;
 	}
-	if (firstEdge[from] == to) return;
 	extraEdges[from].push_back(to);
 }
 
@@ -24,8 +27,10 @@ std::vector<std::pair<size_t, bool>> SparseEdgeContainer::operator[](std::pair<s
 std::vector<std::pair<size_t, bool>> SparseEdgeContainer::getEdges(std::pair<size_t, bool> from) const
 {
 	std::vector<std::pair<size_t, bool>> result;
-	if (firstEdge[from].first == std::numeric_limits<size_t>::max()) return result;
-	result.push_back(firstEdge[from]);
+	if (firstEdge[from] != std::numeric_limits<uint32_t>::max())
+	{
+		result.push_back(intToPair(firstEdge[from]));
+	}
 	auto found = extraEdges.find(from);
 	if (found == extraEdges.end()) return result;
 	result.insert(result.end(), found->second.begin(), found->second.end());
@@ -35,4 +40,15 @@ std::vector<std::pair<size_t, bool>> SparseEdgeContainer::getEdges(std::pair<siz
 size_t SparseEdgeContainer::size() const
 {
 	return firstEdge.size();
+}
+
+uint32_t SparseEdgeContainer::pairToInt(std::pair<size_t, bool> value) const
+{
+	if (value.first >= (size_t)std::numeric_limits<uint32_t>::max() / 2) return std::numeric_limits<uint32_t>::max();
+	return (uint32_t)value.first * 2 + (value.second ? 1 : 0);
+}
+
+std::pair<size_t, bool> SparseEdgeContainer::intToPair(uint32_t value) const
+{
+	return std::make_pair(value / 2, (value % 2) == 1);
 }

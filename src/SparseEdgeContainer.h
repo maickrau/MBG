@@ -15,7 +15,9 @@ public:
 	std::vector<std::pair<size_t, bool>> getEdges(std::pair<size_t, bool> from) const;
 	size_t size() const;
 private:
-	VectorWithDirection<std::pair<size_t, bool>> firstEdge;
+	uint32_t pairToInt(std::pair<size_t, bool> value) const;
+	std::pair<size_t, bool> intToPair(uint32_t value) const;
+	VectorWithDirection<uint32_t> firstEdge;
 	phmap::flat_hash_map<std::pair<size_t, bool>, std::vector<std::pair<size_t, bool>>> extraEdges;
 };
 
