@@ -196,3 +196,8 @@ void HashList::filter(const RankBitvector& kept)
 		std::swap(sequenceOverlap, newSequenceOverlap);
 	}
 }
+
+std::pair<size_t, bool> HashList::getHashNode(HashType hash) const
+{
+	return hashToNode.at(hash);
+}

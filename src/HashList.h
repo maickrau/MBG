@@ -17,7 +17,6 @@ class HashList
 public:
 	HashList(size_t kmerSize);
 	LittleBigVector<uint8_t, size_t> coverage;
-	phmap::flat_hash_map<HashType, std::pair<size_t, bool>> hashToNode;
 	size_t numSequenceOverlaps() const;
 	size_t getEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to) const;
 	void setEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to, size_t coverage);
@@ -32,7 +31,9 @@ public:
 	std::pair<size_t, bool> getNodeOrNull(VectorView<CharType> sequence) const;
 	std::pair<std::pair<size_t, bool>, HashType> addNode(VectorView<CharType> sequence, VectorView<CharType> reverse, HashType previousHash, size_t overlap, uint64_t bucketHash);
 	void filter(const RankBitvector& kept);
+	std::pair<size_t, bool> getHashNode(HashType hash) const;
 private:
+	phmap::flat_hash_map<HashType, std::pair<size_t, bool>> hashToNode;
 	MostlySparse2DHashmap<uint8_t, size_t> edgeCoverage;
 	MostlySparse2DHashmap<uint16_t, size_t> sequenceOverlap;
 	std::shared_ptr<std::mutex> indexMutex;

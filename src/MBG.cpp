@@ -369,7 +369,7 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 			std::vector<std::pair<size_t, std::pair<size_t, bool>>> matches;
 			findCollectedKmers(seq, kmerSize, approxHashes, exactHashes, [&matches, &hashlist](size_t pos, HashType hash)
 			{
-				matches.emplace_back(pos, hashlist.hashToNode.at(hash));
+				matches.emplace_back(pos, hashlist.getHashNode(hash));
 			});
 			for (size_t j = matches.size()-1; j < matches.size(); j--)
 			{
