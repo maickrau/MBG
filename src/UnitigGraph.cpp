@@ -29,51 +29,45 @@ double UnitigGraph::averageCoverage(size_t i) const
 	assert(unitigCoverage[i].size() > 0);
 	return (double)total / (double)unitigCoverage[i].size();
 }
-UnitigGraph UnitigGraph::filterNodes(const std::vector<bool>& kept) const
+UnitigGraph UnitigGraph::filterNodes(const RankBitvector& kept) const
 {
 	assert(kept.size() == unitigs.size());
 	UnitigGraph result;
-	std::vector<size_t> newIndex;
-	newIndex.resize(unitigs.size(), std::numeric_limits<size_t>::max());
-	size_t nextIndex = 0;
+	size_t newSize = kept.getRank(kept.size()-1) + (kept.get(kept.size()-1) ? 1 : 0);
+	if (newSize == unitigs.size()) return *this;
+	result.unitigs.resize(newSize);
+	result.unitigCoverage.resize(newSize);
+	result.edges.resize(newSize);
+	result.edgeCov.resize(newSize);
 	for (size_t i = 0; i < unitigs.size(); i++)
 	{
-		if (!kept[i]) continue;
-		newIndex[i] = nextIndex;
-		nextIndex += 1;
-	}
-	result.unitigs.resize(nextIndex);
-	result.unitigCoverage.resize(nextIndex);
-	result.edges.resize(nextIndex);
-	result.edgeCov.resize(nextIndex);
-	for (size_t i = 0; i < unitigs.size(); i++)
-	{
-		if (newIndex[i] == std::numeric_limits<size_t>::max()) continue;
-		result.unitigs[newIndex[i]] = unitigs[i];
-		result.unitigCoverage[newIndex[i]] = unitigCoverage[i];
+		if (!kept.get(i)) continue;
+		size_t newIndex = kept.getRank(i);
+		result.unitigs[newIndex] = unitigs[i];
+		result.unitigCoverage[newIndex] = unitigCoverage[i];
 		std::pair<size_t, bool> fw { i, true };
 		std::pair<size_t, bool> bw { i, false };
-		std::pair<size_t, bool> newFw { newIndex[i], true };
-		std::pair<size_t, bool> newBw { newIndex[i], false };
+		std::pair<size_t, bool> newFw { newIndex, true };
+		std::pair<size_t, bool> newBw { newIndex, false };
 		for (auto to : edges[fw])
 		{
-			if (newIndex[to.first] == std::numeric_limits<size_t>::max()) continue;
-			result.edges[newFw].emplace(newIndex[to.first], to.second);
+			if (!kept.get(to.first)) continue;
+			result.edges[newFw].emplace(kept.getRank(to.first), to.second);
 		}
 		for (auto to : edges[bw])
 		{
-			if (newIndex[to.first] == std::numeric_limits<size_t>::max()) continue;
-			result.edges[newBw].emplace(newIndex[to.first], to.second);
+			if (!kept.get(to.first)) continue;
+			result.edges[newBw].emplace(kept.getRank(to.first), to.second);
 		}
 		for (auto pair : edgeCov[fw])
 		{
-			if (newIndex[pair.first.first] == std::numeric_limits<size_t>::max()) continue;
-			result.edgeCov[newFw][std::make_pair(newIndex[pair.first.first], pair.first.second)] = pair.second;
+			if (!kept.get(pair.first.first)) continue;
+			result.edgeCov[newFw][std::make_pair(kept.getRank(pair.first.first), pair.first.second)] = pair.second;
 		}
 		for (auto pair : edgeCov[bw])
 		{
-			if (newIndex[pair.first.first] == std::numeric_limits<size_t>::max()) continue;
-			result.edgeCov[newBw][std::make_pair(newIndex[pair.first.first], pair.first.second)] = pair.second;
+			if (!kept.get(pair.first.first)) continue;
+			result.edgeCov[newBw][std::make_pair(kept.getRank(pair.first.first), pair.first.second)] = pair.second;
 		}
 	}
 	return result;
@@ -104,12 +98,12 @@ size_t UnitigGraph::numEdges() const
 }
 UnitigGraph UnitigGraph::filterUnitigsByCoverage(const double filter)
 {
-	std::vector<bool> kept;
-	kept.resize(unitigs.size(), true);
+	RankBitvector kept { unitigs.size() };
 	for (size_t i = 0; i < unitigs.size(); i++)
 	{
-		if (averageCoverage(i) < filter) kept[i] = false;
+		kept.set(i, averageCoverage(i) >= filter);
 	}
+	kept.buildRanks();
 	UnitigGraph filtered = filterNodes(kept);
 	return filtered;
 }

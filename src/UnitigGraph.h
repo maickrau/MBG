@@ -6,6 +6,7 @@
 #include <tuple>
 #include "VectorWithDirection.h"
 #include "HashList.h"
+#include "RankBitvector.h"
 
 class UnitigGraph
 {
@@ -19,7 +20,7 @@ public:
 	size_t& edgeCoverage(size_t from, bool fromFw, size_t to, bool toFw);
 	size_t& edgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to);
 	double averageCoverage(size_t i) const;
-	UnitigGraph filterNodes(const std::vector<bool>& kept) const;
+	UnitigGraph filterNodes(const RankBitvector& kept) const;
 	size_t numNodes() const;
 	size_t numEdges() const;
 	UnitigGraph filterUnitigsByCoverage(const double filter);
