@@ -694,7 +694,7 @@ UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const d
 		std::pair<size_t, bool> bw { i, false };
 		auto fwEdges = edges[fw];
 		auto bwEdges = edges[bw];
-		if (bwEdges.size() != 1)
+		if (bwEdges.size() != 1 || bwEdges[0] == fw)
 		{
 			if (!belongsToUnitig[i])
 			{
@@ -713,7 +713,7 @@ UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const d
 				unitigTip[reverse(result.unitigs.back()[0])] = std::make_pair(result.unitigs.size()-1, false);
 			}
 		}
-		if (fwEdges.size() != 1)
+		if (fwEdges.size() != 1 || fwEdges[0] == bw)
 		{
 			if (!belongsToUnitig[i])
 			{
