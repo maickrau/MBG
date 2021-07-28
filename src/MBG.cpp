@@ -1594,19 +1594,16 @@ HashList filterHashes(const HashList& reads, const size_t kmerSize, const std::v
 	return resultHashlist;
 }
 
-std::pair<UnitigGraph, HashList> filterKmersToUnitigKmers(const UnitigGraph& unitigs, const HashList& reads, const size_t kmerSize)
+void filterKmersToUnitigKmers(UnitigGraph& unitigs, HashList& reads, const size_t kmerSize)
 {
-	UnitigGraph resultUnitigs;
-	resultUnitigs.edges = unitigs.edges;
-	resultUnitigs.edgeCov = unitigs.edgeCov;
-	resultUnitigs.unitigs.resize(unitigs.unitigs.size());
-	resultUnitigs.unitigCoverage.resize(unitigs.unitigCoverage.size());
-	std::vector<size_t> newIndex;
-	newIndex.resize(reads.coverage.size(), std::numeric_limits<size_t>::max());
-	size_t count = 0;
+	RankBitvector kept { reads.coverage.size() };
 	std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t>> newOverlaps;
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
+		std::vector<std::pair<size_t, bool>> newUnitig;
+		std::vector<size_t> newCoverage;
+		newUnitig.reserve(unitigs.unitigs[i].size());
+		newCoverage.reserve(unitigs.unitigs[i].size());
 		size_t lastStart = 0;
 		size_t currentPos = 0;
 		std::pair<size_t, bool> lastKmer { std::numeric_limits<size_t>::max(), true };
@@ -1626,31 +1623,44 @@ std::pair<UnitigGraph, HashList> filterKmersToUnitigKmers(const UnitigGraph& uni
 					skip = false;
 				}
 			}
-			assert(newIndex[unitigs.unitigs[i][j].first] == std::numeric_limits<size_t>::max());
+			assert(!kept.get(unitigs.unitigs[i][j].first));
 			if (!skip)
 			{
-				newIndex[unitigs.unitigs[i][j].first] = count;
-				count += 1;
-				std::pair<size_t, bool> thisKmer { newIndex[unitigs.unitigs[i][j].first], unitigs.unitigs[i][j].second };
+				kept.set(unitigs.unitigs[i][j].first, true);
+				assert(kept.get(unitigs.unitigs[i][j].first));
+				std::pair<size_t, bool> thisKmer = unitigs.unitigs[i][j];
 				if (lastKmer.first != std::numeric_limits<size_t>::max())
 				{
 					assert(currentPos > lastStart);
 					assert(currentPos - lastStart < kmerSize);
 					newOverlaps.emplace_back(lastKmer, thisKmer, kmerSize - (currentPos - lastStart));
 				}
-				resultUnitigs.unitigs[i].push_back(thisKmer);
-				resultUnitigs.unitigCoverage[i].push_back(unitigs.unitigCoverage[i][j]);
+				newUnitig.push_back(thisKmer);
+				newCoverage.push_back(unitigs.unitigCoverage[i][j]);
 				lastStart = currentPos;
 				lastKmer = thisKmer;
 			}
 		}
+		newUnitig.shrink_to_fit();
+		newCoverage.shrink_to_fit();
+		std::swap(unitigs.unitigs[i], newUnitig);
+		std::swap(unitigs.unitigCoverage[i], newCoverage);
 	}
-	HashList resultHashlist = filterHashes(reads, kmerSize, newIndex, count);
+	kept.buildRanks();
+	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
+	{
+		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
+		{
+			unitigs.unitigs[i][j].first = kept.getRank(unitigs.unitigs[i][j].first);
+		}
+	}
+	reads.filter(kept);
 	for (auto t : newOverlaps)
 	{
-		resultHashlist.addSequenceOverlap(std::get<0>(t), std::get<1>(t), std::get<2>(t));
+		std::pair<size_t, bool> from { kept.getRank(std::get<0>(t).first), std::get<0>(t).second };
+		std::pair<size_t, bool> to { kept.getRank(std::get<1>(t).first), std::get<1>(t).second };
+		reads.addSequenceOverlap(from, to, std::get<2>(t));
 	}
-	return std::make_pair(resultUnitigs, resultHashlist);
 }
 
 void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const bool blunt, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths)
@@ -1692,7 +1702,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		std::cerr << "Filtering by unitig coverage" << std::endl;
 		unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage));
 	}
-	std::tie(unitigs, reads) = filterKmersToUnitigKmers(unitigs, reads, kmerSize);
+	filterKmersToUnitigKmers(unitigs, reads, kmerSize);
 	printUnitigKmerCount(unitigs);
 	auto beforeSequences = getTime();
 	std::cerr << "Getting unitig sequences" << std::endl;

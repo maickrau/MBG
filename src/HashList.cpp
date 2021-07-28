@@ -136,10 +136,11 @@ void HashList::resize(size_t size)
 void HashList::filter(const RankBitvector& kept)
 {
 	assert(kept.size() == size());
-	if (kept.getRank(kept.size()-1) == size()-1) return;
+	size_t newSize = kept.getRank(kept.size()-1) + (kept.get(kept.size()-1) ? 1 : 0);
+	if (newSize == size()) return;
 	{
 		LittleBigVector<uint8_t, size_t> newCoverage;
-		newCoverage.resize(kept.size());
+		newCoverage.resize(newSize);
 		for (size_t i = 0; i < kept.size(); i++)
 		{
 			if (!kept.get(i)) continue;
@@ -158,7 +159,7 @@ void HashList::filter(const RankBitvector& kept)
 	}
 	{
 		MostlySparse2DHashmap<uint8_t, size_t> newEdgeCoverage;
-		newEdgeCoverage.resize(kept.size());
+		newEdgeCoverage.resize(newSize);
 		for (size_t i = 0; i < kept.size(); i++)
 		{
 			if (!kept.get(i)) continue;
@@ -177,7 +178,7 @@ void HashList::filter(const RankBitvector& kept)
 	}
 	{
 		MostlySparse2DHashmap<uint16_t, size_t> newSequenceOverlap;
-		newSequenceOverlap.resize(kept.size());
+		newSequenceOverlap.resize(newSize);
 		for (size_t i = 0; i < kept.size(); i++)
 		{
 			if (!kept.get(i)) continue;
