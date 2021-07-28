@@ -1542,58 +1542,6 @@ void printUnitigKmerCount(const UnitigGraph& unitigs)
 	std::cerr << unitigKmers << " distinct selected k-mers in unitigs after filtering" << std::endl;
 }
 
-HashList filterHashes(const HashList& reads, const size_t kmerSize, const std::vector<size_t>& newIndex, size_t maxCount)
-{
-	HashList resultHashlist { kmerSize };
-	resultHashlist.resize(maxCount);
-	for (auto pair : reads.hashToNode)
-	{
-		if (newIndex[pair.second.first] == std::numeric_limits<size_t>::max()) continue;
-		resultHashlist.hashToNode[pair.first] = std::make_pair(newIndex[pair.second.first], pair.second.second);
-	}
-	for (size_t i = 0; i < reads.coverage.size(); i++)
-	{
-		if (newIndex[i] == std::numeric_limits<size_t>::max()) continue;
-		size_t newI = newIndex[i];
-		resultHashlist.coverage.set(newI, reads.coverage.get(i));
-		std::pair<size_t, bool> fw { i, true };
-		std::pair<size_t, bool> newFw { newI, true };
-		for (auto pair : reads.getSequenceOverlaps(fw))
-		{
-			std::pair<size_t, bool> to = pair.first;
-			if (newIndex[to.first] == std::numeric_limits<size_t>::max()) continue;
-			std::pair<size_t, bool> newTo { newIndex[to.first], to.second };
-			resultHashlist.addSequenceOverlap(newFw, newTo, pair.second);
-		}
-		for (auto pair : reads.getEdgeCoverages(fw))
-		{
-			std::pair<size_t, bool> to = pair.first;
-			if (newIndex[to.first] == std::numeric_limits<size_t>::max()) continue;
-			std::pair<size_t, bool> newTo { newIndex[to.first], to.second };
-			auto key = canon(newFw, newTo);
-			resultHashlist.setEdgeCoverage(key.first, key.second, pair.second);
-		}
-		std::pair<size_t, bool> bw { i, false };
-		std::pair<size_t, bool> newBw { newI, false };
-		for (auto pair : reads.getSequenceOverlaps(bw))
-		{
-			std::pair<size_t, bool> to = pair.first;
-			if (newIndex[to.first] == std::numeric_limits<size_t>::max()) continue;
-			std::pair<size_t, bool> newTo { newIndex[to.first], to.second };
-			resultHashlist.addSequenceOverlap(newBw, newTo, pair.second);
-		}
-		for (auto pair : reads.getEdgeCoverages(bw))
-		{
-			std::pair<size_t, bool> to = pair.first;
-			if (newIndex[to.first] == std::numeric_limits<size_t>::max()) continue;
-			std::pair<size_t, bool> newTo { newIndex[to.first], to.second };
-			auto key = canon(newBw, newTo);
-			resultHashlist.setEdgeCoverage(key.first, key.second, pair.second);
-		}
-	}
-	return resultHashlist;
-}
-
 void filterKmersToUnitigKmers(UnitigGraph& unitigs, HashList& reads, const size_t kmerSize)
 {
 	RankBitvector kept { reads.coverage.size() };
