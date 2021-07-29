@@ -103,14 +103,17 @@ CompressedSequence CompressedSequence::substr(size_t start, size_t len) const
 	return result;
 }
 
-CompressedSequence CompressedSequence::revComp() const
+CompressedSequence CompressedSequence::revComp(const StringIndex& stringIndex) const
 {
 	CompressedSequence result;
-	result.compressed = revCompRLE(compressed);
-	result.simpleExpanded.insert(result.simpleExpanded.end(), simpleExpanded.rbegin(), simpleExpanded.rend());
-	for (auto pair : complexExpanded)
+	result.compressed.resize(compressed.size());
+	result.simpleExpanded.resize(simpleExpanded.size());
+	for (size_t i = 0; i < compressed.size(); i++)
 	{
-		result.complexExpanded[compressedSize() - 1 - pair.first] = pair.second;
+		uint16_t comp = complement(compressed[i]);
+		uint32_t expanded = stringIndex.getReverseIndex(comp, getExpanded(i));
+		result.setCompressed(compressed.size()-1-i, comp);
+		result.setExpanded(compressed.size()-1-i, expanded);
 	}
 	return result;
 }

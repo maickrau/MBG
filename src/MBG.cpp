@@ -1359,7 +1359,7 @@ bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, std:
 	return addedAny;
 }
 
-CompressedSequenceType getKmerSequence(const std::vector<CompressedSequenceType>& unitigSequences, const std::vector<std::tuple<size_t, bool, size_t>>& kmerSequencePosition, const std::pair<size_t, bool> kmer, const size_t kmerSize)
+CompressedSequenceType getKmerSequence(const std::vector<CompressedSequenceType>& unitigSequences, const std::vector<std::tuple<size_t, bool, size_t>>& kmerSequencePosition, const std::pair<size_t, bool> kmer, const size_t kmerSize, const StringIndex& stringIndex)
 {
 	size_t unitig = std::get<0>(kmerSequencePosition[kmer.first]);
 	bool fw = std::get<1>(kmerSequencePosition[kmer.first]) == kmer.second;
@@ -1368,12 +1368,12 @@ CompressedSequenceType getKmerSequence(const std::vector<CompressedSequenceType>
 	CompressedSequenceType result = unitigSequences[unitig].substr(offset, kmerSize);
 	if (!fw)
 	{
-		result = result.revComp();
+		result = result.revComp(stringIndex);
 	}
 	return result;
 }
 
-void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, std::vector<CompressedSequenceType>& unitigSequences, const size_t kmerSize, const double minUnitigCoverage)
+void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, std::vector<CompressedSequenceType>& unitigSequences, const size_t kmerSize, const double minUnitigCoverage, const StringIndex& stringIndex)
 {
 	std::unordered_map<uint64_t, unsigned char> approxNeighbors;
 	for (size_t i = 0; i < unitigs.edges.size(); i++)
@@ -1520,7 +1520,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, std::vector<Com
 			CompressedSequenceType seqHere;
 			if (unitigs.unitigs[i][j].first < zeroKmer)
 			{
-				seqHere = getKmerSequence(unitigSequences, kmerSequencePosition, unitigs.unitigs[i][j], kmerSize);
+				seqHere = getKmerSequence(unitigSequences, kmerSequencePosition, unitigs.unitigs[i][j], kmerSize, stringIndex);
 			}
 			else
 			{
@@ -1528,15 +1528,15 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, std::vector<Com
 				bool fw = unitigs.unitigs[i][j].second;
 				std::pair<size_t, bool> fromKmer = std::get<0>(addedKmerSequences[k]);
 				std::pair<size_t, bool> toKmer = std::get<1>(addedKmerSequences[k]);
-				seqHere = getKmerSequence(unitigSequences, kmerSequencePosition, fromKmer, kmerSize);
-				CompressedSequenceType otherSeq = getKmerSequence(unitigSequences, kmerSequencePosition, toKmer, kmerSize);
+				seqHere = getKmerSequence(unitigSequences, kmerSequencePosition, fromKmer, kmerSize, stringIndex);
+				CompressedSequenceType otherSeq = getKmerSequence(unitigSequences, kmerSequencePosition, toKmer, kmerSize, stringIndex);
 				size_t overlap = reads.getOverlap(fromKmer, toKmer);
 				seqHere.insertEnd(otherSeq.substr(overlap, otherSeq.compressedSize()-overlap));
 				size_t seqStart = std::get<2>(addedKmerSequences[k]);
 				seqHere = seqHere.substr(seqStart, kmerSize);
 				if (!fw)
 				{
-					seqHere = seqHere.revComp();
+					seqHere = seqHere.revComp(stringIndex);
 				}
 			}
 			size_t overlap = 0;
@@ -1689,7 +1689,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		if (windowSize > 1)
 		{
 			std::cerr << "Determinizing edges" << std::endl;
-			forceEdgeDeterminism(reads, unitigs, unitigSequences, kmerSize, minUnitigCoverage);
+			forceEdgeDeterminism(reads, unitigs, unitigSequences, kmerSize, minUnitigCoverage, stringIndex);
 		}
 		beforeConsistency = getTime();
 		if (errorMasking != ErrorMasking::No && errorMasking != ErrorMasking::Collapse)

@@ -21,7 +21,7 @@ public:
 	std::vector<size_t> getExpandedPositions(const StringIndex& index) const;
 	std::string getExpandedSequence(const StringIndex& index) const;
 	CompressedSequence substr(size_t start, size_t len) const;
-	CompressedSequence revComp() const;
+	CompressedSequence revComp(const StringIndex& index) const;
 	std::vector<uint16_t> compressedSubstr(size_t start, size_t len) const;
 	void insertEnd(const CompressedSequence& seq);
 	void resize(size_t size);

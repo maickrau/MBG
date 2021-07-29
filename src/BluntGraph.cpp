@@ -75,7 +75,7 @@ void BluntGraph::initializeEdgesAndEdgenodes(const HashList& hashlist, const Uni
 		CompressedSequenceType missingSeq = unbluntSequences[from.first];
 		if (!from.second)
 		{
-			missingSeq = missingSeq.revComp();
+			missingSeq = missingSeq.revComp(stringIndex);
 		}
 		size_t startIndex = missingSeq.compressedSize() - fromClipped;
 		assert(startIndex < missingSeq.compressedSize());
