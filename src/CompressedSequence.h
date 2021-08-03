@@ -13,6 +13,7 @@ class CompressedSequence
 public:
 	CompressedSequence() = default;
 	CompressedSequence(const TwobitLittleBigVector<uint16_t>& compressed, const std::vector<uint32_t>& expanded);
+	CompressedSequence(const TwobitLittleBigVector<uint16_t>& compressed, const std::vector<uint8_t>& simpleExpanded, const std::vector<std::pair<uint32_t, uint32_t>>& complexExpanded);
 	void setCompressed(size_t i, uint16_t c);
 	uint16_t getCompressed(size_t i) const;
 	uint32_t getExpanded(size_t i) const;

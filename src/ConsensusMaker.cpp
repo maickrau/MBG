@@ -39,7 +39,9 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 	result.reserve(compressedSequences.size());
 	for (size_t i = 0; i < compressedSequences.size(); i++)
 	{
-		std::vector<uint32_t> expanded;
+		std::vector<uint8_t> simpleExpanded;
+		simpleExpanded.resize(compressedSequences[i].size(), 0);
+		std::vector<std::pair<uint32_t, uint32_t>> complexExpanded;
 		std::vector<std::tuple<uint32_t, uint32_t, uint32_t>> complexCountsHere;
 		for (auto pair : complexCounts[i])
 		{
@@ -63,11 +65,18 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 			}
 			assert(maxCount > 0);
 			assert(stringIndex.getString(compressedSequences[i].get(j), maxIndex) != "");
-			expanded.push_back(maxIndex);
+			if (maxIndex <= (uint32_t)std::numeric_limits<uint8_t>::max())
+			{
+				simpleExpanded[j] = maxIndex;
+			}
+			else
+			{
+				complexExpanded.emplace_back(j, maxIndex);
+			}
 		}
 		assert(compressedSequences[i].size() >= 1);
-		assert(compressedSequences[i].size() == expanded.size());
-		result.emplace_back(compressedSequences[i], expanded);
+		assert(compressedSequences[i].size() == simpleExpanded.size());
+		result.emplace_back(compressedSequences[i], simpleExpanded, complexExpanded);
 		{
 			TwobitLittleBigVector<uint16_t> tmp;
 			std::swap(compressedSequences[i], tmp);

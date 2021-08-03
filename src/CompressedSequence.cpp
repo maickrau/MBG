@@ -25,6 +25,18 @@ CompressedSequence::CompressedSequence(const TwobitLittleBigVector<uint16_t>& co
 	}
 }
 
+CompressedSequence::CompressedSequence(const TwobitLittleBigVector<uint16_t>& compressed, const std::vector<uint8_t>& simpleExpanded, const std::vector<std::pair<uint32_t, uint32_t>>& complexes) :
+	compressed(compressed),
+	simpleExpanded(simpleExpanded)
+{
+	assert(compressed.size() == simpleExpanded.size());
+	for (auto pair : complexExpanded)
+	{
+		assert(pair.first < simpleExpanded.size());
+		setExpanded(pair.first, pair.second);
+	}
+}
+
 uint16_t CompressedSequence::getCompressed(size_t i) const
 {
 	assert(i < compressed.size());
