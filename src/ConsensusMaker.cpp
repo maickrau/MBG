@@ -87,5 +87,5 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 		}
 	}
 	assert(result.size() == compressedSequences.size());
-	return std::make_pair(result, stringIndex);
+	return std::make_pair(std::move(result), stringIndex);
 }
