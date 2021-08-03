@@ -40,22 +40,26 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 	for (size_t i = 0; i < compressedSequences.size(); i++)
 	{
 		std::vector<uint32_t> expanded;
-		std::vector<std::vector<std::pair<uint32_t, uint32_t>>> complexCountsHere;
-		complexCountsHere.resize(compressedSequences[i].size());
+		std::vector<std::tuple<uint32_t, uint32_t, uint32_t>> complexCountsHere;
 		for (auto pair : complexCounts[i])
 		{
-			complexCountsHere[pair.first.first].emplace_back(pair.first.second, pair.second);
+			complexCountsHere.emplace_back(pair.first.first, pair.first.second, pair.second);
 		}
+		std::sort(complexCountsHere.begin(), complexCountsHere.end(), [](auto& left, auto& right) { return std::get<0>(left) > std::get<0>(right); });
 		for (size_t j = 0; j < compressedSequences[i].size(); j++)
 		{
 			size_t maxCount = simpleCounts[i][j].second;
 			uint32_t maxIndex = simpleCounts[i][j].first;
-			for (auto pair : complexCountsHere[j])
+			assert(complexCountsHere.size() == 0 || std::get<0>(complexCountsHere.back()) >= j);
+			while (complexCountsHere.size() > 0 && std::get<0>(complexCountsHere.back()) == j)
 			{
-				if (pair.first == (uint32_t)simpleCounts[i][j].first) pair.second += (uint32_t)simpleCounts[i][j].second;
-				if (pair.second <= maxCount) continue;
-				maxIndex = pair.first;
-				maxCount = pair.second;
+				uint32_t index = std::get<1>(complexCountsHere.back());
+				uint32_t count = std::get<2>(complexCountsHere.back());
+				complexCountsHere.pop_back();
+				if (index == (uint32_t)simpleCounts[i][j].first) count += (uint32_t)simpleCounts[i][j].second;
+				if (count <= maxCount) continue;
+				maxIndex = index;
+				maxCount = count;
 			}
 			assert(maxCount > 0);
 			assert(stringIndex.getString(compressedSequences[i][j], maxIndex) != "");
