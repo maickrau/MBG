@@ -59,8 +59,8 @@ public:
 			size_t off = unitigStart + i;
 			uint16_t compressed = processedChars[i].first;
 			uint32_t expandedIndex = processedChars[i].second;
-			assert(compressedSequences[unitig][off] == 0 || compressedSequences[unitig][off] == compressed);
-			compressedSequences[unitig][off] = compressed;
+			assert(compressedSequences[unitig].get(off) == 0 || compressedSequences[unitig].get(off) == compressed);
+			compressedSequences[unitig].set(off, compressed);
 			bool didSimple = false;
 			if (expandedIndex < 256)
 			{
@@ -95,7 +95,7 @@ private:
 	std::vector<phmap::flat_hash_map<std::pair<uint32_t, uint32_t>, uint32_t>> complexCounts;
 	std::vector<std::mutex*> complexCountMutexes;
 	std::vector<std::vector<std::mutex*>> seqMutexes;
-	std::vector<std::vector<uint16_t>> compressedSequences;
+	std::vector<TwobitLittleBigVector<uint16_t>> compressedSequences;
 	std::mutex stringIndexMutex;
 };
 

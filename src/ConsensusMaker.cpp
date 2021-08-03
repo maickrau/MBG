@@ -62,14 +62,14 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 				maxCount = count;
 			}
 			assert(maxCount > 0);
-			assert(stringIndex.getString(compressedSequences[i][j], maxIndex) != "");
+			assert(stringIndex.getString(compressedSequences[i].get(j), maxIndex) != "");
 			expanded.push_back(maxIndex);
 		}
 		assert(compressedSequences[i].size() >= 1);
 		assert(compressedSequences[i].size() == expanded.size());
 		result.emplace_back(compressedSequences[i], expanded);
 		{
-			std::vector<uint16_t> tmp;
+			TwobitLittleBigVector<uint16_t> tmp;
 			std::swap(compressedSequences[i], tmp);
 			phmap::flat_hash_map<std::pair<uint32_t, uint32_t>, uint32_t> tmp2;
 			std::swap(complexCounts[i], tmp2);

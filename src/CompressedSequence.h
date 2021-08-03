@@ -6,12 +6,13 @@
 #include <cstdint>
 #include <phmap.h>
 #include "StringIndex.h"
+#include "TwobitLittleBigVector.h"
 
 class CompressedSequence
 {
 public:
 	CompressedSequence() = default;
-	CompressedSequence(const std::vector<uint16_t>& compressed, const std::vector<uint32_t>& expanded);
+	CompressedSequence(const TwobitLittleBigVector<uint16_t>& compressed, const std::vector<uint32_t>& expanded);
 	void setCompressed(size_t i, uint16_t c);
 	uint16_t getCompressed(size_t i) const;
 	uint32_t getExpanded(size_t i) const;
@@ -26,7 +27,7 @@ public:
 	void insertEnd(const CompressedSequence& seq);
 	void resize(size_t size);
 private:
-	std::vector<uint16_t> compressed;
+	TwobitLittleBigVector<uint16_t> compressed;
 	std::vector<uint8_t> simpleExpanded;
 	phmap::flat_hash_map<uint32_t, uint32_t> complexExpanded;
 };

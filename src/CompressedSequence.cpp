@@ -3,7 +3,7 @@
 #include "CompressedSequence.h"
 #include "ErrorMaskHelper.h"
 
-CompressedSequence::CompressedSequence(const std::vector<uint16_t>& compressed, const std::vector<uint32_t>& expanded) :
+CompressedSequence::CompressedSequence(const TwobitLittleBigVector<uint16_t>& compressed, const std::vector<uint32_t>& expanded) :
 	compressed(compressed)
 {
 	assert(compressed.size() == expanded.size());
@@ -28,7 +28,7 @@ CompressedSequence::CompressedSequence(const std::vector<uint16_t>& compressed, 
 uint16_t CompressedSequence::getCompressed(size_t i) const
 {
 	assert(i < compressed.size());
-	return compressed[i];
+	return compressed.get(i);
 }
 
 uint32_t CompressedSequence::getExpanded(size_t i) const
@@ -52,7 +52,7 @@ size_t CompressedSequence::compressedSize() const
 void CompressedSequence::setCompressed(size_t i, uint16_t c)
 {
 	assert(i < compressed.size());
-	compressed[i] = c;
+	compressed.set(i, c);
 }
 
 void CompressedSequence::setExpanded(size_t i, uint32_t seq)
@@ -75,7 +75,7 @@ std::vector<size_t> CompressedSequence::getExpandedPositions(const StringIndex& 
 	result[0] = 0;
 	for (size_t i = 0; i < simpleExpanded.size(); i++)
 	{
-		result[i+1] = result[i] + index.getString(compressed[i], getExpanded(i)).size();
+		result[i+1] = result[i] + index.getString(compressed.get(i), getExpanded(i)).size();
 	}
 	return result;
 }
@@ -85,7 +85,7 @@ std::string CompressedSequence::getExpandedSequence(const StringIndex& index) co
 	std::string result;
 	for (size_t i = 0; i < simpleExpanded.size(); i++)
 	{
-		result += index.getString(compressed[i], getExpanded(i));
+		result += index.getString(compressed.get(i), getExpanded(i));
 	}
 	return result;
 }
@@ -94,7 +94,11 @@ CompressedSequence CompressedSequence::substr(size_t start, size_t len) const
 {
 	assert(start + len <= compressedSize());
 	CompressedSequence result;
-	result.compressed.insert(result.compressed.end(), compressed.begin() + start, compressed.begin() + start + len);
+	result.compressed.resize(len);
+	for (size_t i = 0; i < len; i++)
+	{
+		result.compressed.set(i, compressed.get(start+i));
+	}
 	result.simpleExpanded.insert(result.simpleExpanded.end(), simpleExpanded.begin() + start, simpleExpanded.begin() + start + len);
 	for (auto pair : complexExpanded)
 	{
@@ -110,7 +114,7 @@ CompressedSequence CompressedSequence::revComp(const StringIndex& stringIndex) c
 	result.simpleExpanded.resize(simpleExpanded.size());
 	for (size_t i = 0; i < compressed.size(); i++)
 	{
-		uint16_t comp = complement(compressed[i]);
+		uint16_t comp = complement(compressed.get(i));
 		uint32_t expanded = stringIndex.getReverseIndex(comp, getExpanded(i));
 		result.setCompressed(compressed.size()-1-i, comp);
 		result.setExpanded(compressed.size()-1-i, expanded);
@@ -121,7 +125,11 @@ CompressedSequence CompressedSequence::revComp(const StringIndex& stringIndex) c
 void CompressedSequence::insertEnd(const CompressedSequence& seq)
 {
 	size_t oldSize = compressedSize();
-	compressed.insert(compressed.end(), seq.compressed.begin(), seq.compressed.end());
+	compressed.resize(compressed.size() + seq.compressed.size());
+	for (size_t i = 0; i < seq.compressed.size(); i++)
+	{
+		compressed.set(oldSize+i, seq.compressed.get(i));
+	}
 	simpleExpanded.insert(simpleExpanded.end(), seq.simpleExpanded.begin(), seq.simpleExpanded.end());
 	for (auto pair : seq.complexExpanded)
 	{
@@ -138,5 +146,11 @@ void CompressedSequence::resize(size_t size)
 std::vector<uint16_t> CompressedSequence::compressedSubstr(size_t start, size_t len) const
 {
 	assert(start + len <= compressed.size());
-	return std::vector<uint16_t> { compressed.begin() + start, compressed.begin() + start + len };
+	std::vector<uint16_t> result;
+	result.resize(len);
+	for (size_t i = 0; i < len; i++)
+	{
+		result[i] = compressed.get(start+i);
+	}
+	return result;
 }
