@@ -6,15 +6,27 @@
 
 constexpr size_t MaxMotifLength = 6;
 
+std::vector<uint16_t> calculateNumsBefore()
+{
+	std::vector<uint16_t> lengths;
+	for (size_t motifLength = 0; motifLength <= MaxMotifLength+1; motifLength++)
+	{
+		size_t result = 0;
+		for (uint16_t i = 1; i < motifLength; i++)
+		{
+			result += pow(4, i) * i;
+		}
+		assert(result < std::numeric_limits<uint16_t>::max());
+		lengths.push_back(result);
+	}
+	return lengths;
+}
+
+std::vector<uint16_t> numsBefore = calculateNumsBefore();
+
 uint16_t getNumBefore(uint16_t motifLength)
 {
-	size_t result = 0;
-	for (uint16_t i = 1; i < motifLength; i++)
-	{
-		result += pow(4, i) * i;
-	}
-	assert(result < std::numeric_limits<uint16_t>::max());
-	return result;
+	return numsBefore[motifLength];
 }
 
 CharType getReverseComplement(CharType code)
