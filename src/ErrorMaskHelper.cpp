@@ -159,6 +159,7 @@ std::pair<SequenceCharType, SequenceLengthType> multiRLECompressOne(const Sequen
 {
 	assert(maxMaskLength <= MaxMotifLength);
 	std::vector<std::tuple<size_t, size_t, uint8_t>> runs;
+	runs.reserve(str.size());
 	for (size_t i = 0; i < str.size(); i++)
 	{
 		size_t j = i;
@@ -210,6 +211,7 @@ std::pair<SequenceCharType, SequenceLengthType> multiRLECompressOne(const Sequen
 		}
 	}
 	std::vector<std::tuple<size_t, size_t, uint8_t>> nonOverlappingRuns;
+	nonOverlappingRuns.reserve(std::min(str.size(), runs.size()));
 	size_t lastOneChar = 0;
 	for (size_t i = 1; i < runs.size(); i++)
 	{
@@ -254,6 +256,8 @@ std::pair<SequenceCharType, SequenceLengthType> multiRLECompressOne(const Sequen
 	assert(std::get<0>(nonOverlappingRuns[0]) == 0);
 	assert(std::get<1>(nonOverlappingRuns.back()) == str.size());
 	std::pair<SequenceCharType, SequenceLengthType> result;
+	result.first.reserve(nonOverlappingRuns.size());
+	result.second.reserve(nonOverlappingRuns.size());
 	for (size_t i = 0; i < nonOverlappingRuns.size(); i++)
 	{
 		assert(i == 0 || std::get<1>(nonOverlappingRuns[i-1]) == std::get<0>(nonOverlappingRuns[i]));
