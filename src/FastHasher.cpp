@@ -18,7 +18,7 @@ bwHash(bwHash),
 kmerSize(kmerSize % 64)
 {
 	std::lock_guard<std::mutex> guard { precalcMutex };
-	if (charHashes.size() == 0 || kmerSize != precalcedK) precalcRots();
+	if (charHashes.size() == 0 || this->kmerSize != precalcedK) precalcRots();
 }
 
 FastHasher::FastHasher(size_t kmerSize) :
@@ -27,7 +27,7 @@ bwHash(0),
 kmerSize(kmerSize % 64)
 {
 	std::lock_guard<std::mutex> guard { precalcMutex };
-	if (charHashes.size() == 0 || kmerSize != precalcedK) precalcRots();
+	if (charHashes.size() == 0 || this->kmerSize != precalcedK) precalcRots();
 }
 
 // https://naml.us/post/inverse-of-a-hash-function/
