@@ -76,15 +76,7 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 		}
 		assert(compressedSequences[i].size() >= 1);
 		assert(compressedSequences[i].size() == simpleExpanded.size());
-		result.emplace_back(compressedSequences[i], simpleExpanded, complexExpanded);
-		{
-			TwobitLittleBigVector<uint16_t> tmp;
-			std::swap(compressedSequences[i], tmp);
-			phmap::flat_hash_map<std::pair<uint32_t, uint32_t>, uint32_t> tmp2;
-			std::swap(complexCounts[i], tmp2);
-			std::vector<std::pair<uint8_t, uint8_t>> tmp3;
-			std::swap(simpleCounts[i], tmp3);
-		}
+		result.emplace_back(std::move(compressedSequences[i]), std::move(simpleExpanded), std::move(complexExpanded));
 	}
 	assert(result.size() == compressedSequences.size());
 	return std::make_pair(std::move(result), stringIndex);

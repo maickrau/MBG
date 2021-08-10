@@ -3,36 +3,14 @@
 #include "CompressedSequence.h"
 #include "ErrorMaskHelper.h"
 
-CompressedSequence::CompressedSequence(const TwobitLittleBigVector<uint16_t>& compressed, const std::vector<uint32_t>& expanded) :
-	compressed(compressed)
+CompressedSequence::CompressedSequence(TwobitLittleBigVector<uint16_t>&& compressed, std::vector<uint8_t>&& simpleExpanded, std::vector<std::pair<uint32_t, uint32_t>>&& complexes) :
+	compressed(std::move(compressed)),
+	simpleExpanded(std::move(simpleExpanded))
 {
-	assert(compressed.size() == expanded.size());
-	simpleExpanded.resize(expanded.size());
-	for (size_t i = 0; i < expanded.size(); i++)
-	{
-		if (expanded[i] < 256)
-		{
-			simpleExpanded[i] = expanded[i];
-		}
-		else
-		{
-			complexExpanded[i] = expanded[i];
-		}
-	}
-	for (size_t i = 0; i < expanded.size(); i++)
-	{
-		assert(getExpanded(i) > 0 || getCompressed(i) >= 4);
-	}
-}
-
-CompressedSequence::CompressedSequence(const TwobitLittleBigVector<uint16_t>& compressed, const std::vector<uint8_t>& simpleExpanded, const std::vector<std::pair<uint32_t, uint32_t>>& complexes) :
-	compressed(compressed),
-	simpleExpanded(simpleExpanded)
-{
-	assert(compressed.size() == simpleExpanded.size());
+	assert(this->compressed.size() == this->simpleExpanded.size());
 	for (auto pair : complexExpanded)
 	{
-		assert(pair.first < simpleExpanded.size());
+		assert(pair.first < this->simpleExpanded.size());
 		setExpanded(pair.first, pair.second);
 	}
 }
