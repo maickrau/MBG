@@ -160,35 +160,15 @@ private:
 	template <typename F>
 	void iterateCollapse(const std::string& seq, F callback) const
 	{
-		iterateRLE(seq, [callback](const SequenceCharType& seq, const SequenceLengthType& fakeposes, const std::string& fakeraw)
+		if (seq.size() == 0) return;
+		std::string collapseSeq;
+		collapseSeq.reserve(seq.size());
+		collapseSeq.push_back(seq[0]);
+		for (size_t i = 1; i < seq.size(); i++)
 		{
-			std::string rawSeq;
-			SequenceLengthType poses;
-			rawSeq.resize(seq.size());
-			poses.resize(seq.size()+1);
-			poses[0] = 0;
-			for (size_t i = 0; i < seq.size(); i++)
-			{
-				poses[i+1] = i+1;
-				assert(seq[i] >= 0 && seq[i] < 4);
-				switch(seq[i])
-				{
-					case 0:
-						rawSeq[i] = 'A';
-						break;
-					case 1:
-						rawSeq[i] = 'C';
-						break;
-					case 2:
-						rawSeq[i] = 'G';
-						break;
-					case 3:
-						rawSeq[i] = 'T';
-						break;
-				}
-			}
-			callback(seq, poses, rawSeq);
-		});
+			if (seq[i] != seq[i-1]) collapseSeq.push_back(seq[i]);
+		}
+		iterateRLE(collapseSeq, callback);
 	}
 	template <typename F>
 	void iterateDinuc(const std::string& seq, F callback) const
