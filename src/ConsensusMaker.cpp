@@ -21,7 +21,18 @@ void ConsensusMaker::init(const std::vector<size_t>& unitigLengths)
 	for (size_t i = 0; i < unitigLengths.size(); i++)
 	{
 		assert(unitigLengths[i] >= 1);
-		compressedSequences[i].resize(unitigLengths[i], 0);
+		compressedSequences[i].resize((unitigLengths[i] + MutexLength - 1) / MutexLength);
+		for (size_t j = 0; j < compressedSequences[i].size(); j++)
+		{
+			if (j != compressedSequences[i].size()-1)
+			{
+				compressedSequences[i][j].resize(MutexLength);
+			}
+			else
+			{
+				compressedSequences[i][j].resize(unitigLengths[i] % MutexLength);
+			}
+		}
 		simpleCounts[i].resize(unitigLengths[i]);
 		complexCountMutexes.emplace_back(new std::mutex);
 		for (size_t j = 0; j < unitigLengths[i]; j += MutexLength)
@@ -36,11 +47,11 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 {
 	stringIndex.buildReverseIndex();
 	std::vector<CompressedSequenceType> result;
-	result.reserve(compressedSequences.size());
-	for (size_t i = 0; i < compressedSequences.size(); i++)
+	result.reserve(simpleCounts.size());
+	for (size_t i = 0; i < simpleCounts.size(); i++)
 	{
 		std::vector<uint8_t> simpleExpanded;
-		simpleExpanded.resize(compressedSequences[i].size(), 0);
+		simpleExpanded.resize(simpleCounts[i].size(), 0);
 		std::vector<std::pair<uint32_t, uint32_t>> complexExpanded;
 		std::vector<std::tuple<uint32_t, uint32_t, uint32_t>> complexCountsHere;
 		for (auto pair : complexCounts[i])
@@ -48,7 +59,7 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 			complexCountsHere.emplace_back(pair.first.first, pair.first.second, pair.second);
 		}
 		std::sort(complexCountsHere.begin(), complexCountsHere.end(), [](auto& left, auto& right) { return std::get<0>(left) > std::get<0>(right); });
-		for (size_t j = 0; j < compressedSequences[i].size(); j++)
+		for (size_t j = 0; j < simpleCounts[i].size(); j++)
 		{
 			size_t maxCount = simpleCounts[i][j].second;
 			uint32_t maxIndex = simpleCounts[i][j].first;
@@ -64,7 +75,7 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 				maxCount = count;
 			}
 			assert(maxCount > 0);
-			assert(stringIndex.getString(compressedSequences[i].get(j), maxIndex) != "");
+			assert(stringIndex.getString(compressedSequences[i][j / MutexLength].get(j % MutexLength), maxIndex) != "");
 			if (maxIndex <= (uint32_t)std::numeric_limits<uint8_t>::max())
 			{
 				simpleExpanded[j] = maxIndex;
@@ -74,9 +85,18 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 				complexExpanded.emplace_back(j, maxIndex);
 			}
 		}
-		assert(compressedSequences[i].size() >= 1);
-		assert(compressedSequences[i].size() == simpleExpanded.size());
-		result.emplace_back(std::move(compressedSequences[i]), std::move(simpleExpanded), std::move(complexExpanded));
+		TwobitLittleBigVector<uint16_t> compressedSequence;
+		compressedSequence.resize(simpleExpanded.size());
+		for (size_t j = 0; j < compressedSequences[i].size(); j++)
+		{
+			for (size_t k = 0; k < compressedSequences[i][j].size(); k++)
+			{
+				compressedSequence.set(j * MutexLength + k, compressedSequences[i][j].get(k));
+			}
+			TwobitLittleBigVector<uint16_t> tmp;
+			std::swap(compressedSequences[i][j], tmp);
+		}
+		result.emplace_back(std::move(compressedSequence), std::move(simpleExpanded), std::move(complexExpanded));
 	}
 	assert(result.size() == compressedSequences.size());
 	return std::make_pair(std::move(result), stringIndex);

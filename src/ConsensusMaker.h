@@ -49,6 +49,10 @@ public:
 		size_t highMutexIndex = (unitigEnd + 64 + MutexLength - 1) / MutexLength;
 		if (highMutexIndex >= seqMutexes[unitig].size()) highMutexIndex = seqMutexes[unitig].size();
 		std::vector<std::lock_guard<std::mutex>*> guards;
+		assert(unitig < seqMutexes.size());
+		assert(lowMutexIndex < seqMutexes[unitig].size());
+		assert(highMutexIndex <= seqMutexes[unitig].size());
+		assert(highMutexIndex > lowMutexIndex);
 		for (size_t i = lowMutexIndex; i < highMutexIndex; i++)
 		{
 			guards.emplace_back(new std::lock_guard<std::mutex>{*seqMutexes[unitig][i]});
@@ -59,8 +63,9 @@ public:
 			size_t off = unitigStart + i;
 			uint16_t compressed = processedChars[i].first;
 			uint32_t expandedIndex = processedChars[i].second;
-			assert(compressedSequences[unitig].get(off) == 0 || compressedSequences[unitig].get(off) == compressed);
-			compressedSequences[unitig].set(off, compressed);
+			size_t compressIndex = off / MutexLength;
+			assert(compressedSequences[unitig][compressIndex].get(off % MutexLength) == 0 || compressedSequences[unitig][compressIndex].get(off % MutexLength) == compressed);
+			compressedSequences[unitig][compressIndex].set(off % MutexLength, compressed);
 			bool didSimple = false;
 			if (expandedIndex < 256)
 			{
@@ -95,7 +100,7 @@ private:
 	std::vector<phmap::flat_hash_map<std::pair<uint32_t, uint32_t>, uint32_t>> complexCounts;
 	std::vector<std::mutex*> complexCountMutexes;
 	std::vector<std::vector<std::mutex*>> seqMutexes;
-	std::vector<TwobitLittleBigVector<uint16_t>> compressedSequences;
+	std::vector<std::vector<TwobitLittleBigVector<uint16_t>>> compressedSequences;
 	std::mutex stringIndexMutex;
 };
 
