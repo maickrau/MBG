@@ -92,7 +92,7 @@ void HashList::addEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, b
 	edgeCoverage.set(from, to, edgeCoverage.get(from, to) + 1);
 }
 
-std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(VectorView<CharType> sequence, VectorView<CharType> reverse, HashType previousHash, size_t overlap, uint64_t bucketHash)
+std::pair<size_t, bool> HashList::addNode(VectorView<CharType> sequence, VectorView<CharType> reverse)
 {
 	HashType fwHash = hash(sequence, reverse);
 	HashType bwHash = (fwHash << 64) + (fwHash >> 64);
@@ -108,7 +108,7 @@ std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(VectorView<CharTy
 		{
 			coverage.set(found->second, coverage.get(found->second)+1);
 			auto node = std::make_pair(found->second, fw);
-			return std::make_pair(node, fwHash);
+			return node;
 		}
 		assert(found == hashToNode.end());
 		size_t fwNode = size();
@@ -119,7 +119,7 @@ std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(VectorView<CharTy
 		coverage.emplace_back(1);
 		edgeCoverage.emplace_back();
 		sequenceOverlap.emplace_back();
-		return std::make_pair(std::make_pair(fwNode, fw), fwHash);
+		return std::make_pair(fwNode, fw);
 	}
 }
 

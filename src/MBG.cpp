@@ -70,7 +70,6 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 			SequenceCharType revSeq = revCompRLE(seq);
 			size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 			std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
-			HashType lastHash = 0;
 			for (auto pos : positions)
 			{
 				assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
@@ -79,7 +78,7 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 				VectorView<CharType> revMinimizerSequence { revSeq, revPos, revPos + kmerSize };
 				std::pair<size_t, bool> current;
 				size_t overlap = lastMinimizerPosition + kmerSize - pos;
-				std::tie(current, lastHash) = result.addNode(minimizerSequence, revMinimizerSequence, lastHash, overlap, minHash);
+				current = result.addNode(minimizerSequence, revMinimizerSequence);
 				assert(pos - lastMinimizerPosition < kmerSize);
 				if (last.first != std::numeric_limits<size_t>::max())
 				{
@@ -1297,14 +1296,12 @@ bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, std:
 
 		size_t overlap = kmerSize - kmerStartPos + lastPosition;
 		assert(overlap < kmerSize);
-		HashType lastHash = 0;
-		uint64_t minHash = 0;
 
 		VectorView<CharType> minimizerSequence { edgeSequence, kmerStartPos, kmerStartPos + kmerSize };
 		size_t revPos = edgeSequence.size() - (kmerStartPos + kmerSize);
 		VectorView<CharType> revMinimizerSequence { revSeq, revPos, revPos + kmerSize };
 		std::pair<size_t, bool> current;
-		std::tie(current, lastHash) = hashlist.addNode(minimizerSequence, revMinimizerSequence, lastHash, overlap, minHash);
+		current = hashlist.addNode(minimizerSequence, revMinimizerSequence);
 		assert(current.first >= zeroKmer);
 		assert(current.first <= zeroKmer + addedKmerSequences.size());
 		if (current.first == zeroKmer + addedKmerSequences.size())

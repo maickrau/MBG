@@ -29,7 +29,7 @@ public:
 	size_t size() const;
 	void resize(size_t size);
 	std::pair<size_t, bool> getNodeOrNull(VectorView<CharType> sequence) const;
-	std::pair<std::pair<size_t, bool>, HashType> addNode(VectorView<CharType> sequence, VectorView<CharType> reverse, HashType previousHash, size_t overlap, uint64_t bucketHash);
+	std::pair<size_t, bool> addNode(VectorView<CharType> sequence, VectorView<CharType> reverse);
 	void filter(const RankBitvector& kept);
 	std::pair<size_t, bool> getHashNode(HashType hash) const;
 private:
