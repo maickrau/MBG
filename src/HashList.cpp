@@ -69,12 +69,16 @@ size_t HashList::size() const
 std::pair<size_t, bool> HashList::getNodeOrNull(VectorView<CharType> sequence) const
 {
 	HashType fwHash = hash(sequence);
-	auto found = hashToNode.find(fwHash);
-	if (found == hashToNode.end())
+	HashType bwHash = (fwHash << 64) + (fwHash >> 64);
+	HashType canonHash = std::min(fwHash, bwHash);
+	assert(fwHash != bwHash);
+	bool fw = fwHash < bwHash;
+	auto found = hashToNode.find(canonHash);
+	if (found != hashToNode.end())
 	{
-		return std::pair<size_t, bool> { std::numeric_limits<size_t>::max(), true };
+		return std::make_pair(found->second, fw);
 	}
-	return found->second;
+	return std::pair<size_t, bool> { std::numeric_limits<size_t>::max(), true };
 }
 
 void HashList::addEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to)
@@ -90,39 +94,32 @@ void HashList::addEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, b
 
 std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(VectorView<CharType> sequence, VectorView<CharType> reverse, HashType previousHash, size_t overlap, uint64_t bucketHash)
 {
-	HashType fwHash = hash(sequence);
+	HashType fwHash = hash(sequence, reverse);
+	HashType bwHash = (fwHash << 64) + (fwHash >> 64);
+	// this is a true assertion but commented out just for performance
+	// assert(bwHash == hash(reverse));
+	HashType canonHash = std::min(fwHash, bwHash);
+	assert(fwHash != bwHash);
+	bool fw = fwHash < bwHash;
 	{
 		std::lock_guard<std::mutex> lock { *indexMutex };
-		auto found = hashToNode.find(fwHash);
+		auto found = hashToNode.find(canonHash);
 		if (found != hashToNode.end())
 		{
-			coverage.set(found->second.first, coverage.get(found->second.first)+1);
-			return std::make_pair(found->second, fwHash);
+			coverage.set(found->second, coverage.get(found->second)+1);
+			auto node = std::make_pair(found->second, fw);
+			return std::make_pair(node, fwHash);
 		}
 		assert(found == hashToNode.end());
-	}
-	HashType bwHash = hash(reverse);
-	{
-		std::lock_guard<std::mutex> lock { *indexMutex };
-		auto found = hashToNode.find(fwHash);
-		if (found != hashToNode.end())
-		{
-			coverage.set(found->second.first, coverage.get(found->second.first)+1);
-			return std::make_pair(found->second, fwHash);
-		}
-		assert(found == hashToNode.end());
-		found = hashToNode.find(bwHash);
-		assert(hashToNode.find(bwHash) == hashToNode.end());
 		size_t fwNode = size();
-		hashToNode[fwHash] = std::make_pair(fwNode, true);
-		hashToNode[bwHash] = std::make_pair(fwNode, false);
+		hashToNode[canonHash] = fwNode;
 		assert(coverage.size() == fwNode);
 		assert(edgeCoverage.size() == fwNode);
 		assert(sequenceOverlap.size() == fwNode);
 		coverage.emplace_back(1);
 		edgeCoverage.emplace_back();
 		sequenceOverlap.emplace_back();
-		return std::make_pair(std::make_pair(fwNode, true), fwHash);
+		return std::make_pair(std::make_pair(fwNode, fw), fwHash);
 	}
 }
 
@@ -149,11 +146,11 @@ void HashList::filter(const RankBitvector& kept)
 		std::swap(coverage, newCoverage);
 	}
 	{
-		phmap::flat_hash_map<HashType, std::pair<size_t, bool>> newHashToNode;
+		phmap::flat_hash_map<HashType, size_t> newHashToNode;
 		for (auto pair : hashToNode)
 		{
-			if (!kept.get(pair.second.first)) continue;
-			newHashToNode[pair.first] = std::make_pair(kept.getRank(pair.second.first), pair.second.second);
+			if (!kept.get(pair.second)) continue;
+			newHashToNode[pair.first] = kept.getRank(pair.second);
 		}
 		std::swap(hashToNode, newHashToNode);
 	}
@@ -197,7 +194,13 @@ void HashList::filter(const RankBitvector& kept)
 	}
 }
 
-std::pair<size_t, bool> HashList::getHashNode(HashType hash) const
+std::pair<size_t, bool> HashList::getHashNode(HashType fwHash) const
 {
-	return hashToNode.at(hash);
+	HashType bwHash = (fwHash << 64) + (fwHash >> 64);
+	HashType canonHash = std::min(fwHash, bwHash);
+	assert(fwHash != bwHash);
+	bool fw = fwHash < bwHash;
+	auto node = hashToNode.at(canonHash);
+	auto result = std::make_pair(node, fw);
+	return result;
 }

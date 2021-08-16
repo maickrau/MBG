@@ -15,8 +15,8 @@ using SequenceCharType = std::vector<CharType>;
 using SequenceLengthType = std::vector<LengthType>;
 using CompressedSequenceType = CompressedSequence;
 
-HashType hash(std::string_view sequence);
 HashType hash(VectorView<uint16_t> sequence);
+HashType hash(VectorView<uint16_t> sequence, VectorView<uint16_t> reverseSequence);
 HashType hash(std::vector<uint16_t> sequence);
 std::ostream& operator<<(std::ostream& os, HashType t);
 std::istream& operator>>(std::istream& is, HashType& t);

@@ -38,6 +38,8 @@ private:
 	const std::vector<T>& data;
 	size_t startpos;
 	size_t endpos;
+	friend unsigned __int128 hash(VectorView<uint16_t> sequence);
+	friend unsigned __int128 hash(VectorView<uint16_t> sequence, VectorView<uint16_t> reverseSequence);
 };
 
 #endif

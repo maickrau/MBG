@@ -1273,7 +1273,7 @@ void collectJunctionHashes(const std::unordered_map<uint64_t, unsigned char>& ap
 	}
 }
 
-bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, std::unordered_map<NodeType, std::pair<size_t, bool>>& belongsToUnitig, HashList& hashlist, UnitigGraph& newUnitigs, std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t>>& addedEdges, std::vector<CompressedSequenceType>& unitigSequences, const size_t kmerSize, const std::pair<size_t, bool> fromUnitig, const std::pair<size_t, bool> toUnitig, const std::pair<size_t, bool> fromKmer, const std::pair<size_t, bool> toKmer, const size_t edgeCoverage, const size_t unitigOverlap, const size_t zeroKmer, std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t>>& addedKmerSequences)
+bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, std::unordered_map<NodeType, std::pair<size_t, bool>>& belongsToUnitig, HashList& hashlist, UnitigGraph& newUnitigs, std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t>>& addedEdges, std::vector<CompressedSequenceType>& unitigSequences, const size_t kmerSize, const std::pair<size_t, bool> fromUnitig, const std::pair<size_t, bool> toUnitig, const std::pair<size_t, bool> fromKmer, const std::pair<size_t, bool> toKmer, const size_t edgeCoverage, const size_t unitigOverlap, const size_t zeroKmer, std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t, bool>>& addedKmerSequences)
 {
 	SequenceCharType edgeSequence = getEdgeSequence(unitigSequences, fromUnitig, toUnitig, kmerSize, unitigOverlap);
 	if (edgeSequence.size() == kmerSize + 1) return false;
@@ -1309,11 +1309,11 @@ bool addJunctionsToHashes(const std::unordered_set<uint64_t>& approxHashes, std:
 		assert(current.first <= zeroKmer + addedKmerSequences.size());
 		if (current.first == zeroKmer + addedKmerSequences.size())
 		{
-			assert(current.second);
 			addedKmerSequences.emplace_back();
 			std::get<0>(addedKmerSequences.back()) = fromKmer;
 			std::get<1>(addedKmerSequences.back()) = toKmer;
 			std::get<2>(addedKmerSequences.back()) = kmerStartPos;
+			std::get<3>(addedKmerSequences.back()) = current.second;
 		}
 		hashlist.addSequenceOverlap(lastKmer, current, overlap);
 		std::pair<size_t, bool> newUnitigPosition { std::numeric_limits<size_t>::max(), true };
@@ -1442,7 +1442,7 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, std::vector<Com
 	std::unordered_map<NodeType, std::pair<size_t, bool>> belongsToUnitig;
 	std::set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> removeEdges;
 	std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t>> addedEdges;
-	std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t>> addedKmerSequences;
+	std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t, bool>> addedKmerSequences;
 	size_t zeroKmer = reads.size();
 	for (size_t i = 0; i < unitigs.edges.size(); i++)
 	{
@@ -1533,8 +1533,11 @@ void forceEdgeDeterminism(HashList& reads, UnitigGraph& unitigs, std::vector<Com
 				size_t overlap = reads.getOverlap(fromKmer, toKmer);
 				seqHere.insertEnd(otherSeq.substr(overlap, otherSeq.compressedSize()-overlap));
 				size_t seqStart = std::get<2>(addedKmerSequences[k]);
+				size_t kmerFw = std::get<3>(addedKmerSequences[k]);
 				seqHere = seqHere.substr(seqStart, kmerSize);
-				if (!fw)
+				bool reallyFw = fw;
+				if (!kmerFw) reallyFw = !reallyFw;
+				if (!reallyFw)
 				{
 					seqHere = seqHere.revComp(stringIndex);
 				}

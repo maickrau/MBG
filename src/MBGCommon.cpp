@@ -4,18 +4,34 @@
 #include <vector>
 #include "MBGCommon.h"
 
-HashType hash(std::string_view sequence)
-{
-	size_t half = sequence.size() / 2;
-	size_t low = std::hash<std::string_view>{}(std::string_view { sequence.begin(), half });
-	size_t high = std::hash<std::string_view>{}(std::string_view { (sequence.begin() + half), sequence.size() - half });
-	return (HashType)low + (((HashType)high) << 64);
-}
+uint16_t complement(const uint16_t original);
 
 HashType hash(VectorView<uint16_t> sequence)
 {
-	std::string_view view = sequence.getView();
-	return hash(view);
+	assert(sequence.size() % 2 == 1);
+	size_t half = (sequence.size()+1) / 2;
+	VectorView<uint16_t> firstHalf { sequence.data, sequence.startpos, sequence.startpos + half };
+	std::vector<uint16_t> secondHalf;
+	secondHalf.resize(half);
+	for (size_t i = 0; i < half; i++)
+	{
+		secondHalf[i] = complement(sequence[sequence.size()-1-i]);
+	}
+	size_t low = std::hash<std::string_view>{}( firstHalf.getView());
+	size_t high = std::hash<std::string_view>{}(VectorView<uint16_t> { secondHalf, 0, secondHalf.size() }.getView());
+	return (HashType)low + (((HashType)high) << 64);
+}
+
+HashType hash(VectorView<uint16_t> sequence, VectorView<uint16_t> reverseSequence)
+{
+	assert(sequence.size() % 2 == 1);
+	assert(sequence.size() == reverseSequence.size());
+	size_t half = (sequence.size()+1) / 2;
+	VectorView<uint16_t> firstHalf { sequence.data, sequence.startpos, sequence.startpos + half };
+	VectorView<uint16_t> secondHalf { reverseSequence.data, reverseSequence.startpos, reverseSequence.startpos + half };
+	size_t low = std::hash<std::string_view>{}(firstHalf.getView());
+	size_t high = std::hash<std::string_view>{}(secondHalf.getView());
+	return (HashType)low + (((HashType)high) << 64);
 }
 
 HashType hash(std::vector<uint16_t> sequence)
