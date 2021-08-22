@@ -132,6 +132,7 @@ void HashList::resize(size_t size)
 
 void HashList::filter(const RankBitvector& kept)
 {
+	if (kept.size() == 0) return;
 	assert(kept.size() == size());
 	size_t newSize = kept.getRank(kept.size()-1) + (kept.get(kept.size()-1) ? 1 : 0);
 	if (newSize == size()) return;

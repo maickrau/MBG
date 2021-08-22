@@ -31,6 +31,7 @@ double UnitigGraph::averageCoverage(size_t i) const
 }
 UnitigGraph UnitigGraph::filterNodes(const RankBitvector& kept) const
 {
+	if (kept.size() == 0) return *this;
 	assert(kept.size() == unitigs.size());
 	UnitigGraph result;
 	size_t newSize = kept.getRank(kept.size()-1) + (kept.get(kept.size()-1) ? 1 : 0);

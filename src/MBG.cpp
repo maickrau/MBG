@@ -885,6 +885,11 @@ UnitigGraph getUnitigs(const UnitigGraph& oldgraph)
 
 size_t getN50(std::vector<size_t>& nodeSizes, size_t totalSize)
 {
+	if (nodeSizes.size() == 0)
+	{
+		assert(totalSize == 0);
+		return 0;
+	}
 	std::sort(nodeSizes.begin(), nodeSizes.end());
 	size_t sizeSum = 0;
 	sizeSum += nodeSizes.back();
