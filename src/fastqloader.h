@@ -21,6 +21,11 @@ public:
 			newread.seq_id = line.substr(1);
 			std::getline(file, line);
 			if (line.back() == '\r') line.pop_back();
+			// uppercase
+			for (size_t i = 0; i < line.size(); i++)
+			{
+				if (line[i] >= 'a' && line[i] <= 'z') line[i] = 'A' + (line[i] - 'a');
+			}
 			newread.sequence = line;
 			std::getline(file, line);
 			std::getline(file, line);
@@ -56,6 +61,11 @@ public:
 				if (line.size() == 0) continue;
 				if (line[0] == '>') break;
 				if (line.back() == '\r') line.pop_back();
+				// uppercase
+				for (size_t i = 0; i < line.size(); i++)
+				{
+					if (line[i] >= 'a' && line[i] <= 'z') line[i] = 'A' + (line[i] - 'a');
+				}
 				newread.sequence += line;
 			} while (file.good());
 			if (includeQuality)
