@@ -10,6 +10,12 @@ template <typename BigType>
 class TwobitLittleBigVector
 {
 public:
+	TwobitLittleBigVector() :
+		realSize(0),
+		littles(),
+		bigs()
+	{
+	}
 	void resize(size_t size)
 	{
 		realSize = size;
