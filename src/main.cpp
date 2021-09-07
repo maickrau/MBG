@@ -77,9 +77,11 @@ int main(int argc, char** argv)
 	ErrorMasking errorMasking = ErrorMasking::Hpc;
 	bool blunt = false;
 	bool includeEndKmers = false;
+	std::string errorMaskingStr = "hpc";
 	if (params.count("blunt") == 1) blunt = true;
 	if (params.count("error-masking") == 1)
 	{
+		errorMaskingStr = params["error-masking"].as<std::string>();
 		if (params["error-masking"].as<std::string>() == "no")
 		{
 			errorMasking = ErrorMasking::No;
@@ -160,7 +162,7 @@ int main(int argc, char** argv)
 	std::cerr << "a=" << minCoverage << ",";
 	std::cerr << "u=" << minUnitigCoverage << ",";
 	std::cerr << "t=" << numThreads << ",";
-	std::cerr << "errormasking=" << (errorMasking == ErrorMasking::No ? "no" : errorMasking == ErrorMasking::Hpc ? "hpc" : errorMasking == ErrorMasking::Dinuc ? "dinuc" : errorMasking == ErrorMasking::Collapse ? "collapse" : errorMasking == ErrorMasking::Microsatellite ? "msat" : "unknown") << ",";
+	std::cerr << "errormasking=" << errorMaskingStr << ",";
 	std::cerr << "endkmers=" << (includeEndKmers ? "yes" : "no") << ",";
 	std::cerr << "blunt=" << (blunt ? "yes" : "no") << std::endl;
 
