@@ -18,9 +18,8 @@ int main(int argc, char** argv)
 		("a,kmer-abundance", "Minimum k-mer abundance", cxxopts::value<size_t>()->default_value("1"))
 		("u,unitig-abundance", "Minimum average unitig abundance", cxxopts::value<double>()->default_value("2"))
 		("error-masking", "Error masking", cxxopts::value<std::string>()->default_value("hpc"))
-		("blunt", "Output a bluntified graph without edge overlaps")
 		("include-end-kmers", "Force k-mers at read ends to be included")
-		("output-sequence-paths", "Output the paths of the input sequences to a file (.gaf)", cxxopts::value<std::string>())
+		// ("output-sequence-paths", "Output the paths of the input sequences to a file (.gaf)", cxxopts::value<std::string>())
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
@@ -75,10 +74,8 @@ int main(int argc, char** argv)
 	size_t numThreads = params["t"].as<size_t>();
 	std::string outputSequencePaths = "";
 	ErrorMasking errorMasking = ErrorMasking::Hpc;
-	bool blunt = false;
 	bool includeEndKmers = false;
 	std::string errorMaskingStr = "hpc";
-	if (params.count("blunt") == 1) blunt = true;
 	if (params.count("error-masking") == 1)
 	{
 		errorMaskingStr = params["error-masking"].as<std::string>();
@@ -149,11 +146,6 @@ int main(int argc, char** argv)
 		std::cerr << "Window size must be <= k-30. With current k (" << kmerSize << ") maximum w is " << kmerSize - 30 << std::endl;
 		paramError = true;
 	}
-	if (outputSequencePaths != "" && blunt)
-	{
-		std::cerr << "--output-sequence-paths and --blunt are not supported together" << std::endl;
-		paramError = true;
-	}
 	if (paramError) std::abort();
 	
 	std::cerr << "Parameters: ";
@@ -163,8 +155,8 @@ int main(int argc, char** argv)
 	std::cerr << "u=" << minUnitigCoverage << ",";
 	std::cerr << "t=" << numThreads << ",";
 	std::cerr << "errormasking=" << errorMaskingStr << ",";
-	std::cerr << "endkmers=" << (includeEndKmers ? "yes" : "no") << ",";
-	std::cerr << "blunt=" << (blunt ? "yes" : "no") << std::endl;
+	std::cerr << "endkmers=" << (includeEndKmers ? "yes" : "no");
+	std::cerr << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, blunt, numThreads, includeEndKmers, outputSequencePaths);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths);
 }

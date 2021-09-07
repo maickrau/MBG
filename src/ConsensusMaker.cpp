@@ -75,6 +75,11 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 				maxCount = count;
 			}
 			assert(maxCount > 0);
+			// // if (maxCount == 0)
+			// // {
+			// 	compressedSequences[i][j / MutexLength].set(j % MutexLength, 0);
+			// 	maxIndex = stringIndex.getIndex(0, "N");
+			// // }
 			assert(stringIndex.getString(compressedSequences[i][j / MutexLength].get(j % MutexLength), maxIndex) != "");
 			if (maxIndex <= (uint32_t)std::numeric_limits<uint8_t>::max())
 			{

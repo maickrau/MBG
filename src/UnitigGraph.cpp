@@ -22,6 +22,24 @@ size_t& UnitigGraph::edgeCoverage(std::pair<size_t, bool> from, std::pair<size_t
 	std::tie(from, to) = canon(from, to);
 	return edgeCov[from][to];
 }
+size_t UnitigGraph::edgeOverlap(size_t from, bool fromFw, size_t to, bool toFw) const
+{
+	return edgeOverlap(std::make_pair(from, fromFw), std::make_pair(to, toFw));
+}
+size_t UnitigGraph::edgeOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to) const
+{
+	std::tie(from, to) = canon(from, to);
+	return edgeOvlp[from].at(to);
+}
+size_t& UnitigGraph::edgeOverlap(size_t from, bool fromFw, size_t to, bool toFw)
+{
+	return edgeOverlap(std::make_pair(from, fromFw), std::make_pair(to, toFw));
+}
+size_t& UnitigGraph::edgeOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to)
+{
+	std::tie(from, to) = canon(from, to);
+	return edgeOvlp[from][to];
+}
 double UnitigGraph::averageCoverage(size_t i) const
 {
 	size_t total = 0;
@@ -40,6 +58,7 @@ UnitigGraph UnitigGraph::filterNodes(const RankBitvector& kept) const
 	result.unitigCoverage.resize(newSize);
 	result.edges.resize(newSize);
 	result.edgeCov.resize(newSize);
+	result.edgeOvlp.resize(newSize);
 	for (size_t i = 0; i < unitigs.size(); i++)
 	{
 		if (!kept.get(i)) continue;
@@ -69,6 +88,16 @@ UnitigGraph UnitigGraph::filterNodes(const RankBitvector& kept) const
 		{
 			if (!kept.get(pair.first.first)) continue;
 			result.edgeCov[newBw][std::make_pair(kept.getRank(pair.first.first), pair.first.second)] = pair.second;
+		}
+		for (auto pair : edgeOvlp[fw])
+		{
+			if (!kept.get(pair.first.first)) continue;
+			result.edgeOvlp[newFw][std::make_pair(kept.getRank(pair.first.first), pair.first.second)] = pair.second;
+		}
+		for (auto pair : edgeOvlp[bw])
+		{
+			if (!kept.get(pair.first.first)) continue;
+			result.edgeOvlp[newBw][std::make_pair(kept.getRank(pair.first.first), pair.first.second)] = pair.second;
 		}
 	}
 	return result;
