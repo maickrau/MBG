@@ -187,7 +187,7 @@ void addCounts(ConsensusMaker& consensusMaker, const SequenceCharType& seq, cons
 	});
 }
 
-std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequences(const HashList& hashlist, UnitigGraph& unitigs, const std::vector<std::string>& filenames, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
+std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& filenames, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	ConsensusMaker consensusMaker;
 	KmerLocator locator { unitigs.unitigs };
@@ -368,7 +368,7 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 				}
 				for (size_t j = kmerStart; j < kmerEnd; j++)
 				{
-					unitigs.unitigCoverage[unitig][j] += 1;
+					// unitigs.unitigCoverage[unitig][j] += 1;
 				}
 				assert(unitigStart < unitigEnd);
 				assert(unitigEnd <= unitigLengths[unitig]);
