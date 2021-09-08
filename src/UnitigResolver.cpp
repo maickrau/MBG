@@ -207,6 +207,7 @@ UnitigGraph resolvableToUnitigs(const ResolvableUnitigGraph& resolvableGraph, co
 		if (path.path.size() == 0) continue;
 		if (path.path.size() == 1)
 		{
+			assert(newIndex.get(path.path[0].first));
 			size_t unitig = newIndex.getRank(path.path[0].first);
 			for (size_t i = path.leftClip; i < result.unitigCoverage[unitig].size() - path.rightClip; i++)
 			{
@@ -219,12 +220,14 @@ UnitigGraph resolvableToUnitigs(const ResolvableUnitigGraph& resolvableGraph, co
 		{
 			for (size_t i = 1; i < path.path.size()-1; i++)
 			{
+				assert(newIndex.get(path.path[i].first));
 				size_t unitig = newIndex.getRank(path.path[i].first);
 				for (size_t j = 0; j < result.unitigCoverage[unitig].size(); j++)
 				{
 					result.unitigCoverage[unitig][j] += 1;
 				}
 			}
+			assert(newIndex.get(path.path[0].first));
 			size_t unitig = newIndex.getRank(path.path[0].first);
 			for (size_t i = path.leftClip; i < result.unitigCoverage[unitig].size(); i++)
 			{
@@ -232,10 +235,11 @@ UnitigGraph resolvableToUnitigs(const ResolvableUnitigGraph& resolvableGraph, co
 				if (!path.path[0].second) index = result.unitigCoverage[unitig].size()-1-i;
 				result.unitigCoverage[unitig][index] += 1;
 			}
+			assert(newIndex.get(path.path.back().first));
 			unitig = newIndex.getRank(path.path.back().first);
 			for (size_t i = 0; i < result.unitigCoverage[unitig].size() - path.rightClip; i++)
 			{
-				size_t index = 0;
+				size_t index = i;
 				if (!path.path.back().second) index = result.unitigCoverage[unitig].size()-1-i;
 				result.unitigCoverage[unitig][index] += 1;
 			}
@@ -967,6 +971,57 @@ void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<ReadPat
 			if (i > 0) assert(graph.edges[path.path[i-1]].count(path.path[i]) == 1);
 		}
 	}
+	std::vector<std::vector<size_t>> coverages;
+	coverages.resize(graph.unitigs.size());
+	for (size_t i = 0; i < graph.unitigs.size(); i++)
+	{
+		coverages[i].resize(graph.unitigs[i].size(), 0);
+	}
+	for (const auto& path : readPaths)
+	{
+		if (path.path.size() == 0) continue;
+		if (path.path.size() == 1)
+		{
+			assert(path.leftClip + path.rightClip < graph.unitigs[path.path[0].first].size());
+			for (size_t i = path.leftClip; i < graph.unitigs[path.path[0].first].size() - path.rightClip; i++)
+			{
+				size_t index = i;
+				if (!path.path[0].second) index = graph.unitigs[path.path[0].first].size() - i - 1;
+				coverages[path.path[0].first][index] += 1;
+			}
+			continue;
+		}
+		assert(path.path.size() >= 2);
+		assert(path.leftClip < graph.unitigs[path.path[0].first].size());
+		for (size_t i = path.leftClip; i < graph.unitigs[path.path[0].first].size(); i++)
+		{
+			size_t index = i;
+			if (!path.path[0].second) index = graph.unitigs[path.path[0].first].size() - i - 1;
+			coverages[path.path[0].first][index] += 1;
+		}
+		for (size_t i = 1; i < path.path.size()-1; i++)
+		{
+			for (size_t j = 0; j < graph.unitigs[path.path[i].first].size(); j++)
+			{
+				coverages[path.path[i].first][j] += 1;
+			}
+		}
+		assert(path.rightClip < graph.unitigs[path.path.back().first].size());
+		for (size_t i = 0; i < graph.unitigs[path.path.back().first].size() - path.rightClip; i++)
+		{
+			size_t index = i;
+			if (!path.path.back().second) index = graph.unitigs[path.path.back().first].size() - i - 1;
+			coverages[path.path.back().first][index] += 1;
+		}
+	}
+	for (size_t i = 0; i < coverages.size(); i++)
+	{
+		if (graph.unitigRemoved[i]) continue;
+		for (size_t j = 0; j < coverages[i].size(); j++)
+		{
+			assert(coverages[i][j] > 0);
+		}
+	}
 }
 
 void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const size_t minCoverage)
@@ -1054,8 +1109,13 @@ UnitigGraph resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist,
 			resolvableGraph.readsCrossingNode[pos.first].emplace(i);
 		}
 	}
+	for (size_t i = 0; i < resolvableGraph.unitigs.size(); i++)
+	{
+		assert(resolvableGraph.readsCrossingNode[i].size() >= 1);
+	}
 	unitigifyAll(resolvableGraph, readPaths);
 	resolveRound(resolvableGraph, readPaths, minCoverage);
 	// resolveRound(resolvableGraph, readPaths, minCoverage);
+	checkValidity(resolvableGraph, readPaths);
 	return resolvableToUnitigs(resolvableGraph, readPaths);
 }
