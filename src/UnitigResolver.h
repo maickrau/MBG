@@ -6,6 +6,25 @@
 #include "UnitigGraph.h"
 #include "HashList.h"
 
-UnitigGraph resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, const std::vector<std::vector<HashType>>& paths, const size_t minCoverage);
+class HashPath
+{
+public:
+	std::vector<HashType> hashes;
+	std::string readName;
+	std::vector<size_t> hashPoses;
+};
+
+class ReadPath
+{
+public:
+	std::string readName;
+	std::vector<std::pair<size_t, bool>> path;
+	std::vector<size_t> readPoses;
+	size_t leftClip;
+	size_t rightClip;
+private:
+};
+
+std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, const std::vector<HashPath>& paths, const size_t minCoverage);
 
 #endif
