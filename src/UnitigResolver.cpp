@@ -151,7 +151,7 @@ std::vector<ReadPath> getUnitigPaths(const ResolvableUnitigGraph& graph, const H
 	return result;
 }
 
-UnitigGraph resolvableToUnitigs(const ResolvableUnitigGraph& resolvableGraph, const std::vector<ReadPath>& readPaths)
+std::pair<UnitigGraph, std::vector<ReadPath>> resolvableToUnitigs(const ResolvableUnitigGraph& resolvableGraph, const std::vector<ReadPath>& readPaths)
 {
 	UnitigGraph result;
 	RankBitvector newIndex { resolvableGraph.unitigs.size() };
@@ -250,7 +250,18 @@ UnitigGraph resolvableToUnitigs(const ResolvableUnitigGraph& resolvableGraph, co
 			assert(result.unitigCoverage[i][j] > 0);
 		}
 	}
-	return result;
+	std::vector<ReadPath> resultReads;
+	for (const auto& path : readPaths)
+	{
+		if (path.path.size() == 0) continue;
+		resultReads.push_back(path);
+		for (size_t i = 0; i < resultReads.back().path.size(); i++)
+		{
+			assert(newIndex.get(resultReads.back().path[i].first));
+			resultReads.back().path[i].first = newIndex.getRank(resultReads.back().path[i].first);
+		}
+	}
+	return std::make_pair(result, resultReads);
 }
 
 std::vector<std::pair<size_t, bool>> extend(const ResolvableUnitigGraph& resolvableGraph, const std::pair<size_t, bool> start)
@@ -418,6 +429,7 @@ void replacePathNodes(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPa
 		newPath.leftClip = readPaths[i].leftClip;
 		newPath.rightClip = readPaths[i].rightClip;
 		newPath.readPoses = readPaths[i].readPoses;
+		newPath.readName = readPaths[i].readName;
 		if (nodeInUnitig.count(readPaths[i].path[0].first) == 1)
 		{
 			bool fw = nodeForwardInUnitig[readPaths[i].path[0].first];
@@ -694,6 +706,7 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 		newPath.leftClip = readPaths[i].leftClip;
 		newPath.rightClip = readPaths[i].rightClip;
 		newPath.readPoses = readPaths[i].readPoses;
+		newPath.readName = readPaths[i].readName;
 		std::vector<size_t> nodePosStarts;
 		std::vector<size_t> nodePosEnds;
 		for (size_t j = 0; j < readPaths[i].path.size(); j++)
@@ -832,6 +845,7 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 				assert(posesStart < posesEnd);
 				assert(posesEnd <= newPath.readPoses.size());
 				path.readPoses.insert(path.readPoses.end(), newPath.readPoses.begin() + posesStart, newPath.readPoses.begin() + posesEnd);
+				path.readName = newPath.readName;
 				addPath(resolvableGraph, readPaths, path);
 				lastStart = j;
 			}
@@ -846,6 +860,7 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 		assert(posesStart < posesEnd);
 		assert(posesEnd <= newPath.readPoses.size());
 		path.readPoses.insert(path.readPoses.end(), newPath.readPoses.begin() + posesStart, newPath.readPoses.begin() + posesEnd);
+		path.readName = newPath.readName;
 		addPath(resolvableGraph, readPaths, path);
 		erasePath(resolvableGraph, readPaths, i);
 	}
@@ -1239,5 +1254,5 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 	resolveRound(resolvableGraph, readPaths, minCoverage);
 	// resolveRound(resolvableGraph, readPaths, minCoverage);
 	checkValidity(resolvableGraph, readPaths);
-	return std::make_pair(resolvableToUnitigs(resolvableGraph, readPaths), readPaths);
+	return resolvableToUnitigs(resolvableGraph, readPaths);
 }
