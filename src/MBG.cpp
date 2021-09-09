@@ -1345,11 +1345,11 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	auto beforeConsistency = getTime();
 	AssemblyStats stats;
 	beforeConsistency = getTime();
-	// if (errorMasking != ErrorMasking::No && errorMasking != ErrorMasking::Collapse)
-	// {
-	// 	std::cerr << "Forcing edge consistency" << std::endl;
-	// 	forceEdgeConsistency(unitigs, reads, stringIndex, unitigSequences, kmerSize);
-	// }
+	if (errorMasking != ErrorMasking::No && errorMasking != ErrorMasking::Collapse)
+	{
+		std::cerr << "Forcing edge consistency" << std::endl;
+		forceEdgeConsistency(unitigs, reads, stringIndex, unitigSequences, kmerSize);
+	}
 	auto beforeWrite = getTime();
 	std::cerr << "Writing graph to " << outputGraph << std::endl;
 	stats = writeGraph(unitigs, outputGraph, reads, unitigSequences, stringIndex, kmerSize);
@@ -1362,7 +1362,8 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	auto afterPaths = getTime();
 	std::cerr << "selecting k-mers and building graph topology took " << formatTime(beforeReading, beforeUnitigs) << std::endl;
 	std::cerr << "unitigifying took " << formatTime(beforeUnitigs, beforeFilter) << std::endl;
-	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforeSequences) << std::endl;
+	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforeResolve) << std::endl;
+	std::cerr << "resolving unitigs took " << formatTime(beforeResolve, beforeSequences) << std::endl;
 	std::cerr << "building unitig sequences took " << formatTime(beforeSequences, beforeConsistency) << std::endl;
 	if (errorMasking != ErrorMasking::No && errorMasking != ErrorMasking::Collapse) std::cerr << "forcing edge consistency took " << formatTime(beforeConsistency, beforeWrite) << std::endl;
 	std::cerr << "writing the graph and calculating stats took " << formatTime(beforeWrite, afterWrite) << std::endl;
