@@ -1334,7 +1334,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	std::cerr << "Resolving unitigs" << std::endl;
 	std::cerr << unitigs.unitigs.size() << " unitigs before resolving" << std::endl;
 	std::vector<ReadPath> readPaths;
-	std::tie(unitigs, readPaths) = resolveUnitigs(unitigs, reads, paths, minUnitigCoverage);
+	std::tie(unitigs, readPaths) = resolveUnitigs(unitigs, reads, paths, minUnitigCoverage, kmerSize);
 	std::cerr << unitigs.unitigs.size() << " unitigs after resolving" << std::endl;
 	auto beforeSequences = getTime();
 	std::cerr << "Getting unitig sequences" << std::endl;
