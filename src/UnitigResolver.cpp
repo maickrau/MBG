@@ -1335,7 +1335,6 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 	}
 	unitigifyAll(resolvableGraph, readPaths);
 	resolveRound(resolvableGraph, readPaths, minCoverage, kmerSize);
-	// resolveRound(resolvableGraph, readPaths, minCoverage);
 	checkValidity(resolvableGraph, readPaths, kmerSize);
 	return resolvableToUnitigs(resolvableGraph, readPaths);
 }
