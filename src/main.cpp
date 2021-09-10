@@ -19,7 +19,7 @@ int main(int argc, char** argv)
 		("u,unitig-abundance", "Minimum average unitig abundance", cxxopts::value<double>()->default_value("2"))
 		("error-masking", "Error masking", cxxopts::value<std::string>()->default_value("hpc"))
 		("include-end-kmers", "Force k-mers at read ends to be included")
-		// ("output-sequence-paths", "Output the paths of the input sequences to a file (.gaf)", cxxopts::value<std::string>())
+		("output-sequence-paths", "Output the paths of the input sequences to a file (.gaf)", cxxopts::value<std::string>())
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)

@@ -81,6 +81,7 @@ std::vector<ReadPath> getUnitigPaths(const ResolvableUnitigGraph& graph, const H
 	{
 		ReadPath current;
 		current.readName = kmerPaths[i].readName;
+		current.readLength = kmerPaths[i].readLength;
 		size_t lastReadPos = std::numeric_limits<size_t>::max();
 		std::pair<size_t, bool> lastKmer { std::numeric_limits<size_t>::max(), true };
 		std::tuple<size_t, size_t, bool> lastPos = std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true);
@@ -88,6 +89,8 @@ std::vector<ReadPath> getUnitigPaths(const ResolvableUnitigGraph& graph, const H
 		{
 			std::pair<size_t, bool> kmer = hashlist.getNodeOrNull(kmerPaths[i].hashes[j]);
 			size_t readPos = kmerPaths[i].hashPoses[j];
+			size_t readPosExpandedStart = kmerPaths[i].hashPosesExpandedStart[j];
+			size_t readPosExpandedEnd = kmerPaths[i].hashPosesExpandedEnd[j];
 			if (kmer.first == std::numeric_limits<size_t>::max()) continue;
 			if (kmer.first > maxKmer || std::get<0>(kmerLocator[kmer.first]) == std::numeric_limits<size_t>::max())
 			{
@@ -112,6 +115,8 @@ std::vector<ReadPath> getUnitigPaths(const ResolvableUnitigGraph& graph, const H
 				assert(current.path.size() == 0);
 				current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
 				current.readPoses.emplace_back(readPos);
+				current.readPosesExpandedStart.emplace_back(readPosExpandedStart);
+				current.readPosesExpandedEnd.emplace_back(readPosExpandedEnd);
 				current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
 				current.leftClip = std::get<1>(pos);
 				assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
@@ -130,7 +135,11 @@ std::vector<ReadPath> getUnitigPaths(const ResolvableUnitigGraph& graph, const H
 					current.path.clear();
 					current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
 					current.readPoses.clear();
+					current.readPosesExpandedStart.clear();
+					current.readPosesExpandedEnd.clear();
 					current.readPoses.emplace_back(readPos);
+					current.readPosesExpandedStart.emplace_back(readPosExpandedStart);
+					current.readPosesExpandedEnd.emplace_back(readPosExpandedEnd);
 					current.leftClip = std::get<1>(pos);
 					current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
 					assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
@@ -148,6 +157,8 @@ std::vector<ReadPath> getUnitigPaths(const ResolvableUnitigGraph& graph, const H
 				lastKmer = kmer;
 				current.rightClip -= 1;
 				current.readPoses.emplace_back(readPos);
+				current.readPosesExpandedStart.emplace_back(readPosExpandedStart);
+				current.readPosesExpandedEnd.emplace_back(readPosExpandedEnd);
 				assert(current.rightClip == graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos));
 				continue;
 			}
@@ -158,6 +169,8 @@ std::vector<ReadPath> getUnitigPaths(const ResolvableUnitigGraph& graph, const H
 			{
 				current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
 				current.readPoses.emplace_back(readPos);
+				current.readPosesExpandedStart.emplace_back(readPosExpandedStart);
+				current.readPosesExpandedEnd.emplace_back(readPosExpandedEnd);
 				current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1;
 				lastPos = pos;
 				lastReadPos = readPos;
@@ -169,7 +182,11 @@ std::vector<ReadPath> getUnitigPaths(const ResolvableUnitigGraph& graph, const H
 			current.path.clear();
 			current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
 			current.readPoses.clear();
+			current.readPosesExpandedStart.clear();
+			current.readPosesExpandedEnd.clear();
 			current.readPoses.emplace_back(readPos);
+			current.readPosesExpandedStart.emplace_back(readPosExpandedStart);
+			current.readPosesExpandedEnd.emplace_back(readPosExpandedEnd);
 			current.leftClip = std::get<1>(pos);
 			current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
 			assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
@@ -362,6 +379,8 @@ void erasePath(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& re
 void addPath(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const ReadPath& newPath)
 {
 	if (newPath.path.size() == 0) return;
+	assert(newPath.readPosesExpandedStart.size() == newPath.readPoses.size());
+	assert(newPath.readPosesExpandedEnd.size() == newPath.readPoses.size());
 	assert(getNumberOfHashes(resolvableGraph, newPath.leftClip, newPath.rightClip, newPath.path) == newPath.readPoses.size());
 	if (newPath.path.size() == 1)
 	{
@@ -461,7 +480,10 @@ void replacePathNodes(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPa
 		newPath.leftClip = readPaths[i].leftClip;
 		newPath.rightClip = readPaths[i].rightClip;
 		newPath.readPoses = readPaths[i].readPoses;
+		newPath.readPosesExpandedStart = readPaths[i].readPosesExpandedStart;
+		newPath.readPosesExpandedEnd = readPaths[i].readPosesExpandedEnd;
 		newPath.readName = readPaths[i].readName;
+		newPath.readLength = readPaths[i].readLength;
 		if (nodeInUnitig.count(readPaths[i].path[0].first) == 1)
 		{
 			bool fw = nodeForwardInUnitig[readPaths[i].path[0].first];
@@ -738,7 +760,10 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 		newPath.leftClip = readPaths[i].leftClip;
 		newPath.rightClip = readPaths[i].rightClip;
 		newPath.readPoses = readPaths[i].readPoses;
+		newPath.readPosesExpandedStart = readPaths[i].readPosesExpandedStart;
+		newPath.readPosesExpandedEnd = readPaths[i].readPosesExpandedEnd;
 		newPath.readName = readPaths[i].readName;
+		newPath.readLength = readPaths[i].readLength;
 		std::vector<size_t> nodePosStarts;
 		std::vector<size_t> nodePosEnds;
 		for (size_t j = 0; j < readPaths[i].path.size(); j++)
@@ -893,7 +918,10 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 				assert(posesStart < posesEnd);
 				assert(posesEnd <= newPath.readPoses.size());
 				path.readPoses.insert(path.readPoses.end(), newPath.readPoses.begin() + posesStart, newPath.readPoses.begin() + posesEnd);
+				path.readPosesExpandedStart.insert(path.readPosesExpandedStart.end(), newPath.readPosesExpandedStart.begin() + posesStart, newPath.readPosesExpandedStart.begin() + posesEnd);
+				path.readPosesExpandedEnd.insert(path.readPosesExpandedEnd.end(), newPath.readPosesExpandedEnd.begin() + posesStart, newPath.readPosesExpandedEnd.begin() + posesEnd);
 				path.readName = newPath.readName;
+				path.readLength = newPath.readLength;
 				addPath(resolvableGraph, readPaths, path);
 				lastStart = j;
 			}
@@ -908,7 +936,10 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 		assert(posesStart < posesEnd);
 		assert(posesEnd <= newPath.readPoses.size());
 		path.readPoses.insert(path.readPoses.end(), newPath.readPoses.begin() + posesStart, newPath.readPoses.begin() + posesEnd);
+		path.readPosesExpandedStart.insert(path.readPosesExpandedStart.end(), newPath.readPosesExpandedStart.begin() + posesStart, newPath.readPosesExpandedStart.begin() + posesEnd);
+		path.readPosesExpandedEnd.insert(path.readPosesExpandedEnd.end(), newPath.readPosesExpandedEnd.begin() + posesStart, newPath.readPosesExpandedEnd.begin() + posesEnd);
 		path.readName = newPath.readName;
+		path.readLength = newPath.readLength;
 		addPath(resolvableGraph, readPaths, path);
 		erasePath(resolvableGraph, readPaths, i);
 	}
