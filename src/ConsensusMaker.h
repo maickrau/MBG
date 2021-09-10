@@ -13,17 +13,7 @@
 class ConsensusMaker
 {
 private:
-	// allow multiple threads to update the same contig sequence but in different regions
-	// each mutex covers MutexLength bp in one contig
-	// ------
-	//       ------
-	//             ------
-	// etc
-	// size arbitrarily 1Mbp, so ~(3000 + num_contigs) mutexes in a human genome, hopefully not too many
-	// and the chance of two random hifis falling in the same 1Mbp bucket is ~.03% so hopefully not too much waiting
-	static constexpr size_t MutexLength = 1000000;
 public:
-	~ConsensusMaker();
 	void init(const std::vector<size_t>& unitigLens);
 	std::pair<std::vector<CompressedSequenceType>, StringIndex> getSequences();
 	template <typename F>
@@ -32,49 +22,23 @@ public:
 		assert(unitig < simpleCounts.size());
 		assert(unitigEnd > unitigStart);
 		assert(unitigEnd <= simpleCounts[unitig].size());
-		std::vector<std::pair<uint16_t, uint32_t>> processedChars;
-		processedChars.resize(unitigEnd - unitigStart);
+		for (size_t i = 0; i < unitigEnd - unitigStart; i++)
 		{
-			std::lock_guard<std::mutex> lock { stringIndexMutex };
-			for (size_t i = 0; i < unitigEnd - unitigStart; i++)
-			{
-				uint16_t compressed;
-				std::string expanded;
-				std::tie(compressed, expanded) = sequenceGetter(i);
-				processedChars[i].first = compressed;
-				processedChars[i].second = stringIndex.getIndex(compressed, expanded);
-			}
-		}
-		// size_t lowMutexIndex = unitigStart / MutexLength;
-		// if (unitigStart > 64) lowMutexIndex = (unitigStart - 64) / MutexLength;
-		// size_t highMutexIndex = (unitigEnd + 64 + MutexLength - 1) / MutexLength;
-		// if (highMutexIndex >= seqMutexes[unitig].size()) highMutexIndex = seqMutexes[unitig].size();
-		// std::vector<std::lock_guard<std::mutex>*> guards;
-		// assert(unitig < seqMutexes.size());
-		// assert(lowMutexIndex < seqMutexes[unitig].size());
-		// assert(highMutexIndex <= seqMutexes[unitig].size());
-		// assert(highMutexIndex > lowMutexIndex);
-		// for (size_t i = lowMutexIndex; i < highMutexIndex; i++)
-		// {
-		// 	guards.emplace_back(new std::lock_guard<std::mutex>{*seqMutexes[unitig][i]});
-		// }
-		std::vector<std::pair<uint32_t, uint32_t>> addComplexes;
-		for (size_t i = 0; i < processedChars.size(); i++)
-		{
+			uint16_t compressed;
+			std::string expanded;
+			std::tie(compressed, expanded) = sequenceGetter(i);
+			size_t expandedIndex = stringIndex.getIndex(compressed, expanded);
 			size_t off = unitigStart + i;
 			auto found = find(unitig, off);
 			size_t realUnitig = std::get<0>(found);
 			size_t realOff = std::get<1>(found);
-			uint16_t compressed = processedChars[i].first;
-			uint32_t expandedIndex = processedChars[i].second;
 			if (!std::get<2>(found))
 			{
 				expandedIndex = stringIndex.getReverseIndex(compressed, expandedIndex);
 				compressed = complement(compressed);
 			}
-			size_t compressIndex = realOff / MutexLength;
-			assert(compressedSequences[realUnitig][compressIndex].get(realOff % MutexLength) == 0 || compressedSequences[realUnitig][compressIndex].get(realOff % MutexLength) == compressed);
-			compressedSequences[realUnitig][compressIndex].set(realOff % MutexLength, compressed);
+			assert(compressedSequences[realUnitig].get(realOff) == 0 || compressedSequences[realUnitig].get(realOff) == compressed);
+			compressedSequences[realUnitig].set(realOff, compressed);
 			bool didSimple = false;
 			if (expandedIndex < 256)
 			{
@@ -90,10 +54,6 @@ public:
 				complexCounts[realUnitig][realOff][expandedIndex] += 1;
 			}
 		}
-		// for (size_t i = 0; i < guards.size(); i++)
-		// {
-		// 	delete guards[i];
-		// }
 	}
 	void addEdgeOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, size_t overlap);
 private:
@@ -102,10 +62,7 @@ private:
 	StringIndex stringIndex;
 	std::vector<std::vector<std::pair<uint8_t, uint8_t>>> simpleCounts;
 	phmap::flat_hash_map<size_t, phmap::flat_hash_map<size_t, phmap::flat_hash_map<uint32_t, uint32_t>>> complexCounts;
-	std::vector<std::mutex*> complexCountMutexes;
-	std::vector<std::vector<std::mutex*>> seqMutexes;
-	std::vector<std::vector<TwobitLittleBigVector<uint16_t>>> compressedSequences;
-	std::mutex stringIndexMutex;
+	std::vector<TwobitLittleBigVector<uint16_t>> compressedSequences;
 	mutable std::vector<std::vector<std::tuple<size_t, size_t, bool>>> parent;
 };
 

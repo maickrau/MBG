@@ -1,49 +1,21 @@
 #include "ConsensusMaker.h"
 #include "ErrorMaskHelper.h"
 
-ConsensusMaker::~ConsensusMaker()
-{
-	for (size_t i = 0; i < seqMutexes.size(); i++)
-	{
-		for (size_t j = 0; j < seqMutexes[i].size(); j++)
-		{
-			delete seqMutexes[i][j];
-		}
-	}
-}
-
 void ConsensusMaker::init(const std::vector<size_t>& unitigLengths)
 {
 	compressedSequences.resize(unitigLengths.size());
 	simpleCounts.resize(unitigLengths.size());
-	seqMutexes.resize(unitigLengths.size());
 	parent.resize(unitigLengths.size());
 	for (size_t i = 0; i < unitigLengths.size(); i++)
 	{
 		assert(unitigLengths[i] >= 1);
-		compressedSequences[i].resize((unitigLengths[i] + MutexLength - 1) / MutexLength);
+		compressedSequences[i].resize(unitigLengths[i]);
 		parent[i].resize(unitigLengths[i]);
 		for (size_t j = 0; j < unitigLengths[i]; j++)
 		{
 			parent[i][j] = std::make_tuple(i, j, true);
 		}
-		for (size_t j = 0; j < compressedSequences[i].size(); j++)
-		{
-			if (j != compressedSequences[i].size()-1)
-			{
-				compressedSequences[i][j].resize(MutexLength);
-			}
-			else
-			{
-				compressedSequences[i][j].resize(unitigLengths[i] % MutexLength);
-			}
-		}
 		simpleCounts[i].resize(unitigLengths[i]);
-		complexCountMutexes.emplace_back(new std::mutex);
-		for (size_t j = 0; j < unitigLengths[i]; j += MutexLength)
-		{
-			seqMutexes[i].emplace_back(new std::mutex);
-		}
 	}
 	stringIndex.init(maxCode());
 }
@@ -124,7 +96,7 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 					}
 				}
 			}
-			uint16_t compressed = compressedSequences[realI][realJ / MutexLength].get(realJ % MutexLength);
+			uint16_t compressed = compressedSequences[realI].get(realJ);
 			if (!std::get<2>(found))
 			{
 				maxIndex = stringIndex.getReverseIndex(compressed, maxIndex);
@@ -136,7 +108,7 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 			// 	compressedSequences[i][j / MutexLength].set(j % MutexLength, 0);
 			// 	maxIndex = stringIndex.getIndex(0, "N");
 			// // }
-			assert(stringIndex.getString(compressedSequences[realI][realJ / MutexLength].get(realJ % MutexLength), maxIndex) != "");
+			assert(stringIndex.getString(compressedSequences[realI].get(realJ), maxIndex) != "");
 			compressedSequence.setCompressed(j, compressed);
 			compressedSequence.setExpanded(j, maxIndex);
 		}
