@@ -116,6 +116,63 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 		}
 	}
 	consensusMaker.init(unitigLengths);
+	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
+	{
+		std::pair<size_t, bool> pos { i, true };
+		for (auto edge : unitigs.edges[pos])
+		{
+			size_t kmerOverlap = unitigs.edgeOverlap(pos, edge);
+			size_t bpOverlap = 0;
+			if (kmerOverlap == 0)
+			{
+				std::pair<size_t, bool> fromKmer = unitigs.unitigs[pos.first].back();
+				if (!pos.second) fromKmer = reverse(unitigs.unitigs[edge.first][0]);
+				std::pair<size_t, bool> toKmer = unitigs.unitigs[edge.first][0];
+				if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
+				bpOverlap = hashlist.getOverlap(fromKmer, toKmer);
+			}
+			else
+			{
+				std::pair<size_t, bool> lastKmer;
+				for (size_t i = 0; i < kmerOverlap; i++)
+				{
+					std::pair<size_t, bool> kmer = unitigs.unitigs[edge.first][i];
+					if (!edge.second) kmer = reverse(unitigs.unitigs[edge.first][unitigs.unitigs[edge.first].size() - 1 - i]);
+					bpOverlap += kmerSize;
+					if (i > 0) bpOverlap -= hashlist.getOverlap(lastKmer, kmer);
+					lastKmer = kmer;
+				}
+			}
+			consensusMaker.addEdgeOverlap(pos, edge, bpOverlap);
+		}
+		pos = std::make_pair(i, false);
+		for (auto edge : unitigs.edges[pos])
+		{
+			size_t kmerOverlap = unitigs.edgeOverlap(pos, edge);
+			size_t bpOverlap = 0;
+			if (kmerOverlap == 0)
+			{
+				std::pair<size_t, bool> fromKmer = unitigs.unitigs[pos.first].back();
+				if (!pos.second) fromKmer = reverse(unitigs.unitigs[pos.first][0]);
+				std::pair<size_t, bool> toKmer = unitigs.unitigs[edge.first][0];
+				if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
+				bpOverlap = hashlist.getOverlap(fromKmer, toKmer);
+			}
+			else
+			{
+				std::pair<size_t, bool> lastKmer;
+				for (size_t i = 0; i < kmerOverlap; i++)
+				{
+					std::pair<size_t, bool> kmer = unitigs.unitigs[edge.first][i];
+					if (!edge.second) kmer = reverse(unitigs.unitigs[edge.first][unitigs.unitigs[edge.first].size() - 1 - i]);
+					bpOverlap += kmerSize;
+					if (i > 0) bpOverlap -= hashlist.getOverlap(lastKmer, kmer);
+					lastKmer = kmer;
+				}
+			}
+			consensusMaker.addEdgeOverlap(pos, edge, bpOverlap);
+		}
+	}
 	iterateReadsMultithreaded(filenames, numThreads, [&consensusMaker, &unitigLengths, &bpOffsets, &unitigs, &partIterator, &hashlist, &matchBlocks, kmerSize](size_t thread, FastQ& read)
 	{
 		if (matchBlocks.count(read.seq_id) == 0) return;

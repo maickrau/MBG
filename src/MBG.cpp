@@ -1386,11 +1386,11 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	auto beforeConsistency = getTime();
 	AssemblyStats stats;
 	beforeConsistency = getTime();
-	if (errorMasking != ErrorMasking::No && errorMasking != ErrorMasking::Collapse)
-	{
-		std::cerr << "Forcing edge consistency" << std::endl;
-		forceEdgeConsistency(unitigs, reads, stringIndex, unitigSequences, kmerSize);
-	}
+	// if (errorMasking != ErrorMasking::No && errorMasking != ErrorMasking::Collapse)
+	// {
+	// 	std::cerr << "Forcing edge consistency" << std::endl;
+	// 	forceEdgeConsistency(unitigs, reads, stringIndex, unitigSequences, kmerSize);
+	// }
 	verifyEdgeConsistency(unitigs, reads, stringIndex, unitigSequences, kmerSize);
 	auto beforeWrite = getTime();
 	std::cerr << "Writing graph to " << outputGraph << std::endl;
