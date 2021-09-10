@@ -1289,6 +1289,47 @@ void filterKmersToUnitigKmers(UnitigGraph& unitigs, HashList& reads, const size_
 	}
 }
 
+void verifyEdgeConsistency(const UnitigGraph& unitigs, const HashList& hashlist, const StringIndex& stringIndex, const std::vector<CompressedSequenceType>& unitigSequences, const size_t kmerSize, const std::pair<size_t, bool> from, const std::pair<size_t, bool> to)
+{
+	assert(unitigs.edges[from].count(to) == 1);
+	assert(unitigs.edges[reverse(to)].count(reverse(from)) == 1);
+	size_t overlap = getUnitigOverlap(hashlist, kmerSize, unitigs, from, to);
+	assert(overlap > 0);
+	for (size_t i = 0; i < overlap; i++)
+	{
+		size_t fromIndex = unitigSequences[from.first].compressedSize() - overlap + i;
+		if (!from.second) fromIndex = overlap - 1 - i;
+		size_t toIndex = i;
+		if (!to.second) toIndex = unitigSequences[to.first].compressedSize() - 1 - i;
+		bool fw = from.second == to.second;
+		if (fw)
+		{
+			assert(unitigSequences[from.first].getCompressed(fromIndex) == unitigSequences[to.first].getCompressed(toIndex));
+			assert(unitigSequences[from.first].getExpanded(fromIndex) == unitigSequences[to.first].getExpanded(toIndex));
+		}
+		else
+		{
+			assert(unitigSequences[from.first].getCompressed(fromIndex) == complement(unitigSequences[to.first].getCompressed(toIndex)));
+			assert(unitigSequences[from.first].getExpandedStr(fromIndex, stringIndex) == revCompRaw(unitigSequences[to.first].getExpandedStr(toIndex, stringIndex)));
+		}
+	}
+}
+
+void verifyEdgeConsistency(const UnitigGraph& unitigs, const HashList& hashlist, const StringIndex& stringIndex, const std::vector<CompressedSequenceType>& unitigSequences, const size_t kmerSize)
+{
+	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
+	{
+		for (auto edge : unitigs.edges[std::make_pair(i, true)])
+		{
+			verifyEdgeConsistency(unitigs, hashlist, stringIndex, unitigSequences, kmerSize, std::make_pair(i, true), edge);
+		}
+		for (auto edge : unitigs.edges[std::make_pair(i, false)])
+		{
+			verifyEdgeConsistency(unitigs, hashlist, stringIndex, unitigSequences, kmerSize, std::make_pair(i, false), edge);
+		}
+	}
+}
+
 void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths)
 {
 	auto beforeReading = getTime();
@@ -1350,6 +1391,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		std::cerr << "Forcing edge consistency" << std::endl;
 		forceEdgeConsistency(unitigs, reads, stringIndex, unitigSequences, kmerSize);
 	}
+	verifyEdgeConsistency(unitigs, reads, stringIndex, unitigSequences, kmerSize);
 	auto beforeWrite = getTime();
 	std::cerr << "Writing graph to " << outputGraph << std::endl;
 	stats = writeGraph(unitigs, outputGraph, reads, unitigSequences, stringIndex, kmerSize);
