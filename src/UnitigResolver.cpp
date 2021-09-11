@@ -1233,7 +1233,203 @@ void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<ReadPat
 	}
 }
 
-void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const size_t minCoverage, const size_t kmerSize)
+double getCoverage(const ResolvableUnitigGraph& resolvableGraph, const std::vector<ReadPath>& readPaths, const size_t unitig)
+{
+	double result = 0;
+	for (auto i : resolvableGraph.readsCrossingNode[unitig])
+	{
+		for (size_t j = 0; j < readPaths[i].path.size(); j++)
+		{
+			if (readPaths[i].path[j].first != unitig) continue;
+			assert(j != 0 || readPaths[i].leftClip < resolvableGraph.unitigs[unitig].size());
+			assert(j != readPaths[i].path.size()-1 || readPaths[i].rightClip < resolvableGraph.unitigs[unitig].size());
+			if (j == 0) result += (double)(resolvableGraph.unitigs[unitig].size() - readPaths[i].leftClip) / (double)(resolvableGraph.unitigs[unitig].size());
+			if (j > 0 && j < readPaths[i].path.size()-1) result += 1;
+			if (j == readPaths[i].path.size()-1) result += (double)(resolvableGraph.unitigs[unitig].size() - readPaths[i].rightClip) / (double)(resolvableGraph.unitigs[unitig].size());
+		}
+	}
+	return result;
+}
+
+size_t getEdgeCoverage(const ResolvableUnitigGraph& resolvableGraph, const std::vector<ReadPath>& readPaths, const std::pair<size_t, bool> from, const std::pair<size_t, bool> to)
+{
+	std::unordered_set<size_t> relevantReads;
+	for (auto read : resolvableGraph.readsCrossingNode[from.first])
+	{
+		if (resolvableGraph.readsCrossingNode[to.first].count(read) == 1)
+		{
+			relevantReads.insert(read);
+		}
+	}
+	size_t result = 0;
+	for (size_t i : relevantReads)
+	{
+		for (size_t j = 1; j < readPaths[i].path.size(); j++)
+		{
+			if (readPaths[i].path[j-1] == from && readPaths[i].path[j] == to)
+			{
+				result += 1;
+			}
+			else if (readPaths[i].path[j-1] == reverse(to) && readPaths[i].path[j] == reverse(from))
+			{
+				result += 1;
+			}
+		}
+	}
+	return result;
+}
+
+void removeNode(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, size_t node)
+{
+	assert(!resolvableGraph.unitigRemoved[node]);
+	for (auto edge : resolvableGraph.edges[std::make_pair(node, true)])
+	{
+		if (edge.first == node) continue;
+		assert(resolvableGraph.edges[reverse(edge)].count(std::make_pair(node, false)) == 1);
+		resolvableGraph.edges[reverse(edge)].erase(std::make_pair(node, false));
+	}
+	for (auto edge : resolvableGraph.edges[std::make_pair(node, false)])
+	{
+		if (edge.first == node) continue;
+		assert(resolvableGraph.edges[reverse(edge)].count(std::make_pair(node, true)) == 1);
+		resolvableGraph.edges[reverse(edge)].erase(std::make_pair(node, true));
+	}
+	resolvableGraph.edges[std::make_pair(node, true)].clear();
+	resolvableGraph.edges[std::make_pair(node, false)].clear();
+	std::unordered_set<size_t> relevantReads = resolvableGraph.readsCrossingNode[node];
+	for (size_t i : relevantReads)
+	{
+		std::vector<size_t> nodePosStarts;
+		std::vector<size_t> nodePosEnds;
+		size_t pathKmerLength = 0;
+		for (size_t j = 0; j < readPaths[i].path.size(); j++)
+		{
+			if (j > 0) pathKmerLength -= resolvableGraph.overlaps.at(canon(readPaths[i].path[j-1], readPaths[i].path[j]));
+			nodePosStarts.push_back(pathKmerLength);
+			pathKmerLength += resolvableGraph.unitigs[readPaths[i].path[j].first].size();
+			nodePosEnds.push_back(pathKmerLength);
+		}
+		assert(pathKmerLength == readPaths[i].readPoses.size() + readPaths[i].leftClip + readPaths[i].rightClip);
+		assert(nodePosStarts[0] == 0);
+		for (size_t j = 0; j < nodePosStarts.size(); j++)
+		{
+			if (nodePosStarts[j] < readPaths[i].leftClip)
+			{
+				nodePosStarts[j] = 0;
+			}
+			else
+			{
+				nodePosStarts[j] -= readPaths[i].leftClip;
+			}
+			assert(nodePosEnds[j] >= readPaths[i].leftClip);
+			nodePosEnds[j] -= readPaths[i].leftClip;
+			if (nodePosEnds[j] > readPaths[i].readPoses.size()) nodePosEnds[j] = readPaths[i].readPoses.size();
+		}
+		assert(nodePosStarts[0] == 0);
+		assert(nodePosEnds.back() == readPaths[i].readPoses.size());
+		size_t lastStart = 0;
+		for (size_t j = 0; j < readPaths[i].path.size(); j++)
+		{
+			if (readPaths[i].path[j].first == node)
+			{
+				if (j == lastStart)
+				{
+					lastStart = j+1;
+					continue;
+				}
+				ReadPath path;
+				path.leftClip = readPaths[i].leftClip;
+				if (lastStart > 0) path.leftClip = 0;
+				path.rightClip = 0;
+				path.path.insert(path.path.end(), readPaths[i].path.begin() + lastStart, readPaths[i].path.begin() + j);
+				size_t posesStart = nodePosStarts[lastStart];
+				size_t posesEnd = nodePosEnds[j-1];
+				assert(posesStart < posesEnd);
+				assert(posesEnd <= readPaths[i].readPoses.size());
+				path.readPoses.insert(path.readPoses.end(), readPaths[i].readPoses.begin() + posesStart, readPaths[i].readPoses.begin() + posesEnd);
+				path.readPosesExpandedStart.insert(path.readPosesExpandedStart.end(), readPaths[i].readPosesExpandedStart.begin() + posesStart, readPaths[i].readPosesExpandedStart.begin() + posesEnd);
+				path.readPosesExpandedEnd.insert(path.readPosesExpandedEnd.end(), readPaths[i].readPosesExpandedEnd.begin() + posesStart, readPaths[i].readPosesExpandedEnd.begin() + posesEnd);
+				path.readName = readPaths[i].readName;
+				path.readLength = readPaths[i].readLength;
+				addPath(resolvableGraph, readPaths, path);
+				lastStart = j+1;
+			}
+		}
+		if (lastStart < readPaths[i].path.size())
+		{
+			ReadPath path;
+			path.leftClip = readPaths[i].leftClip;
+			if (lastStart > 0) path.leftClip = 0;
+			path.rightClip = readPaths[i].rightClip;
+			path.path.insert(path.path.end(), readPaths[i].path.begin() + lastStart, readPaths[i].path.end());
+			size_t posesStart = nodePosStarts[lastStart];
+			size_t posesEnd = nodePosEnds.back();
+			assert(posesStart < posesEnd);
+			assert(posesEnd <= readPaths[i].readPoses.size());
+			path.readPoses.insert(path.readPoses.end(), readPaths[i].readPoses.begin() + posesStart, readPaths[i].readPoses.begin() + posesEnd);
+			path.readPosesExpandedStart.insert(path.readPosesExpandedStart.end(), readPaths[i].readPosesExpandedStart.begin() + posesStart, readPaths[i].readPosesExpandedStart.begin() + posesEnd);
+			path.readPosesExpandedEnd.insert(path.readPosesExpandedEnd.end(), readPaths[i].readPosesExpandedEnd.begin() + posesStart, readPaths[i].readPosesExpandedEnd.begin() + posesEnd);
+			path.readName = readPaths[i].readName;
+			path.readLength = readPaths[i].readLength;
+			addPath(resolvableGraph, readPaths, path);
+		}
+		erasePath(resolvableGraph, readPaths, i);
+	}
+	assert(resolvableGraph.readsCrossingNode[node].size() == 0);
+	resolvableGraph.unitigRemoved[node] = true;
+}
+
+size_t removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const HashList& hashlist, const double maxRemovableCoverage, const double minSafeCoverage, const size_t maxRemovableLength, const size_t kmerSize)
+{
+	size_t removed = 0;
+	for (size_t i = 0; i < resolvableGraph.unitigs.size(); i++)
+	{
+		if (resolvableGraph.unitigRemoved[i]) continue;
+		if (resolvableGraph.edges[std::make_pair(i, true)].size() >= 2) continue;
+		if (resolvableGraph.edges[std::make_pair(i, false)].size() >= 2) continue;
+		if (resolvableGraph.edges[std::make_pair(i, true)].size() == 0 && resolvableGraph.edges[std::make_pair(i, false)].size() == 0) continue;
+		size_t unitigLength = 0;
+		for (size_t j = 0; j < resolvableGraph.unitigs[i].size(); j++)
+		{
+			unitigLength += kmerSize;
+			if (j > 0) unitigLength -= hashlist.getOverlap(resolvableGraph.unitigs[i][j-1], resolvableGraph.unitigs[i][j]);
+		}
+		if (unitigLength > maxRemovableLength) continue;
+		size_t maxEdgeCoverage = 0;
+		size_t fwHasSafeEdge = false;
+		size_t fwHasSafeNode = false;
+		for (auto edge : resolvableGraph.edges[std::make_pair(i, true)])
+		{
+			maxEdgeCoverage = std::max(maxEdgeCoverage, getEdgeCoverage(resolvableGraph, readPaths, std::make_pair(i, true), edge));
+			if (getCoverage(resolvableGraph, readPaths, edge.first) >= minSafeCoverage) fwHasSafeNode = true;
+			for (auto edge2 : resolvableGraph.edges[reverse(edge)])
+			{
+				if (getEdgeCoverage(resolvableGraph, readPaths, reverse(edge), edge2) >= minSafeCoverage) fwHasSafeEdge = true;
+			}
+		}
+		if (resolvableGraph.edges[std::make_pair(i, true)].size() > 0 && (!fwHasSafeNode || !fwHasSafeEdge)) continue;
+		bool bwHasSafeNode = false;
+		bool bwHasSafeEdge = false;
+		for (auto edge : resolvableGraph.edges[std::make_pair(i, false)])
+		{
+			maxEdgeCoverage = std::max(maxEdgeCoverage, getEdgeCoverage(resolvableGraph, readPaths, std::make_pair(i, false), edge));
+			if (getCoverage(resolvableGraph, readPaths, edge.first) >= minSafeCoverage) bwHasSafeNode = true;
+			for (auto edge2 : resolvableGraph.edges[reverse(edge)])
+			{
+				if (getEdgeCoverage(resolvableGraph, readPaths, reverse(edge), edge2) >= minSafeCoverage) bwHasSafeEdge = true;
+			}
+		}
+		if (resolvableGraph.edges[std::make_pair(i, false)].size() > 0 && (!bwHasSafeNode || !bwHasSafeEdge)) continue;
+		if (maxEdgeCoverage > maxRemovableCoverage) continue;
+		double coverage = getCoverage(resolvableGraph, readPaths, i);
+		if (coverage > maxRemovableCoverage) continue;
+		removeNode(resolvableGraph, readPaths, i);
+		removed += 1;
+	}
+	return removed;
+}
+
+void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t kmerSize)
 {
 	checkValidity(resolvableGraph, readPaths, kmerSize);
 	std::priority_queue<size_t, std::vector<size_t>, KmerLengthCompare> queue { KmerLengthCompare { resolvableGraph } };
@@ -1298,6 +1494,12 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 			std::cerr << ", unitigified " << unitigified << " nodes to " << unitigifiedTo << " nodes";
 		}
 		std::cerr << std::endl;
+		size_t removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, kmerSize*2, kmerSize);
+		if (removed > 0)
+		{
+			std::cerr << "removed " << removed << " tips" << std::endl;
+			unitigifyAll(resolvableGraph, readPaths);
+		}
 		checkValidity(resolvableGraph, readPaths, kmerSize);
 		for (size_t i = oldSize; i < resolvableGraph.unitigs.size(); i++)
 		{
@@ -1334,7 +1536,10 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 		assert(resolvableGraph.readsCrossingNode[i].size() >= 1);
 	}
 	unitigifyAll(resolvableGraph, readPaths);
-	resolveRound(resolvableGraph, readPaths, minCoverage, kmerSize);
+	size_t removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, kmerSize*2, kmerSize);
+	if (removed > 0) std::cerr << "removed " << removed << " tips" << std::endl;
+	unitigifyAll(resolvableGraph, readPaths);
+	resolveRound(resolvableGraph, readPaths, hashlist, minCoverage, kmerSize);
 	checkValidity(resolvableGraph, readPaths, kmerSize);
 	return resolvableToUnitigs(resolvableGraph, readPaths);
 }
