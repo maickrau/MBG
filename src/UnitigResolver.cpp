@@ -1165,7 +1165,7 @@ void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<ReadPat
 			}
 			continue;
 		}
-		for (size_t i = 1; i < path.path.size(); i++)
+		for (size_t i = 1; i < path.readPoses.size(); i++)
 		{
 			assert(path.readPoses[i] <= path.readPoses[i-1] + kmerSize);
 		}
