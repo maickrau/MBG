@@ -1,8 +1,20 @@
 #include "ConsensusMaker.h"
 #include "ErrorMaskHelper.h"
 
+ConsensusMaker::~ConsensusMaker()
+{
+	for (size_t i = 0; i < simpleSequenceMutexes.size(); i++)
+	{
+		delete simpleSequenceMutexes[i];
+	}
+}
+
 void ConsensusMaker::init(const std::vector<size_t>& unitigLengths)
 {
+	for (size_t i = 0; i < unitigLengths.size(); i++)
+	{
+		simpleSequenceMutexes.emplace_back(new std::mutex);
+	}
 	compressedSequences.resize(unitigLengths.size());
 	simpleCounts.resize(unitigLengths.size());
 	parent.resize(unitigLengths.size());
@@ -20,7 +32,7 @@ void ConsensusMaker::init(const std::vector<size_t>& unitigLengths)
 	stringIndex.init(maxCode());
 }
 
-std::tuple<size_t, size_t, bool> ConsensusMaker::find(size_t unitig, size_t index) const
+std::tuple<size_t, size_t, bool> ConsensusMaker::find(size_t unitig, size_t index)
 {
 	std::tuple<size_t, size_t, bool> result;
 	auto found = parent[unitig][index];
@@ -116,4 +128,15 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 	}
 	assert(result.size() == compressedSequences.size());
 	return std::make_pair(std::move(result), stringIndex);
+}
+
+void ConsensusMaker::findParentLinks()
+{
+	for (size_t i = 0; i < parent.size(); i++)
+	{
+		for (size_t j = 0; j < parent[i].size(); j++)
+		{
+			find(i, j);
+		}
+	}
 }
