@@ -64,18 +64,19 @@ void collectEndSmers(std::vector<bool>& endSmer, const std::vector<std::string>&
 std::vector<HashPath> loadReadsAsHashesMultithread(HashList& result, const std::vector<std::string>& files, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	std::atomic<size_t> totalNodes = 0;
+	std::mutex pathMutex;
 	std::vector<HashPath> paths;
 	// todo multithreading with paths
-	iterateReadsMultithreaded(files, 1, [&result, &totalNodes, kmerSize, &partIterator, &paths](size_t thread, FastQ& read)
+	iterateReadsMultithreaded(files, numThreads, [&result, &pathMutex, &totalNodes, kmerSize, &partIterator, &paths](size_t thread, FastQ& read)
 	{
-		partIterator.iteratePartKmers(read, [&result, &totalNodes, kmerSize, &paths, read](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
+		partIterator.iteratePartKmers(read, [&result, &pathMutex, &totalNodes, kmerSize, &paths, read](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
 		{
 			SequenceCharType revSeq = revCompRLE(seq);
 			size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 			std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
-			paths.emplace_back();
-			paths.back().readName = read.seq_id;
-			paths.back().readLength = poses.back();
+			HashPath newPath;
+			newPath.readName = read.seq_id;
+			newPath.readLength = poses.back();
 			for (auto pos : positions)
 			{
 				assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
@@ -86,11 +87,11 @@ std::vector<HashPath> loadReadsAsHashesMultithread(HashList& result, const std::
 				size_t overlap = lastMinimizerPosition + kmerSize - pos;
 				HashType hash;
 				std::tie(current, hash) = result.addNode(minimizerSequence, revMinimizerSequence);
-				paths.back().hashes.emplace_back(hash);
-				paths.back().hashPoses.emplace_back(pos);
-				paths.back().hashPosesExpandedStart.emplace_back(poses[pos]);
+				newPath.hashes.emplace_back(hash);
+				newPath.hashPoses.emplace_back(pos);
+				newPath.hashPosesExpandedStart.emplace_back(poses[pos]);
 				assert(pos+kmerSize < poses.size());
-				paths.back().hashPosesExpandedEnd.emplace_back(poses[pos+kmerSize]);
+				newPath.hashPosesExpandedEnd.emplace_back(poses[pos+kmerSize]);
 				assert(pos - lastMinimizerPosition < kmerSize);
 				if (last.first != std::numeric_limits<size_t>::max())
 				{
@@ -103,7 +104,11 @@ std::vector<HashPath> loadReadsAsHashesMultithread(HashList& result, const std::
 				last = current;
 				totalNodes += 1;
 			};
-			if (paths.back().hashes.size() == 0) paths.pop_back();
+			if (newPath.hashes.size() > 0)
+			{
+				std::lock_guard<std::mutex> guard { pathMutex };
+				paths.emplace_back(std::move(newPath));
+			}
 		});
 	});
 	std::cerr << totalNodes << " total selected k-mers in reads" << std::endl;
