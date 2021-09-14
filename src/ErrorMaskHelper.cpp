@@ -155,19 +155,15 @@ std::string getSequence(CharType code, size_t runLength)
 	return result;
 }
 
-std::pair<SequenceCharType, SequenceLengthType> multiRLECompressOne(const SequenceCharType& str, const SequenceLengthType& poses, const size_t maxMaskLength)
+template <typename F>
+void iterateRuns(const SequenceCharType& str, const SequenceLengthType& poses, const size_t maxMaskLength, F callback)
 {
-	assert(maxMaskLength <= MaxMotifLength);
-	std::vector<std::tuple<size_t, size_t, uint8_t>> runs;
-	runs.reserve(str.size());
+	size_t lastRunEnd = 0;
 	for (size_t i = 0; i < str.size(); i++)
 	{
 		size_t j = i;
 		while (j < str.size() && str[j] == str[i]) j += 1;
-		if (runs.size() == 0 || std::get<0>(runs.back()) > i || std::get<1>(runs.back()) < j)
-		{
-			runs.emplace_back(i, j, 1);
-		}
+		std::tuple<size_t, size_t, uint8_t> currentBestRun = std::make_tuple(i, j, 1);
 		for (size_t motifLength = 2; motifLength <= maxMaskLength; motifLength++)
 		{
 			if (i + motifLength * 2 > str.size()) break;
@@ -196,81 +192,101 @@ std::pair<SequenceCharType, SequenceLengthType> multiRLECompressOne(const Sequen
 			}
 			assert(overhang < motifLength);
 			size_t lengthHere = motifLength*runLength+overhang;
-			assert(runs.size() > 0);
-			if (std::get<0>(runs.back()) <= i && std::get<1>(runs.back()) >= i + lengthHere)
+			if (i + lengthHere <= lastRunEnd)
 			{
 				continue;
 			}
-			assert(runs.size() == 0 || (i > std::get<0>(runs.back()) || i + lengthHere > std::get<1>(runs.back())));
-			while (runs.size() > 0 && std::get<0>(runs.back()) == i && std::get<1>(runs.back()) < i + lengthHere)
+			if (i + lengthHere > std::get<1>(currentBestRun))
 			{
-				runs.pop_back();
+				currentBestRun = std::make_tuple(i, i + lengthHere, motifLength);
 			}
-			assert(runs.size() == 0 || (i > std::get<0>(runs.back()) && i + lengthHere > std::get<1>(runs.back())));
-			runs.emplace_back(i, i + lengthHere, motifLength);
+		}
+		if (std::get<1>(currentBestRun) > lastRunEnd)
+		{
+			callback(currentBestRun);
+			lastRunEnd = std::get<1>(currentBestRun);
 		}
 	}
-	std::vector<std::tuple<size_t, size_t, uint8_t>> nonOverlappingRuns;
-	nonOverlappingRuns.reserve(std::min(str.size(), runs.size()));
+}
+
+template <typename F>
+void iterateNonOverlappingRuns(const SequenceCharType& str, const SequenceLengthType& poses, const size_t maxMaskLength, F callback)
+{
+	std::tuple<size_t, size_t, uint8_t> lastRun { 0, 0, 0 };
 	size_t lastOneChar = 0;
-	for (size_t i = 1; i < runs.size(); i++)
+	bool first = true;
+	iterateRuns(str, poses, maxMaskLength, [&callback, &lastRun, &first, &lastOneChar](const std::tuple<size_t, size_t, uint8_t> currentRun)
 	{
-		assert(std::get<0>(runs[i]) > std::get<0>(runs[i-1]));
-		assert(std::get<1>(runs[i]) > std::get<1>(runs[i-1]));
-		if (lastOneChar > std::get<0>(runs[i]))
+		if (first)
 		{
-			for (size_t j = lastOneChar; j < std::get<1>(runs[i-1]); j++)
+			lastRun = currentRun;
+			first = false;
+			return;
+		}
+		assert(std::get<0>(currentRun) > std::get<0>(lastRun));
+		assert(std::get<1>(currentRun) > std::get<1>(lastRun));
+		if (lastOneChar > std::get<0>(currentRun))
+		{
+			for (size_t j = lastOneChar; j < std::get<1>(lastRun); j++)
 			{
 				// maybe todo: hpc in overlapping parts
-				nonOverlappingRuns.emplace_back(j, j+1, 1);
+				callback(std::make_tuple(j, j+1, 1));
 			}
-			lastOneChar = std::get<1>(runs[i-1]);
-			continue;
+			lastOneChar = std::get<1>(lastRun);
+			lastRun = currentRun;
+			return;
 		}
-		assert(lastOneChar <= std::get<0>(runs[i]));
-		if (std::get<0>(runs[i]) >= std::get<1>(runs[i-1]))
+		assert(lastOneChar <= std::get<0>(currentRun));
+		if (std::get<0>(currentRun) >= std::get<1>(lastRun))
 		{
-			assert(std::get<0>(runs[i]) == std::get<1>(runs[i-1]));
-			assert(std::max(lastOneChar, std::get<0>(runs[i-1])) < std::get<1>(runs[i-1]));
-			nonOverlappingRuns.emplace_back(std::max(lastOneChar, std::get<0>(runs[i-1])), std::get<1>(runs[i-1]), std::get<2>(runs[i-1]));
-			continue;
+			assert(std::get<0>(currentRun) == std::get<1>(lastRun));
+			assert(std::max(lastOneChar, std::get<0>(lastRun)) < std::get<1>(lastRun));
+			callback(std::make_tuple(std::max(lastOneChar, std::get<0>(lastRun)), std::get<1>(lastRun), std::get<2>(lastRun)));
+			lastRun = currentRun;
+			return;
 		}
-		assert(std::get<0>(runs[i]) < std::get<1>(runs[i-1]));
-		assert(std::max(lastOneChar, std::get<0>(runs[i-1])) <= std::get<0>(runs[i]));
-		if (std::max(lastOneChar, std::get<0>(runs[i-1])) < std::get<0>(runs[i])) nonOverlappingRuns.emplace_back(std::max(lastOneChar, std::get<0>(runs[i-1])), std::get<0>(runs[i]), std::get<2>(runs[i-1]));
-		lastOneChar = std::get<1>(runs[i-1]);
-		for (size_t j = std::get<0>(runs[i]); j < std::get<1>(runs[i-1]); j++)
+		assert(std::get<0>(currentRun) < std::get<1>(lastRun));
+		assert(std::max(lastOneChar, std::get<0>(lastRun)) <= std::get<0>(currentRun));
+		if (std::max(lastOneChar, std::get<0>(lastRun)) < std::get<0>(currentRun)) callback(std::make_tuple(std::max(lastOneChar, std::get<0>(lastRun)), std::get<0>(currentRun), std::get<2>(lastRun)));
+		lastOneChar = std::get<1>(lastRun);
+		for (size_t j = std::get<0>(currentRun); j < std::get<1>(lastRun); j++)
 		{
 			// maybe todo: hpc in overlapping parts
-			nonOverlappingRuns.emplace_back(j, j+1, 1);
+			callback(std::make_tuple(j, j+1, 1));
 		}
-	}
-	if (lastOneChar > std::get<0>(runs.back()))
+		lastRun = currentRun;
+	});
+	if (lastOneChar > std::get<0>(lastRun))
 	{
-		if (lastOneChar != std::get<1>(runs.back())) nonOverlappingRuns.emplace_back(lastOneChar, std::get<1>(runs.back()), std::get<2>(runs.back()));
+		if (lastOneChar != std::get<1>(lastRun)) callback(std::make_tuple(lastOneChar, std::get<1>(lastRun), std::get<2>(lastRun)));
 	}
 	else
 	{
-		nonOverlappingRuns.emplace_back(runs.back());
+		callback(lastRun);
 	}
-	assert(std::get<0>(nonOverlappingRuns[0]) == 0);
-	assert(std::get<1>(nonOverlappingRuns.back()) == str.size());
+}
+
+std::pair<SequenceCharType, SequenceLengthType> multiRLECompressOne(const SequenceCharType& str, const SequenceLengthType& poses, const size_t maxMaskLength)
+{
+	assert(maxMaskLength <= MaxMotifLength);
 	std::pair<SequenceCharType, SequenceLengthType> result;
-	result.first.reserve(nonOverlappingRuns.size());
-	result.second.reserve(nonOverlappingRuns.size());
-	for (size_t i = 0; i < nonOverlappingRuns.size(); i++)
+	result.first.reserve(str.size());
+	result.second.reserve(str.size());
+	std::tuple<size_t, size_t, uint8_t> lastRun { 0, 0, 0 };
+	iterateNonOverlappingRuns(str, poses, maxMaskLength, [&result, &lastRun, &str, &poses](const std::tuple<size_t, size_t, uint8_t> run)
 	{
-		assert(i == 0 || std::get<1>(nonOverlappingRuns[i-1]) == std::get<0>(nonOverlappingRuns[i]));
-		assert(std::get<1>(nonOverlappingRuns[i]) > std::get<0>(nonOverlappingRuns[i]));
+		assert(std::get<1>(lastRun) == std::get<0>(run));
+		assert(std::get<1>(run) > std::get<0>(run));
 		CharType code;
 		LengthType runLength;
-		uint8_t motifLength = std::get<2>(nonOverlappingRuns[i]);
-		if (motifLength > std::get<1>(nonOverlappingRuns[i]) - std::get<0>(nonOverlappingRuns[i])) motifLength = std::get<1>(nonOverlappingRuns[i]) - std::get<0>(nonOverlappingRuns[i]);
-		std::tie(code, runLength) = getCodeAndRunlength(str, std::get<0>(nonOverlappingRuns[i]), std::get<1>(nonOverlappingRuns[i]), motifLength);
+		uint8_t motifLength = std::get<2>(run);
+		if (motifLength > std::get<1>(run) - std::get<0>(run)) motifLength = std::get<1>(run) - std::get<0>(run);
+		std::tie(code, runLength) = getCodeAndRunlength(str, std::get<0>(run), std::get<1>(run), motifLength);
 		result.first.emplace_back(code);
-		result.second.emplace_back(poses[std::get<0>(nonOverlappingRuns[i])]);
-	}
-	result.second.emplace_back(poses[std::get<1>(nonOverlappingRuns.back())]);
+		result.second.emplace_back(poses[std::get<0>(run)]);
+		lastRun = run;
+	});
+	result.second.emplace_back(poses[std::get<1>(lastRun)]);
 	return result;
 }
 
