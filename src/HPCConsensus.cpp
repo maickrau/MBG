@@ -48,7 +48,8 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 			offset += kmerSize - rleOverlap;
 			bpOffsets[i].push_back(offset);
 		}
-		unitigLengths.push_back(offset + kmerSize);
+		assert(offset + kmerSize > unitigs.leftClip[i] + unitigs.rightClip[i]);
+		unitigLengths.push_back(offset + kmerSize - unitigs.leftClip[i] - unitigs.rightClip[i]);
 	}
 	ConsensusMaker consensusMaker;
 	std::unordered_map<std::string, std::vector<std::tuple<size_t, size_t, size_t, size_t, bool>>> matchBlocks;
@@ -109,10 +110,42 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 			size_t readEnd = path.readPoses[endPosIndex] + kmerSize;
 			size_t unitigStart = bpOffsets[path.path[i].first][startKmerIndex];
 			size_t unitigEnd = bpOffsets[path.path[i].first][endKmerIndex] + kmerSize;
+			size_t unitig = path.path[i].first;
+			bool fw = path.path[i].second;
+			if (unitigStart < unitigs.leftClip[unitig])
+			{
+				if (fw)
+				{
+					readStart += unitigs.leftClip[unitig] - unitigStart;
+				}
+				else
+				{
+					readEnd -= unitigs.leftClip[unitig] - unitigStart;
+				}
+				unitigStart = 0;
+			}
+			else
+			{
+				unitigStart -= unitigs.leftClip[unitig];
+			}
+			assert(unitigEnd >= unitigs.leftClip[unitig]);
+			unitigEnd -= unitigs.leftClip[unitig];
+			if (unitigEnd > unitigLengths[unitig])
+			{
+				if (fw)
+				{
+					readEnd -= unitigEnd - unitigLengths[unitig];
+				}
+				else
+				{
+					readStart += unitigEnd - unitigLengths[unitig];
+				}
+				unitigEnd = unitigLengths[unitig];
+			}
 			assert(readEnd > readStart);
 			assert(unitigEnd > unitigStart);
 			assert(readEnd - readStart == unitigEnd - unitigStart);
-			matchBlocks[path.readName].emplace_back(path.path[i].first, readStart, unitigStart, readEnd - readStart, path.path[i].second);
+			matchBlocks[path.readName].emplace_back(unitig, readStart, unitigStart, readEnd - readStart, fw);
 		}
 	}
 	consensusMaker.init(unitigLengths);
@@ -143,7 +176,10 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 					lastKmer = kmer;
 				}
 			}
-			consensusMaker.addEdgeOverlap(pos, edge, bpOverlap);
+			size_t fromClip = pos.second ? unitigs.rightClip[pos.first] : unitigs.leftClip[pos.first];
+			size_t toClip = edge.second ? unitigs.leftClip[edge.first] : unitigs.rightClip[edge.first];
+			assert(bpOverlap > fromClip + toClip);
+			consensusMaker.addEdgeOverlap(pos, edge, bpOverlap - fromClip - toClip);
 		}
 		pos = std::make_pair(i, false);
 		for (auto edge : unitigs.edges[pos])
@@ -170,7 +206,10 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 					lastKmer = kmer;
 				}
 			}
-			consensusMaker.addEdgeOverlap(pos, edge, bpOverlap);
+			size_t fromClip = pos.second ? unitigs.rightClip[pos.first] : unitigs.leftClip[pos.first];
+			size_t toClip = edge.second ? unitigs.leftClip[edge.first] : unitigs.rightClip[edge.first];
+			assert(bpOverlap > fromClip + toClip);
+			consensusMaker.addEdgeOverlap(pos, edge, bpOverlap - fromClip - toClip);
 		}
 	}
 	consensusMaker.findParentLinks();

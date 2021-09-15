@@ -12,6 +12,8 @@ class UnitigGraph
 {
 public:
 	std::vector<std::vector<std::pair<NodeType, bool>>> unitigs;
+	std::vector<size_t> leftClip;
+	std::vector<size_t> rightClip;
 	std::vector<std::vector<size_t>> unitigCoverage;
 	VectorWithDirection<std::unordered_set<std::pair<size_t, bool>>> edges;
 	VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> edgeCov;

@@ -115,11 +115,6 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 				compressed = complement(compressed);
 			}
 			assert(maxCount > 0);
-			// // if (maxCount == 0)
-			// // {
-			// 	compressedSequences[i][j / MutexLength].set(j % MutexLength, 0);
-			// 	maxIndex = stringIndex.getIndex(0, "N");
-			// // }
 			assert(stringIndex.getString(compressedSequences[realI].get(realJ), maxIndex) != "");
 			compressedSequence.setCompressed(j, compressed);
 			compressedSequence.setExpanded(j, maxIndex);
