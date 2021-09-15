@@ -783,16 +783,15 @@ void createEdgeNode(ResolvableUnitigGraph& resolvableGraph, const HashList& hash
 				assert(resolvableGraph.unitigs.back()[resolvableGraph.unitigs.back().size() - start+i] == add[i]);
 			}
 			assert(add.size() > start);
-			rightClipBp = kmerSize - hashlist.getOverlap(resolvableGraph.unitigs.back().back(), add[start]);
-			assert(rightClipBp > 0);
+			rightClipBp = kmerSize - hashlist.getOverlap(resolvableGraph.unitigs.back().back(), add[start]) - 1;
 			assert(rightClipBp < kmerSize);
-			if (rightClipBp > availableIncrease)
+			if (rightClipBp > availableIncrease - 1)
 			{
-				rightClipBp -= availableIncrease;
+				rightClipBp -= availableIncrease - 1;
 			}
-			else
+			else if (rightClipBp > 1)
 			{
-				rightClipBp = 0;
+				rightClipBp = 1;
 			}
 			resolvableGraph.unitigs.back().emplace_back(add[start]);
 		}
@@ -823,6 +822,7 @@ void createEdgeNode(ResolvableUnitigGraph& resolvableGraph, const HashList& hash
 		resolvableGraph.overlaps[canon(std::make_pair(newIndex, true), to)] = resolvableGraph.overlaps.at(canon(from, to)) + overlapIncrement;
 		// resolvableGraph.overlaps[canon(std::make_pair(newIndex, true), to)] = resolvableGraph.unitigs[from.first].size();
 	}
+	assert(resolvableGraph.unitigLength(newIndex) > resolvableGraph.unitigLength(from.first));
 }
 
 std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getValidTriplets(const ResolvableUnitigGraph& resolvableGraph, const std::unordered_set<size_t>& resolvables, const std::vector<ReadPath>& readPaths, size_t node, size_t minCoverage)
