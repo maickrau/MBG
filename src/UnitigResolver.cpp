@@ -1505,10 +1505,7 @@ struct UntippingResult
 
 void tryRemoveTip(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const HashList& hashlist, const double maxRemovableCoverage, const double minSafeCoverage, const size_t maxRemovableLength, const size_t kmerSize, const size_t i, UntippingResult& result)
 {
-	if (resolvableGraph.unitigRemoved[i]) return;
-	if (resolvableGraph.edges[std::make_pair(i, true)].size() >= 2) return;
-	if (resolvableGraph.edges[std::make_pair(i, false)].size() >= 2) return;
-	if (resolvableGraph.edges[std::make_pair(i, true)].size() == 0 && resolvableGraph.edges[std::make_pair(i, false)].size() == 0) return;
+	assert(!resolvableGraph.unitigRemoved[i]);
 	size_t maxEdgeCoverage = 0;
 	size_t fwHasSafeEdge = false;
 	size_t fwHasSafeNode = false;
@@ -1541,10 +1538,25 @@ void tryRemoveTip(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 	result.nodesRemoved += 1;
 }
 
-UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const HashList& hashlist, const double maxRemovableCoverage, const double minSafeCoverage, const size_t maxRemovableLength, const size_t kmerSize)
+UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const HashList& hashlist, const double maxRemovableCoverage, const double minSafeCoverage, const size_t maxRemovableLength, const size_t kmerSize, const std::unordered_set<size_t>& maybeUntippable)
 {
 	for (size_t i = resolvableGraph.lastTippableChecked; i < resolvableGraph.unitigs.size(); i++)
 	{
+		if (resolvableGraph.edges[std::make_pair(i, true)].size() >= 2) continue;
+		if (resolvableGraph.edges[std::make_pair(i, false)].size() >= 2) continue;
+		if (resolvableGraph.edges[std::make_pair(i, true)].size() == 0 && resolvableGraph.edges[std::make_pair(i, false)].size() == 0) continue;
+		size_t unitigLength = resolvableGraph.unitigLength(i);
+		if (unitigLength > 10000) continue;
+		double coverage = getCoverage(resolvableGraph, readPaths, i);
+		if (coverage > 3) continue;
+		resolvableGraph.everTippable.push_back(i);
+	}
+	for (auto i : maybeUntippable)
+	{
+		if (i >= resolvableGraph.lastTippableChecked) continue;
+		if (resolvableGraph.edges[std::make_pair(i, true)].size() >= 2) continue;
+		if (resolvableGraph.edges[std::make_pair(i, false)].size() >= 2) continue;
+		if (resolvableGraph.edges[std::make_pair(i, true)].size() == 0 && resolvableGraph.edges[std::make_pair(i, false)].size() == 0) continue;
 		size_t unitigLength = resolvableGraph.unitigLength(i);
 		if (unitigLength > 10000) continue;
 		double coverage = getCoverage(resolvableGraph, readPaths, i);
@@ -1561,6 +1573,7 @@ UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, st
 		{
 			std::swap(resolvableGraph.everTippable[index], resolvableGraph.everTippable.back());
 			resolvableGraph.everTippable.pop_back();
+			continue;
 		}
 		tryRemoveTip(resolvableGraph, readPaths, hashlist, maxRemovableCoverage, minSafeCoverage, maxRemovableLength, kmerSize, i, result);
 	}
@@ -1646,8 +1659,9 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 			std::cerr << ", unitigified " << unitigified << " nodes to " << unitigifiedTo << " nodes";
 		}
 		std::cerr << std::endl;
-		auto removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, 10000, kmerSize);
-		auto removed2 = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 2, 5, 10000, kmerSize);
+		auto removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, 10000, kmerSize, resolutionResult.maybeUnitigifiable);
+		resolutionResult.maybeUnitigifiable.insert(removed.maybeUnitigifiable.begin(), removed.maybeUnitigifiable.end());
+		auto removed2 = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 2, 5, 10000, kmerSize, resolutionResult.maybeUnitigifiable);
 		if (removed.nodesRemoved + removed2.nodesRemoved > 0)
 		{
 			std::cerr << "removed " << removed.nodesRemoved + removed2.nodesRemoved << " tips" << std::endl;
@@ -1699,7 +1713,7 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 		assert(resolvableGraph.readsCrossingNode[i].size() >= 1);
 	}
 	unitigifyAll(resolvableGraph, readPaths);
-	auto removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, 10000, kmerSize);
+	auto removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, 10000, kmerSize, std::unordered_set<size_t> {});
 	if (removed.nodesRemoved > 0)
 	{
 		std::cerr << "removed " << removed.nodesRemoved << " tips" << std::endl;
