@@ -444,7 +444,7 @@ void erasePath(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& re
 	readPaths[i].path.clear();
 }
 
-void addPath(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const ReadPath& newPath)
+void addPath(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, ReadPath&& newPath)
 {
 	if (newPath.path.size() == 0) return;
 	assert(newPath.readPosesExpandedStart.size() == newPath.readPoses.size());
@@ -469,12 +469,12 @@ void addPath(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& read
 		}
 	}
 	size_t newIndex = readPaths.size();
-	readPaths.emplace_back(newPath);
 	std::unordered_set<size_t> nodes;
 	for (auto pos : newPath.path)
 	{
 		nodes.insert(pos.first);
 	}
+	readPaths.emplace_back(std::move(newPath));
 	for (auto node : nodes)
 	{
 		assert(resolvableGraph.readsCrossingNode[node].count(newIndex) == 0);
@@ -579,7 +579,7 @@ void replacePathNodes(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPa
 				newPath.rightClip += leftClip[readPaths[i].path.back().first];
 			}
 		}
-		addPath(resolvableGraph, readPaths, newPath);
+		addPath(resolvableGraph, readPaths, std::move(newPath));
 		erasePath(resolvableGraph, readPaths, i);
 	}
 }
@@ -1029,7 +1029,7 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 				path.readPosesExpandedEnd.insert(path.readPosesExpandedEnd.end(), newPath.readPosesExpandedEnd.begin() + posesStart, newPath.readPosesExpandedEnd.begin() + posesEnd);
 				path.readName = newPath.readName;
 				path.readLength = newPath.readLength;
-				addPath(resolvableGraph, readPaths, path);
+				addPath(resolvableGraph, readPaths, std::move(path));
 				lastStart = j;
 			}
 		}
@@ -1047,7 +1047,7 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 		path.readPosesExpandedEnd.insert(path.readPosesExpandedEnd.end(), newPath.readPosesExpandedEnd.begin() + posesStart, newPath.readPosesExpandedEnd.begin() + posesEnd);
 		path.readName = newPath.readName;
 		path.readLength = newPath.readLength;
-		addPath(resolvableGraph, readPaths, path);
+		addPath(resolvableGraph, readPaths, std::move(path));
 		erasePath(resolvableGraph, readPaths, i);
 	}
 }
@@ -1469,7 +1469,7 @@ void removeNode(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& r
 				path.readPosesExpandedEnd.insert(path.readPosesExpandedEnd.end(), readPaths[i].readPosesExpandedEnd.begin() + posesStart, readPaths[i].readPosesExpandedEnd.begin() + posesEnd);
 				path.readName = readPaths[i].readName;
 				path.readLength = readPaths[i].readLength;
-				addPath(resolvableGraph, readPaths, path);
+				addPath(resolvableGraph, readPaths, std::move(path));
 				lastStart = j+1;
 			}
 		}
@@ -1489,7 +1489,7 @@ void removeNode(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& r
 			path.readPosesExpandedEnd.insert(path.readPosesExpandedEnd.end(), readPaths[i].readPosesExpandedEnd.begin() + posesStart, readPaths[i].readPosesExpandedEnd.begin() + posesEnd);
 			path.readName = readPaths[i].readName;
 			path.readLength = readPaths[i].readLength;
-			addPath(resolvableGraph, readPaths, path);
+			addPath(resolvableGraph, readPaths, std::move(path));
 		}
 		erasePath(resolvableGraph, readPaths, i);
 	}
@@ -1545,12 +1545,7 @@ UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, st
 {
 	for (size_t i = resolvableGraph.lastTippableChecked; i < resolvableGraph.unitigs.size(); i++)
 	{
-		size_t unitigLength = 0;
-		for (size_t j = 0; j < resolvableGraph.unitigs[i].size(); j++)
-		{
-			unitigLength += kmerSize;
-			if (j > 0) unitigLength -= hashlist.getOverlap(resolvableGraph.unitigs[i][j-1], resolvableGraph.unitigs[i][j]);
-		}
+		size_t unitigLength = resolvableGraph.unitigLength(i);
 		if (unitigLength > 10000) continue;
 		double coverage = getCoverage(resolvableGraph, readPaths, i);
 		if (coverage > 3) continue;
