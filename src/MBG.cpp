@@ -974,7 +974,7 @@ void verifyEdgeConsistency(const UnitigGraph& unitigs, const HashList& hashlist,
 	}
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength)
 {
 	auto beforeReading = getTime();
 	// check that all files actually exist
@@ -1019,7 +1019,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	std::cerr << "Resolving unitigs" << std::endl;
 	std::cerr << unitigs.unitigs.size() << " unitigs before resolving" << std::endl;
 	std::vector<ReadPath> readPaths;
-	std::tie(unitigs, readPaths) = resolveUnitigs(unitigs, reads, paths, minUnitigCoverage, kmerSize);
+	std::tie(unitigs, readPaths) = resolveUnitigs(unitigs, reads, paths, minUnitigCoverage, kmerSize, maxResolveLength);
 	std::cerr << unitigs.unitigs.size() << " unitigs after resolving" << std::endl;
 	auto beforeSequences = getTime();
 	std::cerr << "Getting unitig sequences" << std::endl;

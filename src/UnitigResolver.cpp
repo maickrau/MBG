@@ -1267,6 +1267,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 
 void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<ReadPath>& readPaths, const size_t kmerSize)
 {
+	return;
 	for (size_t i = 0; i < graph.unitigs.size(); i++)
 	{
 		if (graph.unitigRemoved[i])
@@ -1595,7 +1596,7 @@ UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, st
 	return result;
 }
 
-void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t kmerSize)
+void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength)
 {
 	checkValidity(resolvableGraph, readPaths, kmerSize);
 	std::priority_queue<size_t, std::vector<size_t>, UnitigLengthComparer> queue { UnitigLengthComparer { resolvableGraph } };
@@ -1608,7 +1609,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 	while (queue.size() > 0)
 	{
 		size_t topSize = resolvableGraph.unitigLength(queue.top());
-		if (topSize >= 15000) break;
+		if (topSize >= maxResolveLength) break;
 		// assert(topSize >= lastTopSize);
 		lastTopSize = topSize;
 		std::unordered_set<size_t> resolvables;
@@ -1701,7 +1702,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 	}
 }
 
-std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, const std::vector<HashPath>& paths, const size_t minCoverage, const size_t kmerSize)
+std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, const std::vector<HashPath>& paths, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength)
 {
 	auto resolvableGraph = getUnitigs(initial, minCoverage, hashlist, kmerSize);
 	auto readPaths = getUnitigPaths(resolvableGraph, hashlist, paths, kmerSize);
@@ -1734,8 +1735,8 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 		std::cerr << "removed " << removed.nodesRemoved << " tips" << std::endl;
 		unitigifyAll(resolvableGraph, readPaths);
 	}
-	resolveRound(resolvableGraph, readPaths, hashlist, minCoverage, kmerSize);
-	resolveRound(resolvableGraph, readPaths, hashlist, 1, kmerSize);
+	resolveRound(resolvableGraph, readPaths, hashlist, minCoverage, kmerSize, maxResolveLength);
+	resolveRound(resolvableGraph, readPaths, hashlist, 1, kmerSize, maxResolveLength);
 	checkValidity(resolvableGraph, readPaths, kmerSize);
 	return resolvableToUnitigs(resolvableGraph, readPaths);
 }
