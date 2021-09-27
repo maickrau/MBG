@@ -88,10 +88,10 @@ std::vector<HashPath> loadReadsAsHashesMultithread(HashList& result, const std::
 				HashType hash;
 				std::tie(current, hash) = result.addNode(minimizerSequence, revMinimizerSequence);
 				newPath.hashes.emplace_back(hash);
-				newPath.hashPoses.emplace_back(pos);
-				newPath.hashPosesExpandedStart.emplace_back(poses[pos]);
+				newPath.hashPoses.push_back(pos);
+				newPath.hashPosesExpandedStart.push_back(poses[pos]);
 				assert(pos+kmerSize < poses.size());
-				newPath.hashPosesExpandedEnd.emplace_back(poses[pos+kmerSize]);
+				newPath.hashPosesExpandedEnd.push_back(poses[pos+kmerSize]);
 				assert(pos - lastMinimizerPosition < kmerSize);
 				if (last.first != std::numeric_limits<size_t>::max())
 				{

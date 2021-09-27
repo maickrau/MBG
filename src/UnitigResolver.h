@@ -5,6 +5,7 @@
 #include <vector>
 #include "UnitigGraph.h"
 #include "HashList.h"
+#include "CumulativeVector.h"
 
 class HashPath
 {
@@ -12,9 +13,9 @@ public:
 	std::vector<HashType> hashes;
 	std::string readName;
 	size_t readLength;
-	std::vector<size_t> hashPoses;
-	std::vector<size_t> hashPosesExpandedStart;
-	std::vector<size_t> hashPosesExpandedEnd;
+	CumulativeVector<uint8_t> hashPoses;
+	CumulativeVector<uint8_t> hashPosesExpandedStart;
+	CumulativeVector<uint8_t> hashPosesExpandedEnd;
 };
 
 class ReadPath
