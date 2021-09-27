@@ -5,6 +5,7 @@
 #include <phmap.h>
 #include "MBGCommon.h"
 #include "UnitigResolver.h"
+#include "RankBitvector.h"
 
 class ResolvableUnitigGraph
 {
@@ -73,6 +74,140 @@ private:
 	const HashList& hashlist;
 	const size_t kmerSize;
 };
+
+void compact(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& paths, std::vector<size_t>& queueNodes)
+{
+	{
+		std::vector<std::unordered_set<size_t>> tmp;
+		std::swap(resolvableGraph.readsCrossingNode, tmp);
+	}
+	RankBitvector kept { resolvableGraph.unitigs.size() };
+	for (size_t i = 0; i < resolvableGraph.unitigs.size(); i++)
+	{
+		kept.set(i, !resolvableGraph.unitigRemoved[i]);
+	}
+	kept.buildRanks();
+	size_t newSize = kept.getRank(kept.size()-1) + (kept.get(kept.size()-1) ? 1 : 0);
+	for (size_t i = resolvableGraph.everTippable.size()-1; i < resolvableGraph.everTippable.size(); i--)
+	{
+		if (!kept.get(resolvableGraph.everTippable[i]))
+		{
+			std::swap(resolvableGraph.everTippable[i], resolvableGraph.everTippable.back());
+			resolvableGraph.everTippable.pop_back();
+			continue;
+		}
+		resolvableGraph.everTippable[i] = kept.getRank(resolvableGraph.everTippable[i]);
+	}
+	resolvableGraph.lastTippableChecked = kept.getRank(resolvableGraph.lastTippableChecked);
+	resolvableGraph.unitigRemoved.resize(newSize);
+	for (size_t i = 0; i < resolvableGraph.unitigRemoved.size(); i++)
+	{
+		resolvableGraph.unitigRemoved[i] = false;
+	}
+	{
+		std::vector<std::vector<std::pair<size_t, bool>>> newUnitigs;
+		std::vector<size_t> newUnitigLeftClipBp;
+		std::vector<size_t> newUnitigRightClipBp;
+		newUnitigs.resize(newSize);
+		newUnitigRightClipBp.resize(newSize);
+		newUnitigLeftClipBp.resize(newSize);
+		for (size_t i = 0; i < resolvableGraph.unitigs.size(); i++)
+		{
+			if (!kept.get(i)) continue;
+			size_t newIndex = kept.getRank(i);
+			assert(newIndex < newUnitigs.size());
+			assert(newIndex < newUnitigLeftClipBp.size());
+			assert(newIndex < newUnitigRightClipBp.size());
+			std::swap(newUnitigs[newIndex], resolvableGraph.unitigs[i]);
+			newUnitigLeftClipBp[newIndex] = resolvableGraph.unitigLeftClipBp[i];
+			newUnitigRightClipBp[newIndex] = resolvableGraph.unitigRightClipBp[i];
+		}
+		std::swap(resolvableGraph.unitigs, newUnitigs);
+		std::swap(resolvableGraph.unitigRightClipBp, newUnitigRightClipBp);
+		std::swap(resolvableGraph.unitigLeftClipBp, newUnitigLeftClipBp);
+	}
+	{
+		VectorWithDirection<std::unordered_set<std::pair<size_t, bool>>> newEdges;
+		newEdges.resize(newSize);
+		for (size_t i = 0; i < resolvableGraph.edges.size(); i++)
+		{
+			if (!kept.get(i)) continue;
+			size_t newIndex = kept.getRank(i);
+			assert(newIndex < newEdges.size());
+			for (auto target : resolvableGraph.edges[std::make_pair(i, true)])
+			{
+				assert(kept.get(target.first));
+				assert(resolvableGraph.edges[reverse(target)].count(reverse(std::make_pair(i, true))) == 1);
+				newEdges[std::make_pair(newIndex, true)].emplace(kept.getRank(target.first), target.second);
+			}
+			for (auto target : resolvableGraph.edges[std::make_pair(i, false)])
+			{
+				assert(kept.get(target.first));
+				assert(resolvableGraph.edges[reverse(target)].count(reverse(std::make_pair(i, false))) == 1);
+				newEdges[std::make_pair(newIndex, false)].emplace(kept.getRank(target.first), target.second);
+			}
+		}
+		std::swap(resolvableGraph.edges, newEdges);
+	}
+	{
+		phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t> newOverlaps;
+		for (auto pair : resolvableGraph.overlaps)
+		{
+			auto from = pair.first.first;
+			auto to = pair.first.second;
+			if (!kept.get(from.first) || !kept.get(to.first)) continue;
+			auto overlap = pair.second;
+			from.first = kept.getRank(from.first);
+			to.first = kept.getRank(to.first);
+			assert(from.first < resolvableGraph.unitigs.size());
+			assert(to.first < resolvableGraph.unitigs.size());
+			newOverlaps[canon(from, to)] = overlap;
+		}
+		std::swap(resolvableGraph.overlaps, newOverlaps);
+	}
+	for (size_t i = paths.size()-1; i < paths.size(); i--)
+	{
+		if (paths[i].path.size() == 0)
+		{
+			std::swap(paths[i], paths.back());
+			paths.pop_back();
+			continue;
+		}
+		for (size_t j = 0; j < paths[i].path.size(); j++)
+		{
+			assert(kept.get(paths[i].path[j].first));
+			paths[i].path[j].first = kept.getRank(paths[i].path[j].first);
+			assert(paths[i].path[j].first < resolvableGraph.unitigs.size());
+		}
+	}
+	for (size_t i = queueNodes.size()-1; i < queueNodes.size(); i--)
+	{
+		if (!kept.get(queueNodes[i]))
+		{
+			std::swap(queueNodes[i], queueNodes.back());
+			queueNodes.pop_back();
+			continue;
+		}
+		queueNodes[i] = kept.getRank(queueNodes[i]);
+	}
+	resolvableGraph.readsCrossingNode.resize(newSize);
+	for (size_t i = 0; i < paths.size(); i++)
+	{
+		std::unordered_set<size_t> crossesNodes;
+		for (auto pair : paths[i].path)
+		{
+			crossesNodes.insert(pair.first);
+		}
+		for (auto node : crossesNodes)
+		{
+			resolvableGraph.readsCrossingNode[node].insert(i);
+		}
+	}
+	for (size_t i = 0; i < resolvableGraph.unitigRemoved.size(); i++)
+	{
+		assert(!resolvableGraph.unitigRemoved[i]);
+	}
+}
 
 class UnitigLengthComparer
 {
@@ -1268,6 +1403,11 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<ReadPath>& readPaths, const size_t kmerSize)
 {
 	return;
+	assert(graph.unitigs.size() == graph.edges.size());
+	assert(graph.unitigs.size() == graph.unitigRightClipBp.size());
+	assert(graph.unitigs.size() == graph.unitigLeftClipBp.size());
+	assert(graph.unitigs.size() == graph.unitigRemoved.size());
+	assert(graph.unitigs.size() == graph.readsCrossingNode.size());
 	for (size_t i = 0; i < graph.unitigs.size(); i++)
 	{
 		if (graph.unitigRemoved[i])
@@ -1606,6 +1746,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 		queue.emplace(i);
 	}
 	size_t lastTopSize = 0;
+	size_t nodesRemoved = 0;
 	while (queue.size() > 0)
 	{
 		size_t topSize = resolvableGraph.unitigLength(queue.top());
@@ -1647,6 +1788,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 		auto resolutionResult = resolve(resolvableGraph, hashlist, kmerSize, readPaths, resolvables, minCoverage);
 		size_t newSize = resolvableGraph.unitigs.size();
 		std::cerr << ", replaced " << resolutionResult.nodesResolved << " nodes with " << resolutionResult.nodesAdded << " nodes";
+		nodesRemoved += resolutionResult.nodesResolved;
 		if (resolutionResult.nodesResolved == 0)
 		{
 			std::cerr << std::endl;
@@ -1659,6 +1801,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 		{
 			if (resolvableGraph.unitigRemoved[i]) continue;
 			size_t unitigifiedHere = unitigifyOne(resolvableGraph, readPaths, i);
+			nodesRemoved += unitigifiedHere;
 			if (unitigifiedHere > 1)
 			{
 				unitigified += unitigifiedHere;
@@ -1678,6 +1821,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 		auto removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, 10000, kmerSize, resolutionResult.maybeUnitigifiable);
 		resolutionResult.maybeUnitigifiable.insert(removed.maybeUnitigifiable.begin(), removed.maybeUnitigifiable.end());
 		auto removed2 = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 2, 5, 10000, kmerSize, resolutionResult.maybeUnitigifiable);
+		nodesRemoved += removed.nodesRemoved + removed2.nodesRemoved;
 		if (removed.nodesRemoved + removed2.nodesRemoved > 0)
 		{
 			std::cerr << "removed " << removed.nodesRemoved + removed2.nodesRemoved << " tips" << std::endl;
@@ -1686,6 +1830,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 			{
 				if (resolvableGraph.unitigRemoved[i]) continue;
 				size_t unitigifiedHere = unitigifyOne(resolvableGraph, readPaths, i);
+				nodesRemoved += unitigifiedHere;
 				if (unitigifiedHere == 0)
 				{
 					assert(!resolvableGraph.unitigRemoved[i]);
@@ -1698,6 +1843,29 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 		{
 			if (resolvableGraph.unitigRemoved[i]) continue;
 			queue.emplace(i);
+		}
+		if (nodesRemoved > resolvableGraph.unitigs.size() / 2)
+		{
+			std::vector<size_t> queueNodes;
+			while (queue.size() > 0)
+			{
+				auto top = queue.top();
+				queue.pop();
+				if (resolvableGraph.unitigRemoved[top]) continue;
+				queueNodes.emplace_back(top);
+			}
+			size_t oldSize = resolvableGraph.unitigs.size();
+			compact(resolvableGraph, readPaths, queueNodes);
+			nodesRemoved = 0;
+			size_t newSize = resolvableGraph.unitigs.size();
+			std::cerr << "compacted from " << oldSize << " to " << newSize << std::endl;
+			checkValidity(resolvableGraph, readPaths, kmerSize);
+			for (auto node : queueNodes)
+			{
+				assert(node < resolvableGraph.unitigs.size());
+				assert(!resolvableGraph.unitigRemoved[node]);
+				queue.emplace(node);
+			}
 		}
 	}
 }
