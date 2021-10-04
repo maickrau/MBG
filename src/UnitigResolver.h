@@ -2,21 +2,12 @@
 #define UnitigResolver_h
 
 #include <tuple>
+#include <string>
 #include <vector>
 #include "UnitigGraph.h"
 #include "HashList.h"
 #include "CumulativeVector.h"
-
-class HashPath
-{
-public:
-	std::vector<HashType> hashes;
-	std::string readName;
-	size_t readLength;
-	CumulativeVector<uint8_t> hashPoses;
-	CumulativeVector<uint8_t> hashPosesExpandedStart;
-	CumulativeVector<uint8_t> hashPosesExpandedEnd;
-};
+#include "ReadHelper.h"
 
 class ReadPath
 {
@@ -32,6 +23,6 @@ public:
 private:
 };
 
-std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, const std::vector<HashPath>& paths, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength);
+std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, const std::vector<std::string>& readFiles, const size_t numThreads, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength);
 
 #endif

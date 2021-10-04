@@ -61,22 +61,16 @@ void collectEndSmers(std::vector<bool>& endSmer, const std::vector<std::string>&
 	std::cerr << addedEndSmers << " end k-mers" << std::endl;
 }
 
-std::vector<HashPath> loadReadsAsHashesMultithread(HashList& result, const std::vector<std::string>& files, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
+void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::string>& files, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	std::atomic<size_t> totalNodes = 0;
-	std::mutex pathMutex;
-	std::vector<HashPath> paths;
-	// todo multithreading with paths
-	iterateReadsMultithreaded(files, numThreads, [&result, &pathMutex, &totalNodes, kmerSize, &partIterator, &paths](size_t thread, FastQ& read)
+	iterateReadsMultithreaded(files, numThreads, [&result, &totalNodes, kmerSize, &partIterator](size_t thread, FastQ& read)
 	{
-		partIterator.iteratePartKmers(read, [&result, &pathMutex, &totalNodes, kmerSize, &paths, read](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
+		partIterator.iteratePartKmers(read, [&result, &totalNodes, kmerSize](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
 		{
 			SequenceCharType revSeq = revCompRLE(seq);
 			size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 			std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
-			HashPath newPath;
-			newPath.readName = read.seq_id;
-			newPath.readLength = poses.back();
 			for (auto pos : positions)
 			{
 				assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
@@ -87,11 +81,7 @@ std::vector<HashPath> loadReadsAsHashesMultithread(HashList& result, const std::
 				size_t overlap = lastMinimizerPosition + kmerSize - pos;
 				HashType hash;
 				std::tie(current, hash) = result.addNode(minimizerSequence, revMinimizerSequence);
-				newPath.hashes.emplace_back(hash);
-				newPath.hashPoses.push_back(pos);
-				newPath.hashPosesExpandedStart.push_back(poses[pos]);
 				assert(pos+kmerSize < poses.size());
-				newPath.hashPosesExpandedEnd.push_back(poses[pos+kmerSize]);
 				assert(pos - lastMinimizerPosition < kmerSize);
 				if (last.first != std::numeric_limits<size_t>::max())
 				{
@@ -104,17 +94,10 @@ std::vector<HashPath> loadReadsAsHashesMultithread(HashList& result, const std::
 				last = current;
 				totalNodes += 1;
 			};
-			if (newPath.hashes.size() > 0)
-			{
-				std::lock_guard<std::mutex> guard { pathMutex };
-				paths.emplace_back(std::move(newPath));
-			}
 		});
 	});
 	std::cerr << totalNodes << " total selected k-mers in reads" << std::endl;
 	std::cerr << result.size() << " distinct selected k-mers in reads" << std::endl;
-	std::cerr << paths.size() << " input paths" << std::endl;
-	return paths;
 }
 
 size_t getUnitigOverlap(const HashList& hashlist, const size_t kmerSize, const UnitigGraph& unitigs, const std::pair<size_t, bool> from, const std::pair<size_t, bool> to)
@@ -1003,7 +986,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	}
 	HashList reads { kmerSize };
 	std::cerr << "Collecting selected k-mers" << std::endl;
-	auto paths = loadReadsAsHashesMultithread(reads, inputReads, kmerSize, partIterator, numThreads);
+	loadReadsAsHashesMultithread(reads, inputReads, kmerSize, partIterator, numThreads);
 	auto beforeUnitigs = getTime();
 	std::cerr << "Unitigifying" << std::endl;
 	auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage);
@@ -1019,7 +1002,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	std::cerr << "Resolving unitigs" << std::endl;
 	std::cerr << unitigs.unitigs.size() << " unitigs before resolving" << std::endl;
 	std::vector<ReadPath> readPaths;
-	std::tie(unitigs, readPaths) = resolveUnitigs(unitigs, reads, paths, minUnitigCoverage, kmerSize, maxResolveLength);
+	std::tie(unitigs, readPaths) = resolveUnitigs(unitigs, reads, inputReads, numThreads, partIterator, minUnitigCoverage, kmerSize, maxResolveLength);
 	std::cerr << unitigs.unitigs.size() << " unitigs after resolving" << std::endl;
 	auto beforeSequences = getTime();
 	std::cerr << "Getting unitig sequences" << std::endl;

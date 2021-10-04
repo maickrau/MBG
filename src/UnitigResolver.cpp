@@ -6,6 +6,7 @@
 #include "MBGCommon.h"
 #include "UnitigResolver.h"
 #include "RankBitvector.h"
+#include "ReadHelper.h"
 
 class ResolvableUnitigGraph
 {
@@ -258,7 +259,7 @@ ResolvableUnitigGraph getUnitigs(const UnitigGraph& initial, size_t minCoverage,
 	return result;
 }
 
-std::vector<ReadPath> getUnitigPaths(const ResolvableUnitigGraph& graph, const HashList& hashlist, const std::vector<HashPath>& kmerPaths, const size_t kmerSize)
+std::vector<ReadPath> getUnitigPaths(const ResolvableUnitigGraph& graph, const HashList& hashlist, const std::vector<std::string>& readFiles, const size_t numThreads, const ReadpartIterator& partIterator, const size_t kmerSize)
 {
 	size_t maxKmer = 0;
 	for (size_t i = 0; i < graph.unitigs.size(); i++)
@@ -286,126 +287,156 @@ std::vector<ReadPath> getUnitigPaths(const ResolvableUnitigGraph& graph, const H
 		}
 	}
 	std::vector<ReadPath> result;
-	for (size_t i = 0; i < kmerPaths.size(); i++)
+	std::mutex resultMutex;
+	iterateReadsMultithreaded(readFiles, numThreads, [&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist, &partIterator](size_t thread, FastQ& read)
 	{
-		ReadPath current;
-		current.readName = kmerPaths[i].readName;
-		current.readLength = kmerPaths[i].readLength;
-		size_t lastReadPos = std::numeric_limits<size_t>::max();
-		std::pair<size_t, bool> lastKmer { std::numeric_limits<size_t>::max(), true };
-		std::tuple<size_t, size_t, bool> lastPos = std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true);
-		for (size_t j = 0; j < kmerPaths[i].hashes.size(); j++)
+		partIterator.iteratePartKmers(read, [&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist, &read](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
 		{
-			std::pair<size_t, bool> kmer = hashlist.getNodeOrNull(kmerPaths[i].hashes[j]);
-			size_t readPos = kmerPaths[i].hashPoses[j];
-			size_t readPosExpandedStart = kmerPaths[i].hashPosesExpandedStart[j];
-			size_t readPosExpandedEnd = kmerPaths[i].hashPosesExpandedEnd[j];
-			if (kmer.first == std::numeric_limits<size_t>::max()) continue;
-			if (kmer.first > maxKmer || std::get<0>(kmerLocator[kmer.first]) == std::numeric_limits<size_t>::max())
+			ReadPath current;
+			current.readName = read.seq_id;
+			current.readLength = rawSeq.size();
+			size_t lastReadPos = std::numeric_limits<size_t>::max();
+			std::pair<size_t, bool> lastKmer { std::numeric_limits<size_t>::max(), true };
+			std::tuple<size_t, size_t, bool> lastPos = std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true);
+			for (const size_t readPos : positions)
 			{
-				if (current.path.size() > 0) result.push_back(current);
-				current.path.clear();
-				current.leftClip = 0;
-				current.rightClip = 0;
-				lastPos = std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true);
-				lastReadPos = readPos;
-				lastKmer = kmer;
-				continue;
-			}
-			auto pos = kmerLocator[kmer.first];
-			assert(std::get<0>(pos) < graph.unitigs.size());
-			if (!kmer.second)
-			{
-				std::get<2>(pos) = !std::get<2>(pos);
-				std::get<1>(pos) = graph.unitigs[std::get<0>(pos)].size()-1-std::get<1>(pos);
-			}
-			if (std::get<0>(lastPos) == std::numeric_limits<size_t>::max())
-			{
-				assert(current.path.size() == 0);
-				current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
-				current.readPoses.push_back(readPos);
-				current.readPosesExpandedStart.push_back(readPosExpandedStart);
-				current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
-				current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
-				current.leftClip = std::get<1>(pos);
-				assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
-				lastPos = pos;
-				lastReadPos = readPos;
-				lastKmer = kmer;
-				continue;
-			}
-			if (lastKmer.first != std::numeric_limits<size_t>::max())
-			{
-				assert(lastReadPos != std::numeric_limits<size_t>::max());
-				if (!hashlist.hasSequenceOverlap(lastKmer, kmer) || readPos - lastReadPos != kmerSize - hashlist.getOverlap(lastKmer, kmer))
+				VectorView<CharType> minimizerSequence { seq, readPos, readPos + kmerSize };
+				std::pair<size_t, bool> kmer = hashlist.getNodeOrNull(minimizerSequence);
+				if (kmer.first == std::numeric_limits<size_t>::max()) continue;
+				size_t readPosExpandedStart = poses[readPos];
+				size_t readPosExpandedEnd = poses[readPos+kmerSize];
+				if (kmer.first >= kmerLocator.size() || std::get<0>(kmerLocator[kmer.first]) == std::numeric_limits<size_t>::max())
 				{
-					assert(current.path.size() > 0);
-					result.push_back(current);
+					if (current.path.size() > 0)
+					{
+						std::lock_guard<std::mutex> lock { resultMutex };
+						result.emplace_back();
+						std::swap(result.back(), current);
+					}
 					current.path.clear();
+					current.readName = read.seq_id;
+					current.readLength = rawSeq.size();
+					current.leftClip = 0;
+					current.rightClip = 0;
+					lastPos = std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true);
+					lastReadPos = readPos;
+					lastKmer = kmer;
+					continue;
+				}
+				auto pos = kmerLocator[kmer.first];
+				assert(std::get<0>(pos) < graph.unitigs.size());
+				if (!kmer.second)
+				{
+					std::get<2>(pos) = !std::get<2>(pos);
+					std::get<1>(pos) = graph.unitigs[std::get<0>(pos)].size()-1-std::get<1>(pos);
+				}
+				if (std::get<0>(lastPos) == std::numeric_limits<size_t>::max())
+				{
+					assert(current.path.size() == 0);
 					current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
-					current.readPoses.clear();
-					current.readPosesExpandedStart.clear();
-					current.readPosesExpandedEnd.clear();
 					current.readPoses.push_back(readPos);
 					current.readPosesExpandedStart.push_back(readPosExpandedStart);
 					current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
-					current.leftClip = std::get<1>(pos);
 					current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
+					current.leftClip = std::get<1>(pos);
 					assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
 					lastPos = pos;
 					lastReadPos = readPos;
 					lastKmer = kmer;
 					continue;
 				}
-			}
-			assert(current.path.size() > 0);
-			if (std::get<0>(pos) == std::get<0>(lastPos) && std::get<2>(pos) == std::get<2>(lastPos) && std::get<1>(pos) == std::get<1>(lastPos)+1)
-			{
-				lastPos = pos;
-				lastReadPos = readPos;
-				lastKmer = kmer;
-				current.rightClip -= 1;
-				current.readPoses.push_back(readPos);
-				current.readPosesExpandedStart.push_back(readPosExpandedStart);
-				current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
-				assert(current.rightClip == graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos));
-				continue;
-			}
-			std::pair<size_t, bool> fromEdge { std::get<0>(lastPos), std::get<2>(lastPos) };
-			std::pair<size_t, bool> toEdge { std::get<0>(pos), std::get<2>(pos) };
-			assert(graph.edges[fromEdge].count(toEdge) == graph.edges[reverse(toEdge)].count(reverse(fromEdge)));
-			if (graph.edges[fromEdge].count(toEdge) == 1 && std::get<1>(pos) == 0 && std::get<1>(lastPos) == graph.unitigs[std::get<0>(lastPos)].size()-1)
-			{
+				if (lastKmer.first != std::numeric_limits<size_t>::max())
+				{
+					assert(lastReadPos != std::numeric_limits<size_t>::max());
+					if (!hashlist.hasSequenceOverlap(lastKmer, kmer) || readPos - lastReadPos != kmerSize - hashlist.getOverlap(lastKmer, kmer))
+					{
+						assert(current.path.size() > 0);
+						{
+							std::lock_guard<std::mutex> lock { resultMutex };
+							result.emplace_back();
+							std::swap(result.back(), current);
+						}
+						current.path.clear();
+						current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
+						current.readPoses.clear();
+						current.readPosesExpandedStart.clear();
+						current.readPosesExpandedEnd.clear();
+						current.readPoses.push_back(readPos);
+						current.readPosesExpandedStart.push_back(readPosExpandedStart);
+						current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
+						current.leftClip = std::get<1>(pos);
+						current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
+						current.readName = read.seq_id;
+						current.readLength = rawSeq.size();
+						assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
+						lastPos = pos;
+						lastReadPos = readPos;
+						lastKmer = kmer;
+						continue;
+					}
+				}
+				assert(current.path.size() > 0);
+				if (std::get<0>(pos) == std::get<0>(lastPos) && std::get<2>(pos) == std::get<2>(lastPos) && std::get<1>(pos) == std::get<1>(lastPos)+1)
+				{
+					lastPos = pos;
+					lastReadPos = readPos;
+					lastKmer = kmer;
+					current.rightClip -= 1;
+					current.readPoses.push_back(readPos);
+					current.readPosesExpandedStart.push_back(readPosExpandedStart);
+					current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
+					assert(current.rightClip == graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos));
+					continue;
+				}
+				std::pair<size_t, bool> fromEdge { std::get<0>(lastPos), std::get<2>(lastPos) };
+				std::pair<size_t, bool> toEdge { std::get<0>(pos), std::get<2>(pos) };
+				assert(graph.edges[fromEdge].count(toEdge) == graph.edges[reverse(toEdge)].count(reverse(fromEdge)));
+				if (graph.edges[fromEdge].count(toEdge) == 1 && std::get<1>(pos) == 0 && std::get<1>(lastPos) == graph.unitigs[std::get<0>(lastPos)].size()-1)
+				{
+					assert(current.rightClip == 0);
+					current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
+					current.readPoses.push_back(readPos);
+					current.readPosesExpandedStart.push_back(readPosExpandedStart);
+					current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
+					current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1;
+					lastPos = pos;
+					lastReadPos = readPos;
+					lastKmer = kmer;
+					continue;
+				}
+				assert(current.path.size() > 0);
+				{
+					std::lock_guard<std::mutex> lock { resultMutex };
+					result.emplace_back();
+					std::swap(result.back(), current);
+				}
+				current.path.clear();
 				current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
+				current.readPoses.clear();
+				current.readPosesExpandedStart.clear();
+				current.readPosesExpandedEnd.clear();
 				current.readPoses.push_back(readPos);
 				current.readPosesExpandedStart.push_back(readPosExpandedStart);
 				current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
-				current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1;
+				current.leftClip = std::get<1>(pos);
+				current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
+				current.readName = read.seq_id;
+				current.readLength = rawSeq.size();
+				assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
 				lastPos = pos;
 				lastReadPos = readPos;
 				lastKmer = kmer;
 				continue;
 			}
-			assert(current.path.size() > 0);
-			result.push_back(current);
-			current.path.clear();
-			current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
-			current.readPoses.clear();
-			current.readPosesExpandedStart.clear();
-			current.readPosesExpandedEnd.clear();
-			current.readPoses.push_back(readPos);
-			current.readPosesExpandedStart.push_back(readPosExpandedStart);
-			current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
-			current.leftClip = std::get<1>(pos);
-			current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
-			assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
-			lastPos = pos;
-			lastReadPos = readPos;
-			lastKmer = kmer;
-			continue;
-		}
-		if (current.path.size() > 0) result.push_back(current);
-	}
+			if (current.path.size() > 0)
+			{
+				std::lock_guard<std::mutex> lock { resultMutex };
+				result.emplace_back();
+				std::swap(result.back(), current);
+			}
+		});
+	});
+
 	return result;
 }
 
@@ -1408,7 +1439,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 
 void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<ReadPath>& readPaths, const size_t kmerSize)
 {
-	return;
+	// return;
 	assert(graph.unitigs.size() == graph.edges.size());
 	assert(graph.unitigs.size() == graph.unitigRightClipBp.size());
 	assert(graph.unitigs.size() == graph.unitigLeftClipBp.size());
@@ -1882,10 +1913,10 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 	}
 }
 
-std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, const std::vector<HashPath>& paths, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength)
+std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, const std::vector<std::string>& readFiles, const size_t numThreads, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength)
 {
 	auto resolvableGraph = getUnitigs(initial, minCoverage, hashlist, kmerSize);
-	auto readPaths = getUnitigPaths(resolvableGraph, hashlist, paths, kmerSize);
+	auto readPaths = getUnitigPaths(resolvableGraph, hashlist, readFiles, numThreads, partIterator, kmerSize);
 	for (size_t i = 0; i < readPaths.size(); i++)
 	{
 		for (auto pos : readPaths[i].path)
