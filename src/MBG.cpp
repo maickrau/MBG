@@ -45,6 +45,7 @@ void collectEndSmers(std::vector<bool>& endSmer, const std::vector<std::string>&
 	iterateReadsMultithreaded(files, 1, [&endSmer, smerSize, &addedEndSmers, &partIterator](size_t thread, FastQ& read)
 	{
 		partIterator.iterateParts(read, [&endSmer, smerSize, &addedEndSmers](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
+			if (seq.size() < smerSize) return;
 			FastHasher startKmer { smerSize };
 			FastHasher endKmer { smerSize };
 			for (size_t i = 0; i < smerSize; i++)
