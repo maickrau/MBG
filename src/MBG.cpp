@@ -298,6 +298,10 @@ void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, 
 	result.edges.emplace_back();
 	result.edgeCov.emplace_back();
 	result.edgeOvlp.emplace_back();
+	result.leftClip.emplace_back(0);
+	result.rightClip.emplace_back(0);
+	assert(old.leftClip[start.first] == 0);
+	assert(old.rightClip[start.first] == 0);
 	std::pair<size_t, bool> pos = start;
 	unitigStart[start] = true;
 	unitigEnd[reverse(start)] = true;
@@ -342,6 +346,8 @@ void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, 
 			break;
 		}
 		pos = newPos;
+		assert(old.leftClip[pos.first] == 0);
+		assert(old.rightClip[pos.first] == 0);
 		assert(belongsToUnitig.at(pos.first).first == std::numeric_limits<size_t>::max());
 		belongsToUnitig[pos.first] = std::make_pair(currentUnitig, pos.second);
 		if (pos.second)
@@ -413,6 +419,8 @@ void startUnitig(UnitigGraph& result, std::pair<size_t, bool> start, const Spars
 	result.edgeOvlp.emplace_back();
 	result.unitigs.back().reserve(hashes.size());
 	result.unitigCoverage.back().reserve(hashes.size());
+	result.leftClip.emplace_back(0);
+	result.rightClip.emplace_back(0);
 	for (auto pos : hashes)
 	{
 		result.unitigs.back().emplace_back(pos);
@@ -958,6 +966,187 @@ void verifyEdgeConsistency(const UnitigGraph& unitigs, const HashList& hashlist,
 	}
 }
 
+std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& hashlist, const std::vector<std::string>& readFiles, const size_t numThreads, const ReadpartIterator& partIterator, const size_t kmerSize)
+{
+	size_t maxKmer = 0;
+	for (size_t i = 0; i < graph.unitigs.size(); i++)
+	{
+		for (size_t j = 0; j < graph.unitigs[i].size(); j++)
+		{
+			maxKmer = std::max(maxKmer, graph.unitigs[i][j].first);
+		}
+	}
+	std::vector<std::tuple<size_t, size_t, bool>> kmerLocator;
+	kmerLocator.resize(maxKmer+1, std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true));
+	for (size_t i = 0; i < graph.unitigs.size(); i++)
+	{
+		for (size_t j = 0; j < graph.unitigs[i].size(); j++)
+		{
+			assert(std::get<0>(kmerLocator[graph.unitigs[i][j].first]) == std::numeric_limits<size_t>::max());
+			if (graph.unitigs[i][j].second)
+			{
+				kmerLocator[graph.unitigs[i][j].first] = std::make_tuple(i, j, true);
+			}
+			else
+			{
+				kmerLocator[graph.unitigs[i][j].first] = std::make_tuple(i, graph.unitigs[i].size()-1-j, false);
+			}
+		}
+	}
+	std::vector<ReadPath> result;
+	std::mutex resultMutex;
+	iterateReadsMultithreaded(readFiles, numThreads, [&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist, &partIterator](size_t thread, FastQ& read)
+	{
+		partIterator.iteratePartKmers(read, [&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist, &read](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
+		{
+			ReadPath current;
+			current.readName = read.seq_id;
+			current.readLength = rawSeq.size();
+			size_t lastReadPos = std::numeric_limits<size_t>::max();
+			std::pair<size_t, bool> lastKmer { std::numeric_limits<size_t>::max(), true };
+			std::tuple<size_t, size_t, bool> lastPos = std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true);
+			for (const size_t readPos : positions)
+			{
+				VectorView<CharType> minimizerSequence { seq, readPos, readPos + kmerSize };
+				std::pair<size_t, bool> kmer = hashlist.getNodeOrNull(minimizerSequence);
+				if (kmer.first == std::numeric_limits<size_t>::max()) continue;
+				size_t readPosExpandedStart = poses[readPos];
+				size_t readPosExpandedEnd = poses[readPos+kmerSize];
+				if (kmer.first >= kmerLocator.size() || std::get<0>(kmerLocator[kmer.first]) == std::numeric_limits<size_t>::max())
+				{
+					if (current.path.size() > 0)
+					{
+						std::lock_guard<std::mutex> lock { resultMutex };
+						result.emplace_back();
+						std::swap(result.back(), current);
+					}
+					current.path.clear();
+					current.readName = read.seq_id;
+					current.readLength = rawSeq.size();
+					current.leftClip = 0;
+					current.rightClip = 0;
+					lastPos = std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true);
+					lastReadPos = readPos;
+					lastKmer = kmer;
+					continue;
+				}
+				auto pos = kmerLocator[kmer.first];
+				assert(std::get<0>(pos) < graph.unitigs.size());
+				if (!kmer.second)
+				{
+					std::get<2>(pos) = !std::get<2>(pos);
+					std::get<1>(pos) = graph.unitigs[std::get<0>(pos)].size()-1-std::get<1>(pos);
+				}
+				if (std::get<0>(lastPos) == std::numeric_limits<size_t>::max())
+				{
+					assert(current.path.size() == 0);
+					current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
+					current.readPoses.push_back(readPos);
+					current.readPosesExpandedStart.push_back(readPosExpandedStart);
+					current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
+					current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
+					current.leftClip = std::get<1>(pos);
+					assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
+					lastPos = pos;
+					lastReadPos = readPos;
+					lastKmer = kmer;
+					continue;
+				}
+				if (lastKmer.first != std::numeric_limits<size_t>::max())
+				{
+					assert(lastReadPos != std::numeric_limits<size_t>::max());
+					if (!hashlist.hasSequenceOverlap(lastKmer, kmer) || readPos - lastReadPos != kmerSize - hashlist.getOverlap(lastKmer, kmer))
+					{
+						assert(current.path.size() > 0);
+						{
+							std::lock_guard<std::mutex> lock { resultMutex };
+							result.emplace_back();
+							std::swap(result.back(), current);
+						}
+						current.path.clear();
+						current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
+						current.readPoses.clear();
+						current.readPosesExpandedStart.clear();
+						current.readPosesExpandedEnd.clear();
+						current.readPoses.push_back(readPos);
+						current.readPosesExpandedStart.push_back(readPosExpandedStart);
+						current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
+						current.leftClip = std::get<1>(pos);
+						current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
+						current.readName = read.seq_id;
+						current.readLength = rawSeq.size();
+						assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
+						lastPos = pos;
+						lastReadPos = readPos;
+						lastKmer = kmer;
+						continue;
+					}
+				}
+				assert(current.path.size() > 0);
+				if (std::get<0>(pos) == std::get<0>(lastPos) && std::get<2>(pos) == std::get<2>(lastPos) && std::get<1>(pos) == std::get<1>(lastPos)+1)
+				{
+					lastPos = pos;
+					lastReadPos = readPos;
+					lastKmer = kmer;
+					current.rightClip -= 1;
+					current.readPoses.push_back(readPos);
+					current.readPosesExpandedStart.push_back(readPosExpandedStart);
+					current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
+					assert(current.rightClip == graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos));
+					continue;
+				}
+				std::pair<size_t, bool> fromEdge { std::get<0>(lastPos), std::get<2>(lastPos) };
+				std::pair<size_t, bool> toEdge { std::get<0>(pos), std::get<2>(pos) };
+				assert(graph.edges[fromEdge].count(toEdge) == graph.edges[reverse(toEdge)].count(reverse(fromEdge)));
+				if (graph.edges[fromEdge].count(toEdge) == 1 && std::get<1>(pos) == 0 && std::get<1>(lastPos) == graph.unitigs[std::get<0>(lastPos)].size()-1)
+				{
+					assert(current.rightClip == 0);
+					current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
+					current.readPoses.push_back(readPos);
+					current.readPosesExpandedStart.push_back(readPosExpandedStart);
+					current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
+					current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1;
+					lastPos = pos;
+					lastReadPos = readPos;
+					lastKmer = kmer;
+					continue;
+				}
+				assert(current.path.size() > 0);
+				{
+					std::lock_guard<std::mutex> lock { resultMutex };
+					result.emplace_back();
+					std::swap(result.back(), current);
+				}
+				current.path.clear();
+				current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
+				current.readPoses.clear();
+				current.readPosesExpandedStart.clear();
+				current.readPosesExpandedEnd.clear();
+				current.readPoses.push_back(readPos);
+				current.readPosesExpandedStart.push_back(readPosExpandedStart);
+				current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
+				current.leftClip = std::get<1>(pos);
+				current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
+				current.readName = read.seq_id;
+				current.readLength = rawSeq.size();
+				assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
+				lastPos = pos;
+				lastReadPos = readPos;
+				lastKmer = kmer;
+				continue;
+			}
+			if (current.path.size() > 0)
+			{
+				std::lock_guard<std::mutex> lock { resultMutex };
+				result.emplace_back();
+				std::swap(result.back(), current);
+			}
+		});
+	});
+
+	return result;
+}
+
 void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength)
 {
 	auto beforeReading = getTime();
@@ -999,14 +1188,20 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	}
 	filterKmersToUnitigKmers(unitigs, reads, kmerSize);
 	printUnitigKmerCount(unitigs);
-	auto beforeResolve = getTime();
-	std::cerr << "Resolving unitigs" << std::endl;
-	std::cerr << unitigs.unitigs.size() << " unitigs before resolving" << std::endl;
+	auto beforePaths = getTime();
 	std::vector<ReadPath> readPaths;
-	std::tie(unitigs, readPaths) = resolveUnitigs(unitigs, reads, inputReads, numThreads, partIterator, minUnitigCoverage, kmerSize, maxResolveLength);
-	std::cerr << unitigs.unitigs.size() << " unitigs after resolving" << std::endl;
+	std::cerr << "Getting read paths" << std::endl;
+	readPaths = getReadPaths(unitigs, reads, inputReads, numThreads, partIterator, kmerSize);
+	auto beforeResolve = getTime();
+	if (maxResolveLength > 0)
+	{
+		std::cerr << "Resolving unitigs" << std::endl;
+		std::cerr << unitigs.unitigs.size() << " unitigs before resolving" << std::endl;
+		std::tie(unitigs, readPaths) = resolveUnitigs(unitigs, reads, readPaths, partIterator, minUnitigCoverage, kmerSize, maxResolveLength);
+		std::cerr << unitigs.unitigs.size() << " unitigs after resolving" << std::endl;
+	}
 	auto beforeSequences = getTime();
-	std::cerr << "Getting unitig sequences" << std::endl;
+	std::cerr << "Building unitig sequences" << std::endl;
 	std::vector<CompressedSequenceType> unitigSequences;
 	StringIndex stringIndex;
 	std::tie(unitigSequences, stringIndex) = getHPCUnitigSequences(reads, unitigs, inputReads, readPaths, kmerSize, partIterator, numThreads);
@@ -1027,8 +1222,9 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	auto afterPaths = getTime();
 	std::cerr << "selecting k-mers and building graph topology took " << formatTime(beforeReading, beforeUnitigs) << std::endl;
 	std::cerr << "unitigifying took " << formatTime(beforeUnitigs, beforeFilter) << std::endl;
-	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforeResolve) << std::endl;
-	std::cerr << "resolving unitigs took " << formatTime(beforeResolve, beforeSequences) << std::endl;
+	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforePaths) << std::endl;
+	std::cerr << "getting read paths took " << formatTime(beforePaths, beforeResolve) << std::endl;
+	if (maxResolveLength > 0) std::cerr << "resolving unitigs took " << formatTime(beforeResolve, beforeSequences) << std::endl;
 	std::cerr << "building unitig sequences took " << formatTime(beforeSequences, beforeConsistency) << std::endl;
 	if (errorMasking != ErrorMasking::No && errorMasking != ErrorMasking::Collapse) std::cerr << "forcing edge consistency took " << formatTime(beforeConsistency, beforeWrite) << std::endl;
 	std::cerr << "writing the graph and calculating stats took " << formatTime(beforeWrite, afterWrite) << std::endl;
