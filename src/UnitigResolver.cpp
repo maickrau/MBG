@@ -535,6 +535,10 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolvableToUnitigs(const Resolvab
 				result.unitigCoverage[unitig][index] += 1;
 			}
 		}
+		for (size_t j = 1; j < path.path.size(); j++)
+		{
+			result.edgeCoverage(path.path[j-1], path.path[j]) += 1;
+		}
 	}
 	for (size_t i = 0; i < result.unitigCoverage.size(); i++)
 	{
