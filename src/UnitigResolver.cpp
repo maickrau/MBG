@@ -537,7 +537,11 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolvableToUnitigs(const Resolvab
 		}
 		for (size_t j = 1; j < path.path.size(); j++)
 		{
-			result.edgeCoverage(path.path[j-1], path.path[j]) += 1;
+			assert(newIndex.get(path.path[j-1].first));
+			assert(newIndex.get(path.path[j].first));
+			std::pair<size_t, bool> from { newIndex.getRank(path.path[j-1].first), path.path[j-1].second };
+			std::pair<size_t, bool> to { newIndex.getRank(path.path[j].first), path.path[j].second };
+			result.edgeCoverage(from, to) += 1;
 		}
 	}
 	for (size_t i = 0; i < result.unitigCoverage.size(); i++)
@@ -1443,7 +1447,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 
 void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<ReadPath>& readPaths, const size_t kmerSize)
 {
-	return;
+	// return; 
 	assert(graph.unitigs.size() == graph.edges.size());
 	assert(graph.unitigs.size() == graph.unitigRightClipBp.size());
 	assert(graph.unitigs.size() == graph.unitigLeftClipBp.size());
@@ -1465,13 +1469,13 @@ void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<ReadPat
 		{
 			assert(!graph.unitigRemoved[edge.first]);
 			assert(graph.edges[reverse(edge)].count(reverse(fw)) == 1);
-			assert(graph.edges[fw].size() >= 2 || graph.edges[reverse(edge)].size() >= 2 || edge == fw);
+			assert(graph.edges[fw].size() >= 2 || graph.edges[reverse(edge)].size() >= 2 || edge.first == i);
 		}
 		for (auto edge : graph.edges[bw])
 		{
 			assert(!graph.unitigRemoved[edge.first]);
 			assert(graph.edges[reverse(edge)].count(reverse(bw)) == 1);
-			assert(graph.edges[bw].size() >= 2 || graph.edges[reverse(edge)].size() >= 2 || edge == bw);
+			assert(graph.edges[bw].size() >= 2 || graph.edges[reverse(edge)].size() >= 2 || edge.first == i);
 		}
 	}
 	for (const auto& path : readPaths)
