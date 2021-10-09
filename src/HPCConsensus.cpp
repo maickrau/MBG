@@ -13,22 +13,22 @@ void addCounts(ConsensusMaker& consensusMaker, const SequenceCharType& seq, cons
 		assert(seqOff < seq.size());
 		uint16_t compressed = seq[seqOff];
 		if (!fw) compressed = complement(compressed);
-		std::string seq;
+		std::string expanded;
 		if (fw)
 		{
 			size_t expandedStart = poses[seqOff];
 			size_t expandedEnd = poses[seqOff+1];
 			assert(expandedEnd > expandedStart);
-			seq = rawSeq.substr(expandedStart, expandedEnd - expandedStart);
+			expanded = rawSeq.substr(expandedStart, expandedEnd - expandedStart);
 		}
 		else
 		{
 			size_t expandedStart = poses[seqOff];
 			size_t expandedEnd = poses[seqOff+1];
 			assert(expandedEnd > expandedStart);
-			seq = revCompRaw(rawSeq.substr(expandedStart, expandedEnd - expandedStart));
+			expanded = revCompRaw(rawSeq.substr(expandedStart, expandedEnd - expandedStart));
 		}
-		return std::make_pair(compressed, seq);
+		return std::make_pair(compressed, expanded);
 	});
 }
 
@@ -108,6 +108,7 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 			assert(endKmerIndex < bpOffsets[path.path[i].first].size());
 			size_t readStart = path.readPoses[startPosIndex];
 			size_t readEnd = path.readPoses[endPosIndex] + kmerSize;
+			assert(readEnd <= path.readLengthHPC);
 			size_t unitigStart = bpOffsets[path.path[i].first][startKmerIndex];
 			size_t unitigEnd = bpOffsets[path.path[i].first][endKmerIndex] + kmerSize;
 			size_t unitig = path.path[i].first;
@@ -128,6 +129,7 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 			{
 				unitigStart -= unitigs.leftClip[unitig];
 			}
+			assert(readEnd <= path.readLengthHPC);
 			assert(unitigEnd >= unitigs.leftClip[unitig]);
 			unitigEnd -= unitigs.leftClip[unitig];
 			if (unitigEnd > unitigLengths[unitig])
@@ -142,9 +144,11 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 				}
 				unitigEnd = unitigLengths[unitig];
 			}
+			assert(readEnd <= path.readLengthHPC);
 			assert(readEnd > readStart);
 			assert(unitigEnd > unitigStart);
 			assert(readEnd - readStart == unitigEnd - unitigStart);
+			assert(readEnd <= path.readLengthHPC);
 			matchBlocks[path.readName].emplace_back(unitig, readStart, unitigStart, readEnd - readStart, fw);
 		}
 	}

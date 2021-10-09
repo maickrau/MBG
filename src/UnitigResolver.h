@@ -14,12 +14,13 @@ class ReadPath
 public:
 	std::string readName;
 	std::vector<std::pair<size_t, bool>> path;
-	CumulativeVector<uint16_t> readPoses;
-	CumulativeVector<uint16_t> readPosesExpandedStart;
-	CumulativeVector<uint16_t> readPosesExpandedEnd;
+	std::vector<size_t> readPoses;
+	std::vector<size_t> readPosesExpandedStart;
+	std::vector<size_t> readPosesExpandedEnd;
 	size_t leftClip;
 	size_t rightClip;
 	size_t readLength;
+	size_t readLengthHPC;
 private:
 };
 
