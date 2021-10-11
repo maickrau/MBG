@@ -182,8 +182,8 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 	{
 		if (path.path.size() == 0) continue;
 		size_t readLength = path.readLength;
-		size_t readStart = path.readPosesExpandedStart[0];
-		size_t readEnd = path.readPosesExpandedEnd.back();
+		size_t readStart = path.expandedReadPosStart;
+		size_t readEnd = path.expandedReadPosEnd;
 		assert(readEnd > readStart);
 		assert(readEnd <= readLength);
 		std::string pathStr;
@@ -1046,8 +1046,6 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 					assert(current.path.size() == 0);
 					current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
 					current.readPoses.push_back(readPos);
-					current.readPosesExpandedStart.push_back(readPosExpandedStart);
-					current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
 					current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
 					current.leftClip = std::get<1>(pos);
 					assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
@@ -1071,11 +1069,7 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 						current.path.clear();
 						current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
 						current.readPoses.clear();
-						current.readPosesExpandedStart.clear();
-						current.readPosesExpandedEnd.clear();
 						current.readPoses.push_back(readPos);
-						current.readPosesExpandedStart.push_back(readPosExpandedStart);
-						current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
 						current.leftClip = std::get<1>(pos);
 						current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
 						current.readName = read.seq_id;
@@ -1096,8 +1090,6 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 					lastKmer = kmer;
 					current.rightClip -= 1;
 					current.readPoses.push_back(readPos);
-					current.readPosesExpandedStart.push_back(readPosExpandedStart);
-					current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
 					assert(current.rightClip == graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos));
 					continue;
 				}
@@ -1109,8 +1101,6 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 					assert(current.rightClip == 0);
 					current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
 					current.readPoses.push_back(readPos);
-					current.readPosesExpandedStart.push_back(readPosExpandedStart);
-					current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
 					current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1;
 					lastPos = pos;
 					lastReadPos = readPos;
@@ -1127,11 +1117,7 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 				current.path.clear();
 				current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
 				current.readPoses.clear();
-				current.readPosesExpandedStart.clear();
-				current.readPosesExpandedEnd.clear();
 				current.readPoses.push_back(readPos);
-				current.readPosesExpandedStart.push_back(readPosExpandedStart);
-				current.readPosesExpandedEnd.push_back(readPosExpandedEnd);
 				current.leftClip = std::get<1>(pos);
 				current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
 				current.readName = read.seq_id;
