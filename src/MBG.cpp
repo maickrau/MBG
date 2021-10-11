@@ -27,6 +27,7 @@
 #include "StringIndex.h"
 #include "RankBitvector.h"
 #include "UnitigResolver.h"
+#include "UnitigHelper.h"
 
 struct AssemblyStats
 {
@@ -99,33 +100,6 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 	});
 	std::cerr << totalNodes << " total selected k-mers in reads" << std::endl;
 	std::cerr << result.size() << " distinct selected k-mers in reads" << std::endl;
-}
-
-size_t getUnitigOverlap(const HashList& hashlist, const size_t kmerSize, const UnitigGraph& unitigs, const std::pair<size_t, bool> from, const std::pair<size_t, bool> to)
-{
-	auto kmerOverlap = unitigs.edgeOverlap(from, to);
-	if (kmerOverlap == 0)
-	{
-		std::pair<size_t, bool> fromKmer = unitigs.unitigs[from.first].back();
-		if (!from.second) fromKmer = reverse(unitigs.unitigs[from.first][0]);
-		std::pair<size_t, bool> toKmer = unitigs.unitigs[to.first][0];
-		if (!to.second) toKmer = reverse(unitigs.unitigs[to.first].back());
-		return hashlist.getOverlap(fromKmer, toKmer);
-	}
-	assert(unitigs.unitigs[from.first].size() >= kmerOverlap);
-	size_t result = kmerSize;
-	for (size_t i = 1; i < kmerOverlap; i++)
-	{
-		std::pair<size_t, bool> prev = unitigs.unitigs[from.first][unitigs.unitigs[from.first].size() - kmerOverlap + i - 1];
-		std::pair<size_t, bool> curr = unitigs.unitigs[from.first][unitigs.unitigs[from.first].size() - kmerOverlap + i];
-		if (!from.second)
-		{
-			prev = unitigs.unitigs[from.first][i-1];
-			curr = unitigs.unitigs[from.first][i];
-		}
-		result += kmerSize - hashlist.getOverlap(prev, curr);
-	}
-	return result;
 }
 
 void updatePathRemaining(size_t& rleRemaining, size_t& expanded, bool fw, const std::vector<size_t>& expandedPoses, size_t overlap)
@@ -734,6 +708,31 @@ size_t getOverlapFromRLE(const std::vector<CompressedSequenceType>& unitigSequen
 	return overlap;
 }
 
+AssemblyStats writeGraph(const BluntGraph& graph, const std::string& filename)
+{
+	AssemblyStats stats;
+	stats.size = 0;
+	stats.nodes = graph.nodes.size();
+	stats.edges = graph.edges.size();
+	stats.N50 = 0;
+	stats.approxKmers = 0;
+	std::vector<size_t> nodeSizes;
+	std::ofstream file { filename };
+	file << "H\tVN:Z:1.0" << std::endl;
+	for (size_t i = 0; i < graph.nodes.size(); i++)
+	{
+		file << "S\t" << (i+1) << "\t" << graph.nodes[i] << "\tll:f:" << graph.nodeAvgCoverage[i] << "\tFC:f:" << (graph.nodes[i].size() * graph.nodeAvgCoverage[i]) << std::endl;
+		stats.size += graph.nodes[i].size();
+		nodeSizes.push_back(graph.nodes[i].size());
+	}
+	for (auto edge : graph.edges)
+	{
+		file << "L\t" << (std::get<0>(edge)+1) << "\t" << (std::get<1>(edge) ? "+" : "-") << "\t" << (std::get<2>(edge)+1) << "\t" << (std::get<3>(edge) ? "+" : "-") << "\t0M\tec:i:" << std::get<4>(edge) << std::endl;
+	}
+	stats.N50 = getN50(nodeSizes, stats.size);
+	return stats;
+}
+
 AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename, const HashList& hashlist, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const size_t kmerSize)
 {
 	AssemblyStats stats;
@@ -1142,7 +1141,7 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 	return result;
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt)
 {
 	auto beforeReading = getTime();
 	// check that all files actually exist
@@ -1206,8 +1205,17 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	beforeConsistency = getTime();
 	verifyEdgeConsistency(unitigs, reads, stringIndex, unitigSequences, kmerSize);
 	auto beforeWrite = getTime();
-	std::cerr << "Writing graph to " << outputGraph << std::endl;
-	stats = writeGraph(unitigs, outputGraph, reads, unitigSequences, stringIndex, kmerSize);
+	if (blunt)
+	{
+		BluntGraph bluntGraph { reads, unitigs, unitigSequences, stringIndex, kmerSize };
+		std::cerr << "Writing graph to " << outputGraph << std::endl;
+		stats = writeGraph(bluntGraph, outputGraph);
+	}
+	else
+	{
+		std::cerr << "Writing graph to " << outputGraph << std::endl;
+		stats = writeGraph(unitigs, outputGraph, reads, unitigSequences, stringIndex, kmerSize);
+	}
 	auto afterWrite = getTime();
 	if (outputSequencePaths != "")
 	{
@@ -1228,4 +1236,10 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	std::cerr << "edges: " << stats.edges << std::endl;
 	std::cerr << "assembly size " << stats.size << " bp, N50 " << stats.N50 << std::endl;
 	if (stats.approxKmers > 0) std::cerr << "approximate number of k-mers ~ " << stats.approxKmers << std::endl;
+	if (blunt && stats.nodes > 1 && stats.edges >= 2)
+	{
+		std::cerr << std::endl << "The output graph has redundant nodes and edges." << std::endl;
+		std::cerr << "It is recommended to clean the graph using vg (https://github.com/vgteam/vg) with the command:" << std::endl << std::endl;
+		std::cerr << "vg view -Fv " << outputGraph << " | vg mod -n -U 100 - | vg view - > cleaned." << outputGraph << std::endl << std::endl;
+	}
 }
