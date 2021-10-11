@@ -13,20 +13,34 @@ void addCounts(ConsensusMaker& consensusMaker, const SequenceCharType& seq, cons
 		assert(seqOff < seq.size());
 		uint16_t compressed = seq[seqOff];
 		if (!fw) compressed = complement(compressed);
-		std::string expanded;
+		std::variant<size_t, std::string> expanded;
 		if (fw)
 		{
 			size_t expandedStart = poses[seqOff];
 			size_t expandedEnd = poses[seqOff+1];
 			assert(expandedEnd > expandedStart);
-			expanded = rawSeq.substr(expandedStart, expandedEnd - expandedStart);
+			if (compressed >= 0 && compressed <= 3)
+			{
+				expanded = expandedEnd - expandedStart;
+			}
+			else
+			{
+				expanded = rawSeq.substr(expandedStart, expandedEnd - expandedStart);
+			}
 		}
 		else
 		{
 			size_t expandedStart = poses[seqOff];
 			size_t expandedEnd = poses[seqOff+1];
 			assert(expandedEnd > expandedStart);
-			expanded = revCompRaw(rawSeq.substr(expandedStart, expandedEnd - expandedStart));
+			if (compressed >= 0 && compressed <= 3)
+			{
+				expanded = expandedEnd - expandedStart;
+			}
+			else
+			{
+				expanded = revCompRaw(rawSeq.substr(expandedStart, expandedEnd - expandedStart));
+			}
 		}
 		return std::make_pair(compressed, expanded);
 	});

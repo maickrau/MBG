@@ -31,7 +31,7 @@ public:
 			for (size_t i = 0; i < unitigEnd - unitigStart; i++)
 			{
 				uint16_t compressed;
-				std::string expanded;
+				std::variant<size_t, std::string> expanded;
 				std::tie(compressed, expanded) = sequenceGetter(i);
 				uint32_t expandedIndex = stringIndex.getIndex(compressed, expanded);
 				sequences[i].first = compressed;

@@ -65,30 +65,30 @@ uint32_t StringIndex::getReverseIndex(uint16_t compressed, uint32_t index) const
 	return (index / 2) * 2 + (1 - (index % 2));
 }
 
-uint32_t StringIndex::getIndex(uint16_t compressed, std::string expanded)
+uint32_t StringIndex::getIndex(uint16_t compressed, std::variant<size_t, std::string> expanded)
 {
 	if (compressed >= 0 && compressed <= 3)
 	{
-		return expanded.size();
+		return std::get<size_t>(expanded);
 	}
 	if (complement(compressed) < compressed)
 	{
 		compressed = complement(compressed);
-		expanded = revCompRaw(expanded);
+		expanded = revCompRaw(std::get<std::string>(expanded));
 	}
 	uint32_t maybeResult = index[compressed].size();
-	auto found = index[compressed].find(expanded);
+	auto found = index[compressed].find(std::get<std::string>(expanded));
 	if (found != index[compressed].end())
 	{
 		return found->second;
 	}
-	index[compressed][expanded] = maybeResult;
+	index[compressed][std::get<std::string>(expanded)] = maybeResult;
 	// need to handle compressed sequences which are their own reverse complement
 	if (complement(compressed) == compressed)
 	{
-		std::string revExpanded = revCompRaw(expanded);
+		std::string revExpanded = revCompRaw(std::get<std::string>(expanded));
 		// ...and need to make sure that if the expanded sequence is its own reverse complement it doesn't break anything
-		if (revExpanded == expanded) revExpanded = revExpanded + "_";
+		if (revExpanded == std::get<std::string>(expanded)) revExpanded = revExpanded + "_";
 		assert(index[compressed].count(revExpanded) == 0);
 		index[compressed][revExpanded] = maybeResult+1;
 	}

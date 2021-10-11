@@ -1,6 +1,7 @@
 #ifndef StringIndex_h
 #define StringIndex_h
 
+#include <variant>
 #include <vector>
 #include <string>
 #include <phmap.h>
@@ -9,7 +10,7 @@ class StringIndex
 {
 public:
 	void init(size_t maxCode);
-	uint32_t getIndex(uint16_t compressed, std::string expanded);
+	uint32_t getIndex(uint16_t compressed, std::variant<size_t, std::string> expanded);
 	std::string getString(uint16_t compressed, uint32_t index) const;
 	void buildReverseIndex();
 	uint32_t getReverseIndex(uint16_t compressed, uint32_t index) const;
