@@ -161,35 +161,46 @@ void iterateRuns(const SequenceCharType& str, const SequenceLengthType& poses, c
 	size_t lastRunEnd = 0;
 	for (size_t i = 0; i < str.size(); i++)
 	{
-		size_t j = i;
-		while (j < str.size() && str[j] == str[i]) j += 1;
-		std::tuple<size_t, size_t, uint8_t> currentBestRun = std::make_tuple(i, j, 1);
+		std::tuple<size_t, size_t, uint8_t> currentBestRun = std::make_tuple(i, i+1, 1);
 		for (size_t motifLength = 2; motifLength <= maxMaskLength; motifLength++)
 		{
 			if (i + motifLength * 2 > str.size()) break;
-			bool hasRepeat = true;
-			for (size_t j = 0; j < motifLength; j++)
+			size_t runLength = 1;
+			size_t overhang = 0;
+			while (i+motifLength*runLength+motifLength <= str.size())
 			{
-				if (str[i+j] != str[i+j+motifLength])
+				bool match = true;
+				size_t j = 0;
+				for (; j < motifLength; j++)
 				{
-					hasRepeat = false;
+					if (str[i+j] != str[i + motifLength * runLength + j])
+					{
+						match = false;
+						break;
+					}
+				}
+				if (match)
+				{
+					runLength += 1;
+				}
+				else
+				{
+					overhang = j;
 					break;
 				}
 			}
-			if (!hasRepeat) continue;
-			size_t runLength = 1;
-			while (i+motifLength*runLength+motifLength <= str.size() && SequenceCharType { str.begin() + i, str.begin() + i + motifLength } == SequenceCharType { str.begin() + i + motifLength * runLength, str.begin() + i + motifLength * runLength + motifLength })
+			if (runLength == 1) continue;
+			if (i+motifLength*runLength+motifLength > str.size())
 			{
-				runLength += 1;
+				overhang = 0;
+				for (size_t j = 0; i+motifLength*runLength+j < str.size(); j++)
+				{
+					if (str[i+j] != str[i+motifLength*runLength+j]) break;
+					overhang += 1;
+				}
 			}
+			else if (overhang == motifLength) overhang = 0;
 			assert(runLength >= 2);
-			size_t overhang = 0;
-			for (size_t j = 0; j < motifLength; j++)
-			{
-				if (i+motifLength*runLength+j >= str.size()) break;
-				if (str[i+j] != str[i+motifLength*runLength+j]) break;
-				overhang += 1;
-			}
 			assert(overhang < motifLength);
 			size_t lengthHere = motifLength*runLength+overhang;
 			if (i + lengthHere <= lastRunEnd)
