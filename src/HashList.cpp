@@ -81,6 +81,20 @@ std::pair<size_t, bool> HashList::getNodeOrNull(VectorView<CharType> sequence) c
 	return std::pair<size_t, bool> { std::numeric_limits<size_t>::max(), true };
 }
 
+std::pair<size_t, bool> HashList::getNodeOrNull(HashType fwHash) const
+{
+	HashType bwHash = (fwHash << 64) + (fwHash >> 64);
+	HashType canonHash = std::min(fwHash, bwHash);
+	assert(fwHash != bwHash);
+	bool fw = fwHash < bwHash;
+	auto found = hashToNode.find(canonHash);
+	if (found != hashToNode.end())
+	{
+		return std::make_pair(found->second, fw);
+	}
+	return std::pair<size_t, bool> { std::numeric_limits<size_t>::max(), true };
+}
+
 void HashList::addEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to)
 {
 	std::lock_guard<std::mutex> lock { *indexMutex };
@@ -92,7 +106,7 @@ void HashList::addEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, b
 	edgeCoverage.set(from, to, edgeCoverage.get(from, to) + 1);
 }
 
-std::pair<size_t, bool> HashList::addNode(VectorView<CharType> sequence, VectorView<CharType> reverse)
+std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(VectorView<CharType> sequence, VectorView<CharType> reverse)
 {
 	HashType fwHash = hash(sequence, reverse);
 	HashType bwHash = (fwHash << 64) + (fwHash >> 64);
@@ -108,7 +122,7 @@ std::pair<size_t, bool> HashList::addNode(VectorView<CharType> sequence, VectorV
 		{
 			coverage.set(found->second, coverage.get(found->second)+1);
 			auto node = std::make_pair(found->second, fw);
-			return node;
+			return std::make_pair(node, fwHash);
 		}
 		assert(found == hashToNode.end());
 		size_t fwNode = size();
@@ -119,7 +133,7 @@ std::pair<size_t, bool> HashList::addNode(VectorView<CharType> sequence, VectorV
 		coverage.emplace_back(1);
 		edgeCoverage.emplace_back();
 		sequenceOverlap.emplace_back();
-		return std::make_pair(fwNode, fw);
+		return std::make_pair(std::make_pair(fwNode, fw), fwHash);
 	}
 }
 

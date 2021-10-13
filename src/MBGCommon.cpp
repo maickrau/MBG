@@ -118,3 +118,14 @@ std::string revCompRaw(const std::string& raw)
 	}
 	return result;
 }
+
+std::vector<std::pair<size_t, bool>> revCompPath(const std::vector<std::pair<size_t, bool>>& original)
+{
+	std::vector<std::pair<size_t, bool>> result = original;
+	std::reverse(result.begin(), result.end());
+	for (size_t i = 0; i < result.size(); i++)
+	{
+		result[i] = reverse(result[i]);
+	}
+	return result;
+}

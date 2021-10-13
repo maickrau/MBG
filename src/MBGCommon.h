@@ -23,6 +23,7 @@ std::istream& operator>>(std::istream& is, HashType& t);
 std::pair<size_t, bool> reverse(std::pair<size_t, bool> pos);
 std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> canon(std::pair<size_t, bool> from, std::pair<size_t, bool> to);
 std::string revCompRaw(const std::string& seq);
+std::vector<std::pair<size_t, bool>> revCompPath(const std::vector<std::pair<size_t, bool>>& original);
 
 namespace std
 {
@@ -59,6 +60,13 @@ namespace std
 		size_t operator()(std::pair<size_t, size_t> x) const
 		{
 			return (size_t)x.first ^ (size_t)x.second;
+		}
+	};
+	template <> struct hash<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>>
+	{
+		size_t operator()(std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> x) const
+		{
+			return (hash<std::pair<size_t, bool>>{}(x.first) << 16) + hash<std::pair<size_t, bool>>{}(x.second);
 		}
 	};
 }

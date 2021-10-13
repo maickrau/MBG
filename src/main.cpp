@@ -21,6 +21,7 @@ int main(int argc, char** argv)
 		("blunt", "Output a bluntified graph without edge overlaps")
 		("include-end-kmers", "Force k-mers at read ends to be included")
 		("output-sequence-paths", "Output the paths of the input sequences to a file (.gaf)", cxxopts::value<std::string>())
+		("r,resolve-maxk", "Maximum k-mer size for multiplex DBG resolution", cxxopts::value<size_t>())
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
@@ -62,6 +63,7 @@ int main(int argc, char** argv)
 	std::string outputGraph = params["o"].as<std::string>();
 	size_t kmerSize = params["k"].as<size_t>();
 	size_t windowSize = 1;
+	size_t maxResolveLength = 0;
 	if (params.count("w") == 1)
 	{
 		windowSize = params["w"].as<size_t>();
@@ -78,6 +80,7 @@ int main(int argc, char** argv)
 	bool blunt = false;
 	bool includeEndKmers = false;
 	std::string errorMaskingStr = "hpc";
+	if (params.count("r") == 1) maxResolveLength = params["r"].as<size_t>();
 	if (params.count("blunt") == 1) blunt = true;
 	if (params.count("error-masking") == 1)
 	{
@@ -154,6 +157,11 @@ int main(int argc, char** argv)
 		std::cerr << "--output-sequence-paths and --blunt are not supported together" << std::endl;
 		paramError = true;
 	}
+	if (maxResolveLength > 0 && blunt)
+	{
+		std::cerr << "-r (--resolve-maxk) and --blunt are not supported together" << std::endl;
+		paramError = true;
+	}
 	if (paramError) std::abort();
 	
 	std::cerr << "Parameters: ";
@@ -162,9 +170,11 @@ int main(int argc, char** argv)
 	std::cerr << "a=" << minCoverage << ",";
 	std::cerr << "u=" << minUnitigCoverage << ",";
 	std::cerr << "t=" << numThreads << ",";
+	std::cerr << "r=" << maxResolveLength << ",";
 	std::cerr << "errormasking=" << errorMaskingStr << ",";
 	std::cerr << "endkmers=" << (includeEndKmers ? "yes" : "no") << ",";
-	std::cerr << "blunt=" << (blunt ? "yes" : "no") << std::endl;
+	std::cerr << "blunt=" << (blunt ? "yes" : "no");
+	std::cerr << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, blunt, numThreads, includeEndKmers, outputSequencePaths);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt);
 }

@@ -4,9 +4,10 @@
 #include "VectorWithDirection.h"
 #include "HPCConsensus.h"
 #include "ErrorMaskHelper.h"
+#include "UnitigHelper.h"
 
 template <typename F>
-void iterateEdges(const HashList& hashlist, const UnitigGraph& unitigs, F callback)
+void iterateEdges(const HashList& hashlist, const UnitigGraph& unitigs, const size_t kmerSize, F callback)
 {
 	for (size_t i = 0; i < unitigs.edges.size(); i++)
 	{
@@ -14,52 +15,32 @@ void iterateEdges(const HashList& hashlist, const UnitigGraph& unitigs, F callba
 		std::pair<size_t, bool> bw { i, false };
 		for (auto to : unitigs.edges[fw])
 		{
-			std::pair<size_t, bool> last = unitigs.unitigs[i].back();
-			std::pair<size_t, bool> first;
-			if (to.second)
-			{
-				first = unitigs.unitigs[to.first][0];
-			}
-			else
-			{
-				first = reverse(unitigs.unitigs[to.first].back());
-			}
-			size_t overlap = hashlist.getOverlap(last, first);
+			size_t overlap = getUnitigOverlap(hashlist, kmerSize, unitigs, fw, to);
 			size_t coverage = unitigs.edgeCoverage(fw, to);
 			callback(fw, to, overlap, coverage);
 		}
 		for (auto to : unitigs.edges[bw])
 		{
-			std::pair<size_t, bool> last = reverse(unitigs.unitigs[i][0]);
-			std::pair<size_t, bool> first;
-			if (to.second)
-			{
-				first = unitigs.unitigs[to.first][0];
-			}
-			else
-			{
-				first = reverse(unitigs.unitigs[to.first].back());
-			}
-			size_t overlap = hashlist.getOverlap(last, first);
+			size_t overlap = getUnitigOverlap(hashlist, kmerSize, unitigs, bw, to);
 			size_t coverage = unitigs.edgeCoverage(bw, to);
 			callback(bw, to, overlap, coverage);
 		}
 	}
 }
 
-BluntGraph::BluntGraph(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex)
+BluntGraph::BluntGraph(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const size_t kmerSize)
 {
-	VectorWithDirection<size_t> maxOverlap = getMaxOverlaps(hashlist, unitigs);
+	VectorWithDirection<size_t> maxOverlap = getMaxOverlaps(hashlist, unitigs, kmerSize);
 	initializeNodes(unitigSequences, stringIndex, maxOverlap, unitigs);
-	initializeEdgesAndEdgenodes(hashlist, unitigs, maxOverlap, unitigSequences, stringIndex);
+	initializeEdgesAndEdgenodes(hashlist, unitigs, maxOverlap, unitigSequences, stringIndex, kmerSize);
 	assert(nodes.size() == nodeAvgCoverage.size());
 }
 
-void BluntGraph::initializeEdgesAndEdgenodes(const HashList& hashlist, const UnitigGraph& unitigs, const VectorWithDirection<size_t>& maxOverlap, const std::vector<CompressedSequenceType>& unbluntSequences, const StringIndex& stringIndex)
+void BluntGraph::initializeEdgesAndEdgenodes(const HashList& hashlist, const UnitigGraph& unitigs, const VectorWithDirection<size_t>& maxOverlap, const std::vector<CompressedSequenceType>& unbluntSequences, const StringIndex& stringIndex, const size_t kmerSize)
 {
 	VectorWithDirection<std::unordered_set<std::pair<size_t, bool>>> processedCanons;
 	processedCanons.resize(unitigs.unitigs.size());
-	iterateEdges(hashlist, unitigs, [this, &maxOverlap, &unbluntSequences, &stringIndex, &processedCanons](const std::pair<size_t, bool> from, const std::pair<size_t, bool> to, const size_t overlap, const size_t coverage) {
+	iterateEdges(hashlist, unitigs, kmerSize, [this, &maxOverlap, &unbluntSequences, &stringIndex, &processedCanons](const std::pair<size_t, bool> from, const std::pair<size_t, bool> to, const size_t overlap, const size_t coverage) {
 		auto canonDir = canon(from, to);
 		if (processedCanons[canonDir.first].count(canonDir.second) == 1) return;
 		processedCanons[canonDir.first].insert(canonDir.second);
@@ -108,11 +89,11 @@ void BluntGraph::initializeNodes(const std::vector<CompressedSequenceType>& unbl
 	}
 }
 
-VectorWithDirection<size_t> BluntGraph::getMaxOverlaps(const HashList& hashlist, const UnitigGraph& unitigs) const
+VectorWithDirection<size_t> BluntGraph::getMaxOverlaps(const HashList& hashlist, const UnitigGraph& unitigs, const size_t kmerSize) const
 {
 	VectorWithDirection<size_t> maxOverlap;
 	maxOverlap.resize(unitigs.unitigs.size(), 0);
-	iterateEdges(hashlist, unitigs, [&maxOverlap](const std::pair<size_t, bool> from, const std::pair<size_t, bool> to, const size_t overlap, const size_t coverage) {
+	iterateEdges(hashlist, unitigs, kmerSize, [&maxOverlap](const std::pair<size_t, bool> from, const std::pair<size_t, bool> to, const size_t overlap, const size_t coverage) {
 		maxOverlap[from] = std::max(maxOverlap[from], overlap);
 		maxOverlap[reverse(to)] = std::max(maxOverlap[reverse(to)], overlap);
 	});
