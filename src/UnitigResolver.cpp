@@ -1753,7 +1753,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 	{
 		size_t topSize = resolvableGraph.unitigLength(queue.top());
 		if (!relativePurgeFlag && topSize > relativePurgeThr) {
-			nodesRemoved += purgeRelativelyLowCoverageNodes(resolvableGraph, readPaths, 8., 10000);
+			nodesRemoved += purgeRelativelyLowCoverageNodes(resolvableGraph, readPaths, 10., 15000);
 			relativePurgeFlag = true;
 		}
 		if (topSize >= maxResolveLength) break;
