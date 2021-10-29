@@ -1151,6 +1151,15 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			actuallyResolvables.erase(node);
 			// unresolveRecursively(resolvableGraph, resolvables, unresolvables, node);
 		}
+		for (auto triplet : triplets)
+		{
+			if (triplet.first == std::make_pair(node, false) || triplet.second == std::make_pair(node, false))
+			{
+				std::cout << "unresolvable even length exact palindrome frozen, id: " << node << std::endl;
+				unresolvables.insert(node);
+				actuallyResolvables.erase(node);
+			}
+		}
 	}
 	std::vector<size_t> check;
 	check.insert(check.end(), actuallyResolvables.begin(), actuallyResolvables.end());
