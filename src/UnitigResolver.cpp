@@ -719,6 +719,7 @@ size_t unitigifyOne(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath
 	}
 	std::pair<size_t, bool> bw { newIndex, false };
 	std::pair<size_t, bool> fw { newIndex, true };
+	bool removeSelfWeirdoLoop = false;
 	for (auto edge : resolvableGraph.edges[reverse(newUnitig[0])])
 	{
 		assert(!resolvableGraph.unitigRemoved[edge.first]);
@@ -728,6 +729,7 @@ size_t unitigifyOne(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath
 			resolvableGraph.edges[bw].emplace(bw);
 			resolvableGraph.edges[reverse(bw)].emplace(reverse(bw));
 			assert(resolvableGraph.edges[reverse(edge)].count(newUnitig[0]) == 1);
+			assert(edge.first != newUnitig[0].first);
 			resolvableGraph.edges[reverse(edge)].erase(newUnitig[0]);
 		}
 		else if (edge == newUnitig[0])
@@ -736,7 +738,7 @@ size_t unitigifyOne(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath
 			resolvableGraph.edges[bw].emplace(fw);
 			resolvableGraph.edges[reverse(fw)].emplace(reverse(bw));
 			assert(resolvableGraph.edges[reverse(edge)].count(newUnitig[0]) == 1);
-			resolvableGraph.edges[reverse(edge)].erase(newUnitig[0]);
+			removeSelfWeirdoLoop = true;
 		}
 		else
 		{
@@ -745,9 +747,16 @@ size_t unitigifyOne(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath
 			resolvableGraph.edges[bw].emplace(edge);
 			resolvableGraph.edges[reverse(edge)].emplace(reverse(bw));
 			assert(resolvableGraph.edges[reverse(edge)].count(newUnitig[0]) == 1);
+			assert(edge.first != newUnitig[0].first);
 			resolvableGraph.edges[reverse(edge)].erase(newUnitig[0]);
 		}
 	}
+	if (removeSelfWeirdoLoop)
+	{
+		assert(resolvableGraph.edges[reverse(newUnitig[0])].count(newUnitig[0]) == 1);
+		resolvableGraph.edges[reverse(newUnitig[0])].erase(newUnitig[0]);
+	}
+	removeSelfWeirdoLoop = false;
 	for (auto edge : resolvableGraph.edges[newUnitig.back()])
 	{
 		assert(!resolvableGraph.unitigRemoved[edge.first]);
@@ -757,7 +766,8 @@ size_t unitigifyOne(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath
 			resolvableGraph.edges[fw].emplace(bw);
 			resolvableGraph.edges[reverse(bw)].emplace(reverse(fw));
 			assert(resolvableGraph.edges[reverse(edge)].count(reverse(newUnitig.back())) == 1);
-			resolvableGraph.edges[reverse(edge)].erase(reverse(newUnitig.back()));
+			assert(edge.first != newUnitig[0].first);
+			removeSelfWeirdoLoop = true;
 		}
 		else
 		{
@@ -766,8 +776,14 @@ size_t unitigifyOne(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath
 			resolvableGraph.edges[fw].emplace(edge);
 			resolvableGraph.edges[reverse(edge)].emplace(reverse(fw));
 			assert(resolvableGraph.edges[reverse(edge)].count(reverse(newUnitig.back())) == 1);
+			assert(edge.first != newUnitig[0].first);
 			resolvableGraph.edges[reverse(edge)].erase(reverse(newUnitig.back()));
 		}
+	}
+	if (removeSelfWeirdoLoop)
+	{
+		assert(resolvableGraph.edges[newUnitig.back()].count(reverse(newUnitig.back())) == 1);
+		resolvableGraph.edges[newUnitig.back()].erase(reverse(newUnitig.back()));
 	}
 	for (size_t i = 0; i < newUnitig.size(); i++)
 	{
