@@ -1812,10 +1812,12 @@ std::unordered_set<size_t> getLowCoverageComponent(const ResolvableUnitigGraph& 
 		for (auto edge : resolvableGraph.edges[std::make_pair(node, true)])
 		{
 			if (result.count(edge.first) == 1) continue;
+			check.push_back(edge.first);
 		}
 		for (auto edge : resolvableGraph.edges[std::make_pair(node, false)])
 		{
 			if (result.count(edge.first) == 1) continue;
+			check.push_back(edge.first);
 		}
 	}
 	return result;
