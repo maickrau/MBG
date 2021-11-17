@@ -56,7 +56,10 @@ void ConsensusMaker::merge(size_t leftUnitig, size_t leftIndex, size_t rightUnit
 	}
 	if (std::get<0>(leftParent) == std::get<0>(rightParent) && std::get<1>(leftParent) == std::get<1>(rightParent))
 	{
-		assert(fw == (std::get<2>(leftParent) == std::get<2>(rightParent)));
+		if (fw != (std::get<2>(leftParent) == std::get<2>(rightParent)))
+		{
+			needsComplementVerification.emplace_back(std::get<0>(leftParent), std::get<1>(leftParent));
+		}
 		return;
 	}
 	assert(std::get<0>(leftParent) < std::get<0>(rightParent) || (std::get<0>(leftParent) == std::get<0>(rightParent) && std::get<1>(leftParent) < std::get<1>(rightParent)));
@@ -77,6 +80,11 @@ void ConsensusMaker::addEdgeOverlap(std::pair<size_t, bool> from, std::pair<size
 
 std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getSequences()
 {
+	for (auto pair : needsComplementVerification)
+	{
+		auto found = find(pair.first, pair.second);
+		assert(complement(compressedSequences[std::get<0>(found)].get(std::get<1>(found))) == compressedSequences[std::get<0>(found)].get(std::get<1>(found)));
+	}
 	stringIndex.buildReverseIndex();
 	std::vector<CompressedSequenceType> result;
 	result.reserve(simpleCounts.size());
