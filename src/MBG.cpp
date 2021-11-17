@@ -185,14 +185,14 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 			if (i > 0) pathLengthRLE -= hashlist.getOverlap(kmerPath[i-1], kmerPath[i]);
 		}
 		size_t pathLeftClipRLE = 0;
-		for (size_t i = 1; i < path.leftClip; i++)
+		for (size_t i = 0; i < path.leftClip; i++)
 		{
-			pathLeftClipRLE += kmerSize - hashlist.getOverlap(kmerPath[i-1], kmerPath[i]);
+			pathLeftClipRLE += kmerSize - hashlist.getOverlap(kmerPath[i], kmerPath[i+1]);
 		}
 		size_t pathRightClipRLE = 0;
-		for (size_t i = 1; i < path.rightClip; i++)
+		for (size_t i = 0; i < path.rightClip; i++)
 		{
-			pathRightClipRLE += kmerSize - hashlist.getOverlap(kmerPath[kmerPath.size()-1-i], kmerPath[kmerPath.size()-i]);
+			pathRightClipRLE += kmerSize - hashlist.getOverlap(kmerPath[kmerPath.size()-2-i], kmerPath[kmerPath.size()-1-i]);
 		}
 		size_t pathUnitigLeftClipRLE = path.path[0].second ? unitigs.leftClip[path.path[0].first] : unitigs.rightClip[path.path[0].first];
 		size_t pathUnitigRightClipRLE = path.path.back().second ? unitigs.rightClip[path.path.back().first] : unitigs.leftClip[path.path.back().first];
