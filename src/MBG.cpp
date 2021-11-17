@@ -314,7 +314,7 @@ void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, 
 			assert(newPos.second != pos.second);
 			assert(belongsToUnitig.at(newPos.first).first == currentUnitig);
 			assert(belongsToUnitig.at(newPos.first).second != newPos.second);
-			result.edges[std::make_pair(currentUnitig, belongsToUnitig.at(pos.first).second)].emplace(currentUnitig, !belongsToUnitig.at(pos.first).second);
+			result.edges[std::make_pair(currentUnitig, belongsToUnitig.at(pos.first).second == pos.second)].emplace(currentUnitig, !(belongsToUnitig.at(pos.first).second == pos.second));
 			result.edgeCoverage(currentUnitig, belongsToUnitig.at(pos.first).second, currentUnitig, !belongsToUnitig.at(pos.first).second) = old.edgeCoverage(pos.first, pos.second, newPos.first, newPos.second);
 			result.edgeOverlap(currentUnitig, belongsToUnitig.at(pos.first).second, currentUnitig, !belongsToUnitig.at(pos.first).second) = old.edgeOverlap(pos.first, pos.second, newPos.first, newPos.second);
 			break;
