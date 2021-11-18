@@ -560,8 +560,8 @@ void replacePathNodes(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPa
 		}
 		newPath.leftClip = readPaths[i].leftClip;
 		newPath.rightClip = readPaths[i].rightClip;
-		newPath.readPoses = readPaths[i].readPoses;
-		newPath.readName = readPaths[i].readName;
+		std::swap(newPath.readPoses, readPaths[i].readPoses);
+		std::swap(newPath.readName, readPaths[i].readName);
 		newPath.readLength = readPaths[i].readLength;
 		newPath.readLengthHPC = readPaths[i].readLengthHPC;
 		auto firstInUnitig = unitigIndex.find(readPaths[i].path[0].first);
