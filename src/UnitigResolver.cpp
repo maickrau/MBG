@@ -1059,7 +1059,7 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 				if (resolvables.count(readPaths[i].path[j+1].first) == 1 && unresolvables.count(readPaths[i].path[j+1].first) == 0)
 				{
 					end += resolvableGraph.unitigs[readPaths[i].path[j+1].first].size();
-					if (j > 0) end -= resolvableGraph.overlaps.at(canon(readPaths[i].path[j], readPaths[i].path[j+1]));
+					end -= resolvableGraph.overlaps.at(canon(readPaths[i].path[j], readPaths[i].path[j+1]));
 					// assert(end == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j + 2 }));
 				}
 				nodePosEnds.push_back(end);
