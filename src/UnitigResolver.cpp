@@ -1176,21 +1176,34 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 	phmap::flat_hash_set<size_t> actuallyResolvables = resolvables;
 	for (auto node : resolvables)
 	{
+		for (auto edge : resolvableGraph.edges[std::make_pair(node, true)])
+		{
+			if (edge.first == node && !edge.second)
+			{
+				std::cout << "unresolvable even length exact palindrome frozen, id: " << node << std::endl;
+				unresolvables.insert(node);
+				actuallyResolvables.erase(node);
+			}
+		}
+		for (auto edge : resolvableGraph.edges[std::make_pair(node, false)])
+		{
+			if (edge.first == node && edge.second)
+			{
+				std::cout << "unresolvable even length exact palindrome frozen, id: " << node << std::endl;
+				unresolvables.insert(node);
+				actuallyResolvables.erase(node);
+			}
+		}
+	}
+	for (auto node : resolvables)
+	{
+		if (unresolvables.count(node) == 1) continue;
 		auto triplets = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage);
 		if (triplets.size() == 0)
 		{
 			unresolvables.insert(node);
 			actuallyResolvables.erase(node);
 			// unresolveRecursively(resolvableGraph, resolvables, unresolvables, node);
-		}
-		for (auto triplet : triplets)
-		{
-			if (triplet.first == std::make_pair(node, false) || triplet.second == std::make_pair(node, false))
-			{
-				std::cout << "unresolvable even length exact palindrome frozen, id: " << node << std::endl;
-				unresolvables.insert(node);
-				actuallyResolvables.erase(node);
-			}
 		}
 	}
 	std::vector<size_t> check;
