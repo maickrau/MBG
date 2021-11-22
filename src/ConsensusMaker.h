@@ -100,6 +100,7 @@ private:
 	std::mutex complexCountMutex;
 	std::mutex stringIndexMutex;
 	std::vector<TwobitLittleBigVector<uint16_t>> compressedSequences;
+	std::vector<std::pair<size_t, size_t>> needsComplementVerification;
 	mutable std::vector<std::vector<std::tuple<size_t, size_t, bool>>> parent;
 };
 
