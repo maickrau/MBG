@@ -1919,7 +1919,7 @@ void checkOneEdges(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>
 	}
 }
 
-UntippingResult removeCrosslinkEdges(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const HashList& hashlist, const double maxRemovableCoverage, const double minSafeCoverage, const size_t kmerSize, const std::unordered_set<size_t>& maybeUntippable)
+UntippingResult removeCrosslinkEdges(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const HashList& hashlist, const double maxRemovableCoverage, const double minSafeCoverage, const size_t kmerSize, const phmap::flat_hash_set<size_t>& maybeUntippable)
 {
 	UntippingResult result;
 	result.nodesRemoved = 0;
