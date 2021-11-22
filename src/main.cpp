@@ -22,6 +22,7 @@ int main(int argc, char** argv)
 		("include-end-kmers", "Force k-mers at read ends to be included")
 		("output-sequence-paths", "Output the paths of the input sequences to a file (.gaf)", cxxopts::value<std::string>())
 		("r,resolve-maxk", "Maximum k-mer size for multiplex DBG resolution", cxxopts::value<size_t>())
+		("R,resolve-maxk-allowgaps", "Resolve up to this k-mer size allowing gaps", cxxopts::value<size_t>())
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
@@ -64,6 +65,7 @@ int main(int argc, char** argv)
 	size_t kmerSize = params["k"].as<size_t>();
 	size_t windowSize = 1;
 	size_t maxResolveLength = 0;
+	size_t maxUnconditionalResolveLength = 0;
 	if (params.count("w") == 1)
 	{
 		windowSize = params["w"].as<size_t>();
@@ -81,6 +83,7 @@ int main(int argc, char** argv)
 	bool includeEndKmers = false;
 	std::string errorMaskingStr = "hpc";
 	if (params.count("r") == 1) maxResolveLength = params["r"].as<size_t>();
+	if (params.count("R") == 1) maxUnconditionalResolveLength = params["R"].as<size_t>();
 	if (params.count("blunt") == 1) blunt = true;
 	if (params.count("error-masking") == 1)
 	{
@@ -171,10 +174,11 @@ int main(int argc, char** argv)
 	std::cerr << "u=" << minUnitigCoverage << ",";
 	std::cerr << "t=" << numThreads << ",";
 	std::cerr << "r=" << maxResolveLength << ",";
+	std::cerr << "R=" << maxUnconditionalResolveLength << ",";
 	std::cerr << "errormasking=" << errorMaskingStr << ",";
 	std::cerr << "endkmers=" << (includeEndKmers ? "yes" : "no") << ",";
 	std::cerr << "blunt=" << (blunt ? "yes" : "no");
 	std::cerr << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength);
 }

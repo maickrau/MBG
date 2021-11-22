@@ -920,7 +920,7 @@ void createEdgeNode(ResolvableUnitigGraph& resolvableGraph, const HashList& hash
 	assert(resolvableGraph.unitigLength(newIndex) > resolvableGraph.unitigLength(from.first));
 }
 
-std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getValidTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<ReadPath>& readPaths, size_t node, size_t minCoverage)
+std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getValidTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<ReadPath>& readPaths, size_t node, size_t minCoverage, bool unconditional)
 {
 	std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> empty;
 	phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t> tripletCoverage;
@@ -957,6 +957,7 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getVali
 		if (pair.second < minCoverage) continue;
 		coveredTriplets.push_back(pair.first);
 	}
+	if (unconditional) return coveredTriplets;
 	phmap::flat_hash_set<std::pair<size_t, bool>> coveredInNeighbors;
 	phmap::flat_hash_set<std::pair<size_t, bool>> coveredOutNeighbors;
 	for (auto pair : coveredTriplets)
@@ -1167,7 +1168,7 @@ public:
 	phmap::flat_hash_set<size_t> maybeUnitigifiable;
 };
 
-ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList& hashlist, const size_t kmerSize, std::vector<ReadPath>& readPaths, const phmap::flat_hash_set<size_t>& resolvables, const size_t minCoverage)
+ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList& hashlist, const size_t kmerSize, std::vector<ReadPath>& readPaths, const phmap::flat_hash_set<size_t>& resolvables, const size_t minCoverage, const bool unconditional)
 {
 	ResolutionResult result;
 	result.nodesResolved = 0;
@@ -1198,7 +1199,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 	for (auto node : resolvables)
 	{
 		if (unresolvables.count(node) == 1) continue;
-		auto triplets = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage);
+		auto triplets = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional);
 		if (triplets.size() == 0)
 		{
 			unresolvables.insert(node);
@@ -1215,7 +1216,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 		for (auto node : check)
 		{
 			if (unresolvables.count(node) == 1) continue;
-			auto triplets = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage);
+			auto triplets = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional);
 			for (auto triplet : triplets)
 			{
 				if (resolvables.count(triplet.first.first) == 0 || unresolvables.count(triplet.first.first) == 1)
@@ -1254,11 +1255,19 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 	phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t> newEdgeNodes;
 	for (auto node : actuallyResolvables)
 	{
-		assert(getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage).size() > 0);
+		assert(getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional).size() > 0);
+		std::unordered_set<std::pair<size_t, bool>> fwCovered;
+		std::unordered_set<std::pair<size_t, bool>> bwCovered;
+		for (auto pair : getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional))
+		{
+			fwCovered.insert(pair.second);
+			bwCovered.insert(reverse(pair.first));
+		}
 		std::pair<size_t, bool> pos { node, true };
 		for (auto edge : resolvableGraph.edges[pos])
 		{
 			assert(newEdgeNodes.count(std::make_pair(pos, edge)) == 0);
+			if (fwCovered.count(edge) == 0) continue;
 			if ((resolvables.count(edge.first) == 0 || unresolvables.count(edge.first) == 1) && resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(pos, edge) + 1) continue;
 			assert(actuallyResolvables.count(edge.first) == 1 || resolvableGraph.unitigLength(edge.first) > resolvableGraph.getBpOverlap(pos, edge) + 1);
 			// assert(unresolvables.count(edge.first) == 0);
@@ -1270,6 +1279,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 		for (auto edge : resolvableGraph.edges[pos])
 		{
 			assert(newEdgeNodes.count(std::make_pair(pos, edge)) == 0);
+			if (bwCovered.count(edge) == 0) continue;
 			if ((resolvables.count(edge.first) == 0 || unresolvables.count(edge.first) == 1) && resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(pos, edge) + 1) continue;
 			assert(actuallyResolvables.count(edge.first) == 1 || resolvableGraph.unitigLength(edge.first) > resolvableGraph.getBpOverlap(pos, edge) + 1);
 			// assert(unresolvables.count(edge.first) == 0);
@@ -1280,7 +1290,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 	}
 	for (auto node : actuallyResolvables)
 	{
-		auto triplets = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage);
+		auto triplets = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional);
 		assert(triplets.size() > 0);
 		std::pair<size_t, bool> pos { node, true };
 		for (auto triplet : triplets)
@@ -1725,7 +1735,7 @@ UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, st
 	return result;
 }
 
-void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength)
+void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength)
 {
 	checkValidity(resolvableGraph, readPaths, kmerSize);
 	std::priority_queue<size_t, std::vector<size_t>, UnitigLengthComparer> queue { UnitigLengthComparer { resolvableGraph } };
@@ -1774,7 +1784,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 		size_t oldSize = resolvableGraph.unitigs.size();
 		checkValidity(resolvableGraph, readPaths, kmerSize);
 		std::cerr << "try resolve k=" << topSize;
-		auto resolutionResult = resolve(resolvableGraph, hashlist, kmerSize, readPaths, resolvables, minCoverage);
+		auto resolutionResult = resolve(resolvableGraph, hashlist, kmerSize, readPaths, resolvables, minCoverage, topSize < maxUnconditionalResolveLength);
 		size_t newSize = resolvableGraph.unitigs.size();
 		std::cerr << ", replaced " << resolutionResult.nodesResolved << " nodes with " << resolutionResult.nodesAdded << " nodes";
 		nodesRemoved += resolutionResult.nodesResolved;
@@ -1859,7 +1869,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 	}
 }
 
-std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& readPaths, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength)
+std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& readPaths, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength)
 {
 	auto resolvableGraph = getUnitigs(initial, minCoverage, hashlist, kmerSize);
 	cutRemovedEdgesFromPaths(resolvableGraph, readPaths);
@@ -1893,8 +1903,8 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 		std::cerr << "removed " << removed.nodesRemoved << " tips" << std::endl;
 		unitigifyAll(resolvableGraph, readPaths);
 	}
-	resolveRound(resolvableGraph, readPaths, hashlist, minCoverage, kmerSize, maxResolveLength);
-	resolveRound(resolvableGraph, readPaths, hashlist, 1, kmerSize, maxResolveLength);
+	resolveRound(resolvableGraph, readPaths, hashlist, minCoverage, kmerSize, maxResolveLength, maxUnconditionalResolveLength);
+	resolveRound(resolvableGraph, readPaths, hashlist, 1, kmerSize, maxResolveLength, maxUnconditionalResolveLength);
 	checkValidity(resolvableGraph, readPaths, kmerSize);
 	return resolvableToUnitigs(resolvableGraph, readPaths);
 }
