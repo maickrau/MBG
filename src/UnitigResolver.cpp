@@ -2004,7 +2004,7 @@ void checkOneComponent(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadP
 	result.maybeUnitigifiable.insert(borderNodes.begin(), borderNodes.end());
 }
 
-UntippingResult removeLowCoverageComponents(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const HashList& hashlist, const double maxRemovableCoverage, const double minSafeCoverage, const size_t kmerSize, const std::unordered_set<size_t>& maybeUntippable)
+UntippingResult removeLowCoverageComponents(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const HashList& hashlist, const double maxRemovableCoverage, const double minSafeCoverage, const size_t kmerSize, const phmap::flat_hash_set<size_t>& maybeUntippable)
 {
 	UntippingResult result;
 	result.nodesRemoved = 0;
@@ -2191,8 +2191,8 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 		assert(resolvableGraph.readsCrossingNode[i].size() >= 1);
 	}
 	unitigifyAll(resolvableGraph, readPaths);
-	auto removed = removeLowCoverageComponents(resolvableGraph, readPaths, hashlist, 3, 10, kmerSize, std::unordered_set<size_t> {});
-	auto removedEdges = removeCrosslinkEdges(resolvableGraph, readPaths, hashlist, 3, 10, kmerSize, std::unordered_set<size_t> {});
+	auto removed = removeLowCoverageComponents(resolvableGraph, readPaths, hashlist, 3, 10, kmerSize, phmap::flat_hash_set<size_t> {});
+	auto removedEdges = removeCrosslinkEdges(resolvableGraph, readPaths, hashlist, 3, 10, kmerSize, phmap::flat_hash_set<size_t> {});
 	if (removed.nodesRemoved > 0)
 	{
 		std::cerr << "removed " << removed.nodesRemoved << " low coverage nodes" << std::endl;
