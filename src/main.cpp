@@ -22,7 +22,7 @@ int main(int argc, char** argv)
 		("include-end-kmers", "Force k-mers at read ends to be included")
 		("output-sequence-paths", "Output the paths of the input sequences to a file (.gaf)", cxxopts::value<std::string>())
 		("r,resolve-maxk", "Maximum k-mer size for multiplex DBG resolution", cxxopts::value<size_t>())
-		("R,resolve-maxk-allowgaps", "Resolve up to this k-mer size allowing gaps", cxxopts::value<size_t>())
+		("R,resolve-maxk-allowgaps", "Allow multiplex resolution to add gaps up to this k-mer size", cxxopts::value<size_t>())
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
