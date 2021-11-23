@@ -1009,7 +1009,6 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 			newPath.readLengthHPC = readPaths[i].readLengthHPC;
 			std::vector<size_t> nodePosStarts;
 			std::vector<size_t> nodePosEnds;
-			size_t kmerPathLength = getNumberOfHashes(resolvableGraph, 0, 0, readPaths[i].path);
 			size_t runningKmerStartPos = 0;
 			size_t runningKmerEndPos = 0;
 			for (size_t j = 0; j < readPaths[i].path.size(); j++)
@@ -1082,6 +1081,8 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 					newPath.path.emplace_back(newEdgeNodes.at(std::make_pair(readPaths[i].path[j], readPaths[i].path[j+1])), true);
 				}
 			}
+			size_t kmerPathLength = runningKmerEndPos;
+			assert(kmerPathLength == getNumberOfHashes(resolvableGraph, 0, 0, readPaths[i].path));
 			if (newPath.path.size() == 0)
 			{
 				erasePath(resolvableGraph, readPaths, i);
