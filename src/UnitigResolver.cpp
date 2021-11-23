@@ -517,11 +517,12 @@ void replacePathNodes(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPa
 	assert(leftClipSum + rightClipSum + resolvableGraph.unitigs[newUnitig[0].first].size() == resolvableGraph.unitigs[newUnitigIndex].size());
 	for (size_t i = 1; i < newUnitig.size(); i++)
 	{
-		assert(resolvableGraph.unitigs[newUnitig[i-1].first].size() >= resolvableGraph.overlaps[canon(newUnitig[i-1], newUnitig[i])]);
-		assert(resolvableGraph.unitigs[newUnitig[i].first].size() >= resolvableGraph.overlaps[canon(newUnitig[i-1], newUnitig[i])]);
-		assert(resolvableGraph.unitigs[newUnitig[i].first].size() - resolvableGraph.overlaps[canon(newUnitig[i-1], newUnitig[i])] <= rightClipSum);
-		leftClipSum = leftClipSum + resolvableGraph.unitigs[newUnitig[i-1].first].size() - resolvableGraph.overlaps[canon(newUnitig[i-1], newUnitig[i])];
-		rightClipSum = rightClipSum - resolvableGraph.unitigs[newUnitig[i].first].size() + resolvableGraph.overlaps[canon(newUnitig[i-1], newUnitig[i])];
+		size_t overlap = resolvableGraph.overlaps[canon(newUnitig[i-1], newUnitig[i])];
+		assert(resolvableGraph.unitigs[newUnitig[i-1].first].size() >= overlap);
+		assert(resolvableGraph.unitigs[newUnitig[i].first].size() >= overlap);
+		assert(resolvableGraph.unitigs[newUnitig[i].first].size() - overlap <= rightClipSum);
+		leftClipSum = leftClipSum + resolvableGraph.unitigs[newUnitig[i-1].first].size() - overlap;
+		rightClipSum = rightClipSum - resolvableGraph.unitigs[newUnitig[i].first].size() + overlap;
 		leftClip[i] = leftClipSum;
 		rightClip[i] = rightClipSum;
 		assert(leftClipSum + rightClipSum + resolvableGraph.unitigs[newUnitig[i].first].size() == resolvableGraph.unitigs[newUnitigIndex].size());
@@ -918,9 +919,10 @@ void createEdgeNode(ResolvableUnitigGraph& resolvableGraph, const HashList& hash
 	{
 		resolvableGraph.edges[std::make_pair(newIndex, true)].emplace(to);
 		resolvableGraph.edges[reverse(to)].emplace(std::make_pair(newIndex, false));
-		assert(resolvableGraph.unitigs[newIndex].size() >= resolvableGraph.overlaps.at(canon(from, to)) + overlapIncrement);
-		assert(resolvableGraph.unitigs[to.first].size() >= resolvableGraph.overlaps.at(canon(from, to)) + overlapIncrement);
-		resolvableGraph.overlaps[canon(std::make_pair(newIndex, true), to)] = resolvableGraph.overlaps.at(canon(from, to)) + overlapIncrement;
+		size_t overlap = resolvableGraph.overlaps.at(canon(from, to));
+		assert(resolvableGraph.unitigs[newIndex].size() >= overlap + overlapIncrement);
+		assert(resolvableGraph.unitigs[to.first].size() >= overlap + overlapIncrement);
+		resolvableGraph.overlaps[canon(std::make_pair(newIndex, true), to)] = overlap + overlapIncrement;
 		// resolvableGraph.overlaps[canon(std::make_pair(newIndex, true), to)] = resolvableGraph.unitigs[from.first].size();
 		assert(resolvableGraph.getBpOverlap(std::make_pair(newIndex, true), to) < resolvableGraph.unitigLength(to.first));
 	}
@@ -1017,7 +1019,12 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 			{
 				runningKmerStartPos = runningKmerEndPos;
 				runningKmerEndPos += resolvableGraph.unitigs[readPaths[i].path[j].first].size();
-				if (j > 0) runningKmerEndPos -= resolvableGraph.overlaps.at(canon(readPaths[i].path[j-1], readPaths[i].path[j]));
+				size_t overlap = 0;
+				if (j > 0)
+				{
+					overlap = resolvableGraph.overlaps.at(canon(readPaths[i].path[j-1], readPaths[i].path[j]));
+					runningKmerEndPos -= overlap;
+				}
 				if (resolvables.count(readPaths[i].path[j].first) == 0 || unresolvables.count(readPaths[i].path[j].first) == 1)
 				{
 					newPath.path.push_back(readPaths[i].path[j]);
@@ -1026,8 +1033,8 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 					{
 						start = runningKmerStartPos;
 						// assert(start == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j }));
-						assert(start >= resolvableGraph.overlaps.at(canon(readPaths[i].path[j-1], readPaths[i].path[j])));
-						start -= resolvableGraph.overlaps.at(canon(readPaths[i].path[j-1], readPaths[i].path[j]));
+						assert(start >= overlap);
+						start -= overlap;
 					}
 					nodePosStarts.push_back(start);
 					size_t end = runningKmerEndPos;
@@ -1041,8 +1048,8 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 					// assert(start == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j }));
 					if (resolvables.count(readPaths[i].path[j-1].first) == 0 || unresolvables.count(readPaths[i].path[j-1].first) == 1)
 					{
-						assert(start >= resolvableGraph.overlaps.at(canon(readPaths[i].path[j-1], readPaths[i].path[j])));
-						start -= resolvableGraph.overlaps.at(canon(readPaths[i].path[j-1], readPaths[i].path[j]));
+						assert(start >= overlap);
+						start -= overlap;
 					}
 					else
 					{
@@ -1062,8 +1069,8 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 					{
 						start = runningKmerStartPos;
 						// assert(start == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j }));
-						assert(start >= resolvableGraph.overlaps.at(canon(readPaths[i].path[j-1], readPaths[i].path[j])));
-						start -= resolvableGraph.overlaps.at(canon(readPaths[i].path[j-1], readPaths[i].path[j]));
+						assert(start >= overlap);
+						start -= overlap;
 					}
 					nodePosStarts.push_back(start);
 					size_t end = runningKmerEndPos;
