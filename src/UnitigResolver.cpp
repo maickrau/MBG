@@ -445,8 +445,9 @@ size_t getNumberOfHashes(const ResolvableUnitigGraph& resolvableGraph, size_t le
 		result += resolvableGraph.unitigs[path[i].first].size();
 		if (i > 0)
 		{
-			assert(resolvableGraph.unitigs[path[i].first].size() >= resolvableGraph.overlaps.at(canon(path[i-1], path[i])));
-			result -= resolvableGraph.overlaps.at(canon(path[i-1], path[i]));
+			size_t overlap = resolvableGraph.overlaps.at(canon(path[i-1], path[i]));
+			assert(resolvableGraph.unitigs[path[i].first].size() >= overlap);
+			result -= overlap;
 		}
 	}
 	assert(result > leftClip + rightClip);
