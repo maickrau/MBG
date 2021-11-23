@@ -463,6 +463,7 @@ void erasePath(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& re
 
 void addPath(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, ReadPath&& newPath)
 {
+	static std::vector<bool> added;
 	if (newPath.path.size() == 0) return;
 	assert(getNumberOfHashes(resolvableGraph, newPath.leftClip, newPath.rightClip, newPath.path) == newPath.readPoses.size());
 	if (newPath.path.size() == 1)
@@ -484,14 +485,19 @@ void addPath(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& read
 		}
 	}
 	size_t newIndex = readPaths.size();
-	phmap::flat_hash_set<size_t> crossesNodes;
 	for (auto pos : newPath.path)
 	{
-		crossesNodes.insert(pos.first);
+		if (pos.first >= added.size())
+		{
+			added.resize(resolvableGraph.unitigs.size(), false);
+		}
+		if (added[pos.first]) continue;
+		resolvableGraph.readsCrossingNode[pos.first].emplace_back(newIndex);
+		added[pos.first] = true;
 	}
-	for (auto pos : crossesNodes)
+	for (auto pos : newPath.path)
 	{
-		resolvableGraph.readsCrossingNode[pos].emplace_back(newIndex);
+		added[pos.first] = false;
 	}
 	readPaths.emplace_back(std::move(newPath));
 }
@@ -983,14 +989,6 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getVali
 
 void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const phmap::flat_hash_set<size_t>& resolvables, const phmap::flat_hash_set<size_t>& unresolvables, const phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t>& newEdgeNodes)
 {
-	phmap::flat_hash_set<size_t> nodesInNewEdgeNodes;
-	for (auto pair : newEdgeNodes)
-	{
-		assert(nodesInNewEdgeNodes.count(pair.second) == 0);
-		assert(resolvables.count(pair.first.first.first) == 1);
-		assert(unresolvables.count(pair.first.first.first) == 0);
-		nodesInNewEdgeNodes.insert(pair.second);
-	}
 	for (const auto node : resolvables)
 	{
 		if (unresolvables.count(node) == 1) continue;
