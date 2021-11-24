@@ -1267,7 +1267,11 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 		for (auto edge : resolvableGraph.edges[pos])
 		{
 			assert(newEdgeNodes.count(std::make_pair(pos, edge)) == 0);
-			if (fwCovered.count(edge) == 0) continue;
+			if (fwCovered.count(edge) == 0)
+			{
+				result.maybeUnitigifiable.insert(edge.first);
+				continue;
+			}
 			if ((resolvables.count(edge.first) == 0 || unresolvables.count(edge.first) == 1) && resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(pos, edge) + 1) continue;
 			assert(actuallyResolvables.count(edge.first) == 1 || resolvableGraph.unitigLength(edge.first) > resolvableGraph.getBpOverlap(pos, edge) + 1);
 			// assert(unresolvables.count(edge.first) == 0);
@@ -1279,7 +1283,11 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 		for (auto edge : resolvableGraph.edges[pos])
 		{
 			assert(newEdgeNodes.count(std::make_pair(pos, edge)) == 0);
-			if (bwCovered.count(edge) == 0) continue;
+			if (bwCovered.count(edge) == 0)
+			{
+				result.maybeUnitigifiable.insert(edge.first);
+				continue;
+			}
 			if ((resolvables.count(edge.first) == 0 || unresolvables.count(edge.first) == 1) && resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(pos, edge) + 1) continue;
 			assert(actuallyResolvables.count(edge.first) == 1 || resolvableGraph.unitigLength(edge.first) > resolvableGraph.getBpOverlap(pos, edge) + 1);
 			// assert(unresolvables.count(edge.first) == 0);
