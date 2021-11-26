@@ -1166,6 +1166,7 @@ public:
 	size_t nodesResolved;
 	size_t nodesAdded;
 	phmap::flat_hash_set<size_t> maybeUnitigifiable;
+	phmap::flat_hash_map<std::pair<size_t, bool>, size_t> maybeTrimmable;
 };
 
 ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList& hashlist, const size_t kmerSize, std::vector<ReadPath>& readPaths, const phmap::flat_hash_set<size_t>& resolvables, const size_t minCoverage, const bool unconditional)
@@ -1270,6 +1271,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			if (fwCovered.count(edge) == 0)
 			{
 				result.maybeUnitigifiable.insert(edge.first);
+				result.maybeTrimmable[reverse(edge)] = std::max(resolvableGraph.overlaps.at(canon(pos, edge)), result.maybeTrimmable[reverse(edge)]);
 				continue;
 			}
 			if ((resolvables.count(edge.first) == 0 || unresolvables.count(edge.first) == 1) && resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(pos, edge) + 1) continue;
@@ -1286,6 +1288,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			if (bwCovered.count(edge) == 0)
 			{
 				result.maybeUnitigifiable.insert(edge.first);
+				result.maybeTrimmable[reverse(edge)] = std::max(resolvableGraph.overlaps.at(canon(pos, edge)), result.maybeTrimmable[reverse(edge)]);
 				continue;
 			}
 			if ((resolvables.count(edge.first) == 0 || unresolvables.count(edge.first) == 1) && resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(pos, edge) + 1) continue;
@@ -1743,6 +1746,68 @@ UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, st
 	return result;
 }
 
+void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const size_t kmerSize, std::pair<size_t, bool> pos, size_t maxTrim)
+{
+	if (maxTrim == 0) return;
+	if (resolvableGraph.edges[pos].size() > 0) return;
+	size_t maxReadTrim = resolvableGraph.unitigs[pos.first].size();
+	assert(resolvableGraph.readsCrossingNode[pos.first].size() > 0);
+	for (const size_t i : resolvableGraph.readsCrossingNode[pos.first])
+	{
+		for (size_t j = 0; j < readPaths[i].path.size(); j++)
+		{
+			if (readPaths[i].path[j].first != pos.first) continue;
+			if (j == 0 && readPaths[i].path[j] == reverse(pos))
+			{
+				maxReadTrim = std::min(maxReadTrim, readPaths[i].leftClip);
+			}
+			else if (j == readPaths[i].path.size()-1 && readPaths[i].path[j] == pos)
+			{
+				maxReadTrim = std::min(maxReadTrim, readPaths[i].rightClip);
+			}
+			else
+			{
+				maxReadTrim = 0;
+			}
+		}
+		if (maxReadTrim == 0) break;
+	}
+	if (maxReadTrim == 0) return;
+	assert(maxReadTrim <= maxTrim);
+	assert(resolvableGraph.unitigs[pos.first].size() > maxTrim);
+	if (pos.second)
+	{
+		resolvableGraph.unitigs[pos.first].erase(resolvableGraph.unitigs[pos.first].end() - maxReadTrim, resolvableGraph.unitigs[pos.first].end());
+		resolvableGraph.unitigRightClipBp[pos.first] = 0;
+	}
+	else
+	{
+		resolvableGraph.unitigs[pos.first].erase(resolvableGraph.unitigs[pos.first].begin(), resolvableGraph.unitigs[pos.first].begin() + maxReadTrim);
+		resolvableGraph.unitigLeftClipBp[pos.first] = 0;
+	}
+	for (const size_t i : resolvableGraph.readsCrossingNode[pos.first])
+	{
+		for (size_t j = 0; j < readPaths[i].path.size(); j++)
+		{
+			if (readPaths[i].path[j].first != pos.first) continue;
+			if (j == 0 && readPaths[i].path[j] == reverse(pos))
+			{
+				assert(readPaths[i].leftClip >= maxReadTrim);
+				readPaths[i].leftClip -= maxReadTrim;
+			}
+			else if (j == readPaths[i].path.size()-1 && readPaths[i].path[j] == pos)
+			{
+				assert(readPaths[i].rightClip >= maxReadTrim);
+				readPaths[i].rightClip -= maxReadTrim;
+			}
+			else
+			{
+				assert(false);
+			}
+		}
+	}
+}
+
 void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength)
 {
 	checkValidity(resolvableGraph, readPaths, kmerSize);
@@ -1798,8 +1863,17 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 		nodesRemoved += resolutionResult.nodesResolved;
 		if (resolutionResult.nodesResolved == 0)
 		{
+			assert(resolutionResult.maybeTrimmable.size() == 0);
 			std::cerr << std::endl;
 			continue;
+		}
+		if (resolutionResult.maybeTrimmable.size() > 0)
+		{
+			for (auto pair : resolutionResult.maybeTrimmable)
+			{
+				if (resolvableGraph.unitigRemoved[pair.first.first]) continue;
+				maybeTrim(resolvableGraph, readPaths, kmerSize, pair.first, pair.second);
+			}
 		}
 		size_t unitigified = 0;
 		size_t unitigifiedTo = 0;
