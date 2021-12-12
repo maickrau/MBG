@@ -31,6 +31,7 @@ public:
 	size_t numNodes() const;
 	size_t numEdges() const;
 	UnitigGraph filterUnitigsByCoverage(const double filter);
+	void sort(const std::vector<size_t>& kmerMapping);
 };
 
 #endif

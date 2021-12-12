@@ -33,6 +33,7 @@ public:
 	std::pair<std::pair<size_t, bool>, HashType> addNode(VectorView<CharType> sequence, VectorView<CharType> reverse);
 	void filter(const RankBitvector& kept);
 	std::pair<size_t, bool> getHashNode(HashType hash) const;
+	std::vector<size_t> sortByHash();
 private:
 	phmap::flat_hash_map<HashType, size_t> hashToNode;
 	MostlySparse2DHashmap<uint8_t, size_t> edgeCoverage;

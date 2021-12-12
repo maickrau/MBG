@@ -759,7 +759,9 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 	{
 		std::pair<size_t, bool> fw { i, true };
 		std::pair<size_t, bool> bw { i, false };
-		for (auto to : unitigs.edges[fw])
+		std::vector<std::pair<size_t, bool>> fwEdges { unitigs.edges[fw].begin(), unitigs.edges[fw].end() };
+		std::sort(fwEdges.begin(), fwEdges.end());
+		for (auto to : fwEdges)
 		{
 			if (canon(fw, to).first == fw) stats.edges += 1;
 			size_t rleOverlap = getUnitigOverlap(hashlist, kmerSize, unitigs, fw, to);
@@ -770,7 +772,9 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 			size_t overlap = getOverlapFromRLE(unitigSequences, stringIndex, fw, rleOverlap);
 			file << "L\t" << (fw.first+1) << "\t" << (fw.second ? "+" : "-") << "\t" << (to.first+1) << "\t" << (to.second ? "+" : "-") << "\t" << overlap << "M\tec:i:" << unitigs.edgeCoverage(fw, to) << std::endl;
 		}
-		for (auto to : unitigs.edges[bw])
+		std::vector<std::pair<size_t, bool>> bwEdges { unitigs.edges[bw].begin(), unitigs.edges[bw].end() };
+		std::sort(bwEdges.begin(), bwEdges.end());
+		for (auto to : bwEdges)
 		{
 			if (canon(bw, to).first == bw) stats.edges += 1;
 			size_t rleOverlap = getUnitigOverlap(hashlist, kmerSize, unitigs, bw, to);
@@ -849,6 +853,12 @@ void printUnitigKmerCount(const UnitigGraph& unitigs)
 		unitigKmers += unitigs.unitigs[i].size();
 	}
 	std::cerr << unitigKmers << " distinct selected k-mers in unitigs after filtering" << std::endl;
+}
+
+void sortKmersByHashes(UnitigGraph& unitigs, HashList& reads)
+{
+	std::vector<size_t> kmerMapping = reads.sortByHash();
+	unitigs.sort(kmerMapping);
 }
 
 void filterKmersToUnitigKmers(UnitigGraph& unitigs, HashList& reads, const size_t kmerSize)
@@ -1181,6 +1191,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage));
 	}
 	filterKmersToUnitigKmers(unitigs, reads, kmerSize);
+	sortKmersByHashes(unitigs, reads);
 	printUnitigKmerCount(unitigs);
 	auto beforePaths = getTime();
 	std::vector<ReadPath> readPaths;
