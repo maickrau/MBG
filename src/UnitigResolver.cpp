@@ -83,8 +83,8 @@ public:
 		assert(precalcedUnitigLengths[i] >= kmerSize);
 		return precalcedUnitigLengths[i];
 	}
-private:
 	const HashList& hashlist;
+private:
 	const size_t kmerSize;
 };
 
@@ -1406,7 +1406,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 
 void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<ReadPath>& readPaths, const size_t kmerSize)
 {
-	return;
+	// return;
 	assert(graph.unitigs.size() == graph.edges.size());
 	assert(graph.unitigs.size() == graph.unitigRightClipBp.size());
 	assert(graph.unitigs.size() == graph.unitigLeftClipBp.size());
@@ -1429,12 +1429,16 @@ void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<ReadPat
 			assert(!graph.unitigRemoved[edge.first]);
 			assert(graph.edges[reverse(edge)].count(reverse(fw)) == 1);
 			assert(graph.edges[fw].size() >= 2 || graph.edges[reverse(edge)].size() >= 2 || edge.first == i);
+			assert(graph.getBpOverlap(fw, edge) < graph.unitigLength(i));
+			assert(graph.getBpOverlap(fw, edge) < graph.unitigLength(edge.first));
 		}
 		for (auto edge : graph.edges[bw])
 		{
 			assert(!graph.unitigRemoved[edge.first]);
 			assert(graph.edges[reverse(edge)].count(reverse(bw)) == 1);
 			assert(graph.edges[bw].size() >= 2 || graph.edges[reverse(edge)].size() >= 2 || edge.first == i);
+			assert(graph.getBpOverlap(bw, edge) < graph.unitigLength(i));
+			assert(graph.getBpOverlap(bw, edge) < graph.unitigLength(edge.first));
 		}
 	}
 	for (const auto& path : readPaths)
@@ -1777,11 +1781,13 @@ void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>& re
 	assert(resolvableGraph.unitigs[pos.first].size() > maxTrim);
 	if (pos.second)
 	{
+		assert(resolvableGraph.unitigRightClipBp[pos.first] < resolvableGraph.hashlist.getOverlap(resolvableGraph.unitigs[pos.first][resolvableGraph.unitigs[pos.first].size()-1], resolvableGraph.unitigs[pos.first].back()));
 		resolvableGraph.unitigs[pos.first].erase(resolvableGraph.unitigs[pos.first].end() - maxReadTrim, resolvableGraph.unitigs[pos.first].end());
 		resolvableGraph.unitigRightClipBp[pos.first] = 0;
 	}
 	else
 	{
+		assert(resolvableGraph.unitigLeftClipBp[pos.first] < resolvableGraph.hashlist.getOverlap(resolvableGraph.unitigs[pos.first][0], resolvableGraph.unitigs[pos.first][1]));
 		resolvableGraph.unitigs[pos.first].erase(resolvableGraph.unitigs[pos.first].begin(), resolvableGraph.unitigs[pos.first].begin() + maxReadTrim);
 		resolvableGraph.unitigLeftClipBp[pos.first] = 0;
 	}
