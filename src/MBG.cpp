@@ -863,10 +863,50 @@ void sortKmersByHashes(UnitigGraph& unitigs, HashList& reads)
 
 void filterKmersToUnitigKmers(UnitigGraph& unitigs, HashList& reads, const size_t kmerSize)
 {
+	std::vector<bool> reverseContig;
+	reverseContig.resize(unitigs.unitigs.size(), false);
+	{
+		std::unordered_map<size_t, std::pair<size_t, bool>> kmerPosition;
+		std::vector<HashType> firstHash;
+		std::vector<HashType> lastHash;
+		for (size_t i = 0; i < unitigs.unitigs.size(); i++)
+		{
+			kmerPosition[unitigs.unitigs[i][0].first] = std::make_pair(i, false);
+			kmerPosition[unitigs.unitigs[i].back().first] = std::make_pair(i, true);
+		}
+		firstHash.resize(unitigs.unitigs.size());
+		lastHash.resize(unitigs.unitigs.size());
+		for (auto pair : reads.hashToNode)
+		{
+			if (kmerPosition.count(pair.second) == 0) continue;
+			auto pos = kmerPosition.at(pair.second);
+			if (pos.second)
+			{
+				lastHash[pos.first] = pair.first;
+			}
+			else
+			{
+				firstHash[pos.first] = pair.first;
+			}
+		}
+		for (size_t i = 0; i < unitigs.unitigs.size(); i++)
+		{
+			reverseContig[i] = lastHash[i] < firstHash[i];
+		}
+	}
 	RankBitvector kept { reads.coverage.size() };
 	std::vector<std::tuple<std::pair<size_t, bool>, std::pair<size_t, bool>, size_t>> newOverlaps;
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
+		if (reverseContig[i])
+		{
+			std::reverse(unitigs.unitigs[i].begin(), unitigs.unitigs[i].end());
+			std::reverse(unitigs.unitigCoverage[i].begin(), unitigs.unitigCoverage[i].end());
+			for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
+			{
+				unitigs.unitigs[i][j] = reverse(unitigs.unitigs[i][j]);
+			}
+		}
 		std::vector<std::pair<size_t, bool>> newUnitig;
 		std::vector<size_t> newCoverage;
 		newUnitig.reserve(unitigs.unitigs[i].size());
@@ -910,6 +950,15 @@ void filterKmersToUnitigKmers(UnitigGraph& unitigs, HashList& reads, const size_
 		}
 		newUnitig.shrink_to_fit();
 		newCoverage.shrink_to_fit();
+		if (reverseContig[i])
+		{
+			std::reverse(newUnitig.begin(), newUnitig.end());
+			std::reverse(newCoverage.begin(), newCoverage.end());
+			for (size_t j = 0; j < newUnitig.size(); j++)
+			{
+				newUnitig[j] = reverse(newUnitig[j]);
+			}
+		}
 		std::swap(unitigs.unitigs[i], newUnitig);
 		std::swap(unitigs.unitigCoverage[i], newCoverage);
 	}

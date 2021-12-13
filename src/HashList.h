@@ -34,8 +34,8 @@ public:
 	void filter(const RankBitvector& kept);
 	std::pair<size_t, bool> getHashNode(HashType hash) const;
 	std::vector<size_t> sortByHash();
-private:
 	phmap::flat_hash_map<HashType, size_t> hashToNode;
+private:
 	MostlySparse2DHashmap<uint8_t, size_t> edgeCoverage;
 	MostlySparse2DHashmap<uint16_t, size_t> sequenceOverlap;
 	std::shared_ptr<std::mutex> indexMutex;
