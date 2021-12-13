@@ -968,6 +968,21 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getVali
 	assert(coveredOutNeighbors.size() <= resolvableGraph.edges[std::make_pair(node, true)].size());
 	if (coveredInNeighbors.size() < resolvableGraph.edges[std::make_pair(node, false)].size()) return empty;
 	if (coveredOutNeighbors.size() < resolvableGraph.edges[std::make_pair(node, true)].size()) return empty;
+	std::sort(coveredTriplets.begin(), coveredTriplets.end(), [](std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> left, std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> right) {
+		auto leftComp = canon(left.first, left.second);
+		auto rightComp = canon(right.first, right.second);
+		assert(leftComp != rightComp);
+		if (leftComp.first.first < rightComp.first.first) return true;
+		if (leftComp.first.first > rightComp.first.first) return false;
+		if (!leftComp.first.second && rightComp.first.second) return true;
+		if (leftComp.first.second && !rightComp.first.second) return false;
+		if (leftComp.second.first < rightComp.second.first) return true;
+		if (leftComp.second.first > rightComp.second.first) return false;
+		if (!leftComp.second.second && rightComp.second.second) return true;
+		if (leftComp.second.second && !rightComp.second.second) return false;
+		assert(false);
+		return false;
+	});
 	return coveredTriplets;
 }
 
@@ -1255,7 +1270,9 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 	{
 		assert(getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage).size() > 0);
 		std::pair<size_t, bool> pos { node, true };
-		for (auto edge : resolvableGraph.edges[pos])
+		std::vector<std::pair<size_t, bool>> fwEdges { resolvableGraph.edges[pos].begin(), resolvableGraph.edges[pos].end() };
+		std::sort(fwEdges.begin(), fwEdges.end());
+		for (auto edge : fwEdges)
 		{
 			assert(newEdgeNodes.count(std::make_pair(pos, edge)) == 0);
 			if ((resolvables.count(edge.first) == 0 || unresolvables.count(edge.first) == 1) && resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(pos, edge) + 1) continue;
@@ -1266,7 +1283,9 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			assert(newEdgeNodes.count(std::make_pair(pos, edge)) == 1);
 		}
 		pos = std::make_pair(node, false);
-		for (auto edge : resolvableGraph.edges[pos])
+		std::vector<std::pair<size_t, bool>> bwEdges { resolvableGraph.edges[pos].begin(), resolvableGraph.edges[pos].end() };
+		std::sort(bwEdges.begin(), bwEdges.end());
+		for (auto edge : bwEdges)
 		{
 			assert(newEdgeNodes.count(std::make_pair(pos, edge)) == 0);
 			if ((resolvables.count(edge.first) == 0 || unresolvables.count(edge.first) == 1) && resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(pos, edge) + 1) continue;
