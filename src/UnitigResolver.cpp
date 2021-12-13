@@ -1802,7 +1802,9 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 		}
 		size_t unitigified = 0;
 		size_t unitigifiedTo = 0;
-		for (auto i : resolutionResult.maybeUnitigifiable)
+		std::vector<size_t> maybeUnitigifiable { resolutionResult.maybeUnitigifiable.begin(), resolutionResult.maybeUnitigifiable.end() };
+		std::sort(maybeUnitigifiable.begin(), maybeUnitigifiable.end());
+		for (auto i : maybeUnitigifiable)
 		// for (size_t i = oldSize; i < newSize; i++)
 		{
 			if (resolvableGraph.unitigRemoved[i]) continue;
@@ -1832,7 +1834,8 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<ReadPath>&
 		{
 			std::cerr << "removed " << removed.nodesRemoved + removed2.nodesRemoved << " tips" << std::endl;
 			removed.maybeUnitigifiable.insert(removed2.maybeUnitigifiable.begin(), removed2.maybeUnitigifiable.end());
-			for (auto i : removed.maybeUnitigifiable)
+			std::vector<size_t> maybeUnitigifiable2 { removed.maybeUnitigifiable.begin(), removed.maybeUnitigifiable.end() };
+			for (auto i : maybeUnitigifiable2)
 			{
 				if (resolvableGraph.unitigRemoved[i]) continue;
 				size_t unitigifiedHere = unitigifyOne(resolvableGraph, readPaths, i);
