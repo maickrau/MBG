@@ -1204,29 +1204,143 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 	return result;
 }
 
-std::vector<double> getRawKmerCoverages(const UnitigGraph& unitigs, const HashList& reads)
+std::vector<double> getRawKmerCoverages(const UnitigGraph& unitigs, const std::vector<CompressedSequenceType>& unitigSequences, const HashList& reads, const size_t kmerSize)
 {
-	std::vector<double> result;
-	result.resize(unitigs.unitigs.size(), -1);
-	std::vector<size_t> kmerCount;
-	kmerCount.resize(reads.size(), 0);
+	std::vector<std::vector<std::pair<size_t, size_t>>> kmerIntervals;
+	kmerIntervals.resize(reads.size());
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
+		size_t unitigLength = unitigSequences[i].compressedSize() + unitigs.leftClip[i] + unitigs.rightClip[i];
+		size_t currentPos = 0;
 		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
 		{
-			kmerCount[unitigs.unitigs[i][j].first] += 1;
+			if (j > 0) currentPos -= reads.getOverlap(unitigs.unitigs[i][j-1], unitigs.unitigs[i][j]);
+			size_t kmerStart = 0;
+			if (unitigs.leftClip[i] > currentPos)
+			{
+				kmerStart = unitigs.leftClip[i] - currentPos;
+			}
+			size_t kmerEnd = kmerSize;
+			assert(currentPos < unitigLength - unitigs.rightClip[i]);
+			if (currentPos + kmerSize > unitigLength - unitigs.rightClip[i])
+			{
+				kmerEnd = (unitigLength - unitigs.rightClip[i]) - currentPos;
+			}
+			currentPos += kmerSize;
+			if (kmerEnd <= kmerStart) continue;
+			if (!unitigs.unitigs[i][j].second)
+			{
+				std::swap(kmerStart, kmerEnd);
+				kmerStart = kmerSize - kmerStart;
+				kmerEnd = kmerSize - kmerEnd;
+				assert(kmerEnd > kmerStart);
+			}
+			kmerIntervals[unitigs.unitigs[i][j].first].emplace_back(kmerStart, kmerEnd);
+		}
+		assert(currentPos == unitigLength);
+	}
+	std::vector<std::vector<std::pair<size_t, size_t>>> forbiddenIntervals;
+	forbiddenIntervals.resize(reads.size());
+	for (size_t i = 0; i < kmerIntervals.size(); i++)
+	{
+		if (kmerIntervals[i].size() == 0) continue;
+		std::sort(kmerIntervals[i].begin(), kmerIntervals[i].end(), [](std::pair<size_t, size_t> left, std::pair<size_t, size_t> right) { return left.first < right.first; });
+		size_t intervalStart = kmerIntervals[i][0].first;
+		size_t forbiddenStart = kmerIntervals[i][0].second;
+		size_t forbiddenEnd = kmerIntervals[i][0].second;
+		size_t intervalEnd = kmerIntervals[i][0].second;
+		for (size_t j = 1; j < kmerIntervals[i].size(); j++)
+		{
+			if (kmerIntervals[i][j].first > intervalEnd)
+			{
+				if (forbiddenEnd > forbiddenStart) forbiddenIntervals[i].emplace_back(forbiddenStart, forbiddenEnd);
+				intervalStart = kmerIntervals[i][j].first;
+				forbiddenStart = kmerIntervals[i][j].second;
+				forbiddenEnd = kmerIntervals[i][j].second;
+				intervalEnd = kmerIntervals[i][j].second;
+			}
+			else
+			{
+				assert(kmerIntervals[i][j].first >= intervalStart);
+				assert(kmerIntervals[i][j].second > kmerIntervals[i][j].first);
+				forbiddenStart = std::min(forbiddenStart, kmerIntervals[i][j].first);
+				assert(forbiddenStart >= intervalStart);
+				forbiddenEnd = std::max(forbiddenEnd, std::min(kmerIntervals[i][j].second, intervalEnd));
+				intervalEnd = std::max(intervalEnd, kmerIntervals[i][j].second);
+				assert(intervalEnd >= forbiddenEnd);
+			}
+			assert(forbiddenStart >= intervalStart);
+			assert(forbiddenEnd >= forbiddenStart);
+			assert(intervalEnd >= forbiddenEnd);
+		}
+		if (forbiddenEnd > forbiddenStart) forbiddenIntervals[i].emplace_back(forbiddenStart, forbiddenEnd);
+	}
+	for (size_t i = 0; i < forbiddenIntervals.size(); i++)
+	{
+		for (size_t j = 1; j < forbiddenIntervals[i].size(); j++)
+		{
+			assert(forbiddenIntervals[i][j].second > forbiddenIntervals[i][j].first);
+			assert(forbiddenIntervals[i][j].first > forbiddenIntervals[i][j-1].second);
 		}
 	}
+	std::vector<double> result;
+	result.resize(unitigs.unitigs.size(), -1);
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
 		size_t coverageCount = 0;
 		size_t coverageSum = 0;
+		size_t unitigLength = unitigSequences[i].compressedSize() + unitigs.leftClip[i] + unitigs.rightClip[i];
+		size_t currentPos = 0;
 		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
 		{
-			if (kmerCount[unitigs.unitigs[i][j].first] != 1) continue;
-			coverageCount += 1;
-			coverageSum += reads.coverage.get(unitigs.unitigs[i][j].first);
+			if (j > 0) currentPos -= reads.getOverlap(unitigs.unitigs[i][j-1], unitigs.unitigs[i][j]);
+			size_t kmerStart = 0;
+			if (unitigs.leftClip[i] > currentPos)
+			{
+				kmerStart = unitigs.leftClip[i] - currentPos;
+			}
+			size_t kmerEnd = kmerSize;
+			assert(currentPos < unitigLength - unitigs.rightClip[i]);
+			if (currentPos + kmerSize > unitigLength - unitigs.rightClip[i])
+			{
+				kmerEnd = (unitigLength - unitigs.rightClip[i]) - currentPos;
+			}
+			currentPos += kmerSize;
+			if (kmerEnd <= kmerStart) continue;
+			if (!unitigs.unitigs[i][j].second)
+			{
+				std::swap(kmerStart, kmerEnd);
+				kmerStart = kmerSize - kmerStart;
+				kmerEnd = kmerSize - kmerEnd;
+				assert(kmerEnd > kmerStart);
+			}
+			for (auto forbidden : forbiddenIntervals[unitigs.unitigs[i][j].first])
+			{
+				if (forbidden.first <= kmerStart && forbidden.second >= kmerEnd)
+				{
+					kmerStart = 0;
+					kmerEnd = 0;
+					break;
+				}
+				assert(forbidden.first == kmerStart || forbidden.second == kmerEnd);
+				if (forbidden.first == kmerStart)
+				{
+					assert(forbidden.second > kmerStart);
+					kmerStart = forbidden.second;
+					if (kmerEnd <= kmerStart) break;
+				}
+				else
+				{
+					assert(forbidden.first < kmerEnd);
+					kmerEnd = forbidden.first;
+					if (kmerEnd <= kmerStart) break;
+				}
+			}
+			if (kmerEnd <= kmerStart) continue;
+			coverageCount += kmerEnd - kmerStart;
+			coverageSum += (kmerEnd - kmerStart) * reads.coverage.get(unitigs.unitigs[i][j].first);
 		}
+		assert(currentPos == unitigLength);
 		if (coverageCount != 0)
 		{
 			result[i] = (double)coverageSum / (double)coverageCount;
@@ -1308,7 +1422,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	}
 	else
 	{
-		std::vector<double> unitigRawKmerCoverages = getRawKmerCoverages(unitigs, reads);
+		std::vector<double> unitigRawKmerCoverages = getRawKmerCoverages(unitigs, unitigSequences, reads, kmerSize);
 		std::cerr << "Writing graph to " << outputGraph << std::endl;
 		stats = writeGraph(unitigs, outputGraph, reads, unitigSequences, stringIndex, kmerSize, unitigRawKmerCoverages);
 	}
