@@ -733,7 +733,7 @@ AssemblyStats writeGraph(const BluntGraph& graph, const std::string& filename)
 	return stats;
 }
 
-AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename, const HashList& hashlist, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const size_t kmerSize)
+AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename, const HashList& hashlist, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const size_t kmerSize, const std::vector<double>& unitigRawKmerCoverages)
 {
 	AssemblyStats stats;
 	stats.size = 0;
@@ -751,6 +751,10 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 		file << realSequence;
 		file << "\tll:f:" << unitigs.averageCoverage(i);
 		file << "\tFC:f:" << (unitigs.averageCoverage(i) * realSequence.size());
+		if (unitigRawKmerCoverages[i] != -1)
+		{
+			file << "\tkl:f:" << unitigRawKmerCoverages[i];
+		}
 		file << std::endl;
 		stats.size += realSequence.size();
 		nodeSizes.push_back(realSequence.size());
@@ -1200,6 +1204,37 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 	return result;
 }
 
+std::vector<double> getRawKmerCoverages(const UnitigGraph& unitigs, const HashList& reads)
+{
+	std::vector<double> result;
+	result.resize(unitigs.unitigs.size(), -1);
+	std::vector<size_t> kmerCount;
+	kmerCount.resize(reads.size(), 0);
+	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
+	{
+		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
+		{
+			kmerCount[unitigs.unitigs[i][j].first] += 1;
+		}
+	}
+	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
+	{
+		size_t coverageCount = 0;
+		size_t coverageSum = 0;
+		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
+		{
+			if (kmerCount[unitigs.unitigs[i][j].first] != 1) continue;
+			coverageCount += 1;
+			coverageSum += reads.coverage.get(unitigs.unitigs[i][j].first);
+		}
+		if (coverageCount != 0)
+		{
+			result[i] = (double)coverageSum / (double)coverageCount;
+		}
+	}
+	return result;
+}
+
 void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt)
 {
 	auto beforeReading = getTime();
@@ -1273,8 +1308,9 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	}
 	else
 	{
+		std::vector<double> unitigRawKmerCoverages = getRawKmerCoverages(unitigs, reads);
 		std::cerr << "Writing graph to " << outputGraph << std::endl;
-		stats = writeGraph(unitigs, outputGraph, reads, unitigSequences, stringIndex, kmerSize);
+		stats = writeGraph(unitigs, outputGraph, reads, unitigSequences, stringIndex, kmerSize, unitigRawKmerCoverages);
 	}
 	auto afterWrite = getTime();
 	if (outputSequencePaths != "")
