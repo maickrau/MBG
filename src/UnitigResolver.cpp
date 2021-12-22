@@ -217,6 +217,17 @@ void compact(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& pat
 			paths.pop_back();
 			continue;
 		}
+	}
+	std::sort(paths.begin(), paths.end(), [](const PathGroup& left, const PathGroup& right) { return left.path < right.path; });
+	for (size_t i = paths.size()-1; i > 0; i--)
+	{
+		if (paths[i].path != paths[i-1].path) continue;
+		paths[i-1].reads.insert(paths[i-1].reads.end(), paths[i].reads.begin(), paths[i].reads.end());
+		std::swap(paths[i], paths.back());
+		paths.pop_back();
+	}
+	for (size_t i = 0; i < paths.size(); i++)
+	{
 		for (size_t j = 0; j < paths[i].path.size(); j++)
 		{
 			assert(kept.get(paths[i].path[j].first));
