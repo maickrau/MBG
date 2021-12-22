@@ -388,90 +388,63 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolvableToUnitigs(const Resolvab
 			result.edgeOverlap(newbw, newEdge) = resolvableGraph.overlaps.at(canon(bw, edge));
 		}
 	}
-	for (const auto& path : readPaths)
-	{
-		if (path.path.size() == 0) continue;
-		if (path.path.size() == 1)
-		{
-			assert(newIndex.get(path.path[0].first));
-			const size_t unitig = newIndex.getRank(path.path[0].first);
-			assert(unitig < newSize);
-			for (const auto& read : path.reads)
-			{
-				for (size_t i = read.leftClip; i < result.unitigCoverage[unitig].size() - read.rightClip; i++)
-				{
-					size_t index = i;
-					if (!path.path[0].second) index = result.unitigCoverage[unitig].size() - 1 - i;
-					result.unitigCoverage[unitig][index] += 1;
-				}
-			}
-		}
-		else
-		{
-			for (size_t i = 1; i < path.path.size()-1; i++)
-			{
-				assert(newIndex.get(path.path[i].first));
-				const size_t unitig = newIndex.getRank(path.path[i].first);
-				assert(unitig < newSize);
-				for (size_t j = 0; j < result.unitigCoverage[unitig].size(); j++)
-				{
-					result.unitigCoverage[unitig][j] += path.reads.size();
-				}
-			}
-			assert(newIndex.get(path.path[0].first));
-			size_t unitig = newIndex.getRank(path.path[0].first);
-			assert(unitig < newSize);
-			for (const auto& read : path.reads)
-			{
-				for (size_t i = read.leftClip; i < result.unitigCoverage[unitig].size(); i++)
-				{
-					size_t index = i;
-					if (!path.path[0].second) index = result.unitigCoverage[unitig].size()-1-i;
-					result.unitigCoverage[unitig][index] += 1;
-				}
-			}
-			assert(newIndex.get(path.path.back().first));
-			unitig = newIndex.getRank(path.path.back().first);
-			assert(unitig < newSize);
-			for (const auto& read : path.reads)
-			{
-				for (size_t i = 0; i < result.unitigCoverage[unitig].size() - read.rightClip; i++)
-				{
-					size_t index = i;
-					if (!path.path.back().second) index = result.unitigCoverage[unitig].size()-1-i;
-					result.unitigCoverage[unitig][index] += 1;
-				}
-			}
-		}
-		for (size_t j = 1; j < path.path.size(); j++)
-		{
-			assert(newIndex.get(path.path[j-1].first));
-			assert(newIndex.get(path.path[j].first));
-			std::pair<size_t, bool> from { newIndex.getRank(path.path[j-1].first), path.path[j-1].second };
-			std::pair<size_t, bool> to { newIndex.getRank(path.path[j].first), path.path[j].second };
-			assert(from.first < newSize);
-			assert(to.first < newSize);
-			result.edgeCoverage(from, to) += path.reads.size();
-		}
-	}
-	for (size_t i = 0; i < result.unitigCoverage.size(); i++)
-	{
-		for (size_t j = 0; j < result.unitigCoverage[i].size(); j++)
-		{
-			assert(result.unitigCoverage[i][j] > 0);
-		}
-	}
 	std::vector<ReadPath> resultReads;
 	for (const auto& path : readPaths)
 	{
 		if (path.path.size() == 0) continue;
 		assert(path.reads.size() > 0);
-		std::vector<std::pair<size_t, bool>> fixPath;
+		std::vector<std::pair<size_t, bool>> fixPath = path.path;
 		for (size_t i = 0; i < fixPath.size(); i++)
 		{
 			assert(newIndex.get(fixPath[i].first));
 			fixPath[i].first = newIndex.getRank(fixPath[i].first);
 			assert(fixPath[i].first < newSize);
+		}
+		assert(fixPath.size() > 0);
+		if (fixPath.size() == 1)
+		{
+			for (const auto& read : path.reads)
+			{
+				for (size_t i = read.leftClip; i < result.unitigCoverage[fixPath[0].first].size() - read.rightClip; i++)
+				{
+					size_t index = i;
+					if (!fixPath[0].second) index = result.unitigCoverage[fixPath[0].first].size() - 1 - i;
+					result.unitigCoverage[fixPath[0].first][index] += 1;
+				}
+			}
+		}
+		else
+		{
+			assert(fixPath.size() >= 2);
+			for (size_t i = 1; i < fixPath.size()-1; i++)
+			{
+				for (size_t j = 0; j < result.unitigCoverage[fixPath[i].first].size(); j++)
+				{
+					result.unitigCoverage[fixPath[i].first][j] += path.reads.size();
+				}
+			}
+			for (const auto& read : path.reads)
+			{
+				for (size_t i = read.leftClip; i < result.unitigCoverage[fixPath[0].first].size(); i++)
+				{
+					size_t index = i;
+					if (!fixPath[0].second) index = result.unitigCoverage[fixPath[0].first].size()-1-i;
+					result.unitigCoverage[fixPath[0].first][index] += 1;
+				}
+			}
+			for (const auto& read : path.reads)
+			{
+				for (size_t i = 0; i < result.unitigCoverage[fixPath.back().first].size() - read.rightClip; i++)
+				{
+					size_t index = i;
+					if (!fixPath.back().second) index = result.unitigCoverage[fixPath.back().first].size()-1-i;
+					result.unitigCoverage[fixPath.back().first][index] += 1;
+				}
+			}
+		}
+		for (size_t j = 1; j < fixPath.size(); j++)
+		{
+			result.edgeCoverage(fixPath[j-1], fixPath[j]) += path.reads.size();
 		}
 		for (const auto& read : path.reads)
 		{
@@ -485,6 +458,13 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolvableToUnitigs(const Resolvab
 			resultReads.back().rightClip = read.rightClip;
 			resultReads.back().readLength = read.readLength;
 			resultReads.back().readLengthHPC = read.readLengthHPC;
+		}
+	}
+	for (size_t i = 0; i < result.unitigCoverage.size(); i++)
+	{
+		for (size_t j = 0; j < result.unitigCoverage[i].size(); j++)
+		{
+			assert(result.unitigCoverage[i][j] > 0);
 		}
 	}
 	return std::make_pair(result, resultReads);
@@ -1532,7 +1512,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 
 void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<PathGroup>& readPaths, const size_t kmerSize)
 {
-	// return;
+	return;
 	assert(graph.unitigs.size() == graph.edges.size());
 	assert(graph.unitigs.size() == graph.unitigRightClipBp.size());
 	assert(graph.unitigs.size() == graph.unitigLeftClipBp.size());
@@ -1708,6 +1688,8 @@ size_t getEdgeCoverage(const ResolvableUnitigGraph& resolvableGraph, const std::
 	size_t result = 0;
 	for (size_t i : relevantReads)
 	{
+		assert(readPaths[i].path.size() > 0);
+		assert(readPaths[i].reads.size() > 0);
 		for (size_t j = 1; j < readPaths[i].path.size(); j++)
 		{
 			if (readPaths[i].path[j-1] == from && readPaths[i].path[j] == to)
@@ -1716,7 +1698,7 @@ size_t getEdgeCoverage(const ResolvableUnitigGraph& resolvableGraph, const std::
 			}
 			else if (readPaths[i].path[j-1] == reverse(to) && readPaths[i].path[j] == reverse(from))
 			{
-				result += readPaths[i].path.size();
+				result += readPaths[i].reads.size();
 			}
 		}
 	}
