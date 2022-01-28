@@ -1544,7 +1544,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 
 void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<PathGroup>& readPaths, const size_t kmerSize)
 {
-	// return;
+	return;
 	assert(graph.unitigs.size() == graph.edges.size());
 	assert(graph.unitigs.size() == graph.unitigRightClipBp.size());
 	assert(graph.unitigs.size() == graph.unitigLeftClipBp.size());
@@ -2009,6 +2009,10 @@ void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& r
 	assert(resolvableGraph.unitigs[pos.first].size() >= 2);
 	assert(maxReadTrim <= maxTrim);
 	assert(resolvableGraph.unitigs[pos.first].size() > maxTrim);
+	for (auto edge : resolvableGraph.edges[reverse(pos)])
+	{
+		assert(resolvableGraph.overlaps.at(canon(reverse(pos), edge)) < resolvableGraph.unitigs[pos.first].size() - maxReadTrim);
+	}
 	if (pos.second)
 	{
 		assert(resolvableGraph.unitigRightClipBp[pos.first] < resolvableGraph.hashlist.getOverlap(resolvableGraph.unitigs[pos.first][resolvableGraph.unitigs[pos.first].size()-2], resolvableGraph.unitigs[pos.first].back()));
