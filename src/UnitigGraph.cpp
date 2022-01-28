@@ -137,3 +137,164 @@ UnitigGraph UnitigGraph::filterUnitigsByCoverage(const double filter)
 	UnitigGraph filtered = filterNodes(kept);
 	return filtered;
 }
+void UnitigGraph::sort(const std::vector<size_t>& kmerMapping)
+{
+	std::vector<bool> swapOrientation;
+	swapOrientation.resize(unitigs.size(), false);
+	for (size_t i = 0; i < unitigs.size(); i++)
+	{
+		for (size_t j = 0; j < unitigs[i].size(); j++)
+		{
+			unitigs[i][j].first = kmerMapping[unitigs[i][j].first];
+		}
+		if (unitigs[i].size() == 1)
+		{
+			swapOrientation[i] = !unitigs[i][0].second;
+		}
+		else
+		{
+			assert(unitigs[i].size() >= 2);
+			swapOrientation[i] = (unitigs[i].back().first < unitigs[i][0].first);
+		}
+	}
+	std::vector<size_t> unitigOrder;
+	for (size_t i = 0; i < unitigs.size(); i++)
+	{
+		unitigOrder.push_back(i);
+	}
+	std::sort(unitigOrder.begin(), unitigOrder.end(), [this](size_t left, size_t right) { return std::min(unitigs[left][0].first, unitigs[left].back().first) < std::min(unitigs[right][0].first, unitigs[right].back().first); });
+	std::vector<size_t> unitigMapping;
+	unitigMapping.resize(unitigOrder.size(), std::numeric_limits<size_t>::max());
+	for (size_t i = 0; i < unitigs.size(); i++)
+	{
+		assert(unitigMapping[unitigOrder[i]] == std::numeric_limits<size_t>::max());
+		unitigMapping[unitigOrder[i]] = i;
+	}
+	for (size_t i = 0; i < unitigs.size(); i++)
+	{
+		assert(unitigMapping[i] != std::numeric_limits<size_t>::max());
+		assert(unitigMapping[i] < unitigs.size());
+	}
+	{
+		std::vector<std::vector<std::pair<NodeType, bool>>> newUnitigs;
+		newUnitigs.resize(unitigs.size());
+		for (size_t i = 0; i < unitigs.size(); i++)
+		{
+			if (swapOrientation[i])
+			{
+				std::reverse(unitigs[i].begin(), unitigs[i].end());
+				for (size_t j = 0; j < unitigs[i].size(); j++)
+				{
+					unitigs[i][j].second = !unitigs[i][j].second;
+				}
+			}
+			assert(unitigs[i][0].first < unitigs[i].back().first || unitigs[i].size() == 1);
+			std::swap(unitigs[i], newUnitigs[unitigMapping[i]]);
+		}
+		std::swap(unitigs, newUnitigs);
+	}
+	for (size_t i = 0; i < unitigs.size(); i++)
+	{
+		if (swapOrientation[i])
+		{
+			std::swap(leftClip[i], rightClip[i]);
+		}
+	}
+	{
+		std::vector<size_t> newLeftClip;
+		newLeftClip.resize(leftClip.size());
+		for (size_t i = 0; i < leftClip.size(); i++)
+		{
+			newLeftClip[unitigMapping[i]] = leftClip[i];
+		}
+		std::swap(leftClip, newLeftClip);
+	}
+	{
+		std::vector<size_t> newRightClip;
+		newRightClip.resize(rightClip.size());
+		for (size_t i = 0; i < rightClip.size(); i++)
+		{
+			newRightClip[unitigMapping[i]] = rightClip[i];
+		}
+		std::swap(rightClip, newRightClip);
+	}
+	{
+		std::vector<std::vector<size_t>> newUnitigCoverage;
+		newUnitigCoverage.resize(unitigCoverage.size());
+		for (size_t i = 0; i < unitigCoverage.size(); i++)
+		{
+			if (swapOrientation[i])
+			{
+				std::reverse(unitigCoverage[i].begin(), unitigCoverage[i].end());
+			}
+			std::swap(newUnitigCoverage[unitigMapping[i]], unitigCoverage[i]);
+		}
+		std::swap(unitigCoverage, newUnitigCoverage);
+	}
+	{
+		VectorWithDirection<std::unordered_set<std::pair<size_t, bool>>> newEdges;
+		newEdges.resize(edges.size());
+		for (size_t i = 0; i < newEdges.size(); i++)
+		{
+			for (auto to : edges[std::make_pair(i, true)])
+			{
+				newEdges[std::make_pair(unitigMapping[i], true ^ swapOrientation[i])].emplace(unitigMapping[to.first], to.second ^ swapOrientation[to.first]);
+			}
+			for (auto to : edges[std::make_pair(i, false)])
+			{
+				newEdges[std::make_pair(unitigMapping[i], false ^ swapOrientation[i])].emplace(unitigMapping[to.first], to.second ^ swapOrientation[to.first]);
+			}
+		}
+		std::swap(newEdges, edges);
+	}
+	{
+		VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> newEdgeCov;
+		newEdgeCov.resize(edgeCov.size());
+		for (size_t i = 0; i < newEdgeCov.size(); i++)
+		{
+			std::pair<size_t, bool> from { unitigMapping[i], true ^ swapOrientation[i] };
+			for (auto pair : edgeCov[std::make_pair(i, true)])
+			{
+				std::pair<size_t, bool> to { std::make_pair(unitigMapping[pair.first.first], pair.first.second ^ swapOrientation[pair.first.first]) };
+				auto key = canon(from, to);
+				newEdgeCov[key.first].emplace(key.second, pair.second);
+			}
+			from.second = !from.second;
+			for (auto pair : edgeCov[std::make_pair(i, false)])
+			{
+				std::pair<size_t, bool> to { std::make_pair(unitigMapping[pair.first.first], pair.first.second ^ swapOrientation[pair.first.first]) };
+				auto key = canon(from, to);
+				newEdgeCov[key.first].emplace(key.second, pair.second);
+			}
+		}
+		std::swap(newEdgeCov, edgeCov);
+	}
+	{
+		VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> newEdgeOvlp;
+		newEdgeOvlp.resize(edgeOvlp.size());
+		for (size_t i = 0; i < newEdgeOvlp.size(); i++)
+		{
+			std::pair<size_t, bool> from { unitigMapping[i], true ^ swapOrientation[i] };
+			for (auto pair : edgeOvlp[std::make_pair(i, true)])
+			{
+				std::pair<size_t, bool> to { std::make_pair(unitigMapping[pair.first.first], pair.first.second ^ swapOrientation[pair.first.first]) };
+				auto key = canon(from, to);
+				newEdgeOvlp[key.first].emplace(key.second, pair.second);
+			}
+			from.second = !from.second;
+			for (auto pair : edgeOvlp[std::make_pair(i, false)])
+			{
+				std::pair<size_t, bool> to { std::make_pair(unitigMapping[pair.first.first], pair.first.second ^ swapOrientation[pair.first.first]) };
+				auto key = canon(from, to);
+				newEdgeOvlp[key.first].emplace(key.second, pair.second);
+			}
+		}
+		std::swap(newEdgeOvlp, edgeOvlp);
+	}
+	for (size_t i = 0; i < unitigs.size(); i++)
+	{
+		assert(unitigs[i].size() >= 1);
+		assert(unitigs[i][0].first < unitigs[i].back().first || unitigs[i].size() == 1);
+		assert(i == 0 || (unitigs[i][0].first > unitigs[i-1][0].first));
+	}
+}

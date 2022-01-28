@@ -110,7 +110,8 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 						uint32_t index = pair.first;
 						uint32_t count = pair.second;
 						if (index == simpleCounts[realI][realJ].first) count += (uint32_t)(simpleCounts[realI][realJ].second);
-						if (count <= maxCount) continue;
+						if (count < maxCount) continue;
+						if (count == maxCount && stringIndex.getString(compressedSequences[realI].get(realJ), index) < stringIndex.getString(compressedSequences[realI].get(realJ), maxIndex)) continue;
 						maxIndex = index;
 						maxCount = count;
 					}

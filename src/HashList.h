@@ -33,8 +33,9 @@ public:
 	std::pair<std::pair<size_t, bool>, HashType> addNode(VectorView<CharType> sequence, VectorView<CharType> reverse);
 	void filter(const RankBitvector& kept);
 	std::pair<size_t, bool> getHashNode(HashType hash) const;
-private:
+	std::vector<size_t> sortByHash();
 	phmap::flat_hash_map<HashType, size_t> hashToNode;
+private:
 	MostlySparse2DHashmap<uint8_t, size_t> edgeCoverage;
 	MostlySparse2DHashmap<uint16_t, size_t> sequenceOverlap;
 	std::shared_ptr<std::mutex> indexMutex;
