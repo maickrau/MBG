@@ -2011,6 +2011,16 @@ void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& r
 	assert(resolvableGraph.unitigs[pos.first].size() > maxTrim);
 	for (auto edge : resolvableGraph.edges[reverse(pos)])
 	{
+		if (resolvableGraph.overlaps.at(canon(reverse(pos), edge)) >= resolvableGraph.unitigs[pos.first].size() - maxReadTrim)
+		{
+			for (auto readi : resolvableGraph.readsCrossingNode[pos.first])
+			{
+				for (size_t k = 0; k < readPaths[readi].reads.size(); k++)
+				{
+					std::cerr << "broke around: " << readPaths[readi].reads[k].readName << std::endl;
+				}
+			}
+		}
 		assert(resolvableGraph.overlaps.at(canon(reverse(pos), edge)) < resolvableGraph.unitigs[pos.first].size() - maxReadTrim);
 	}
 	if (pos.second)
