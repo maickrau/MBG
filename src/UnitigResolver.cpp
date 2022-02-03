@@ -1975,6 +1975,7 @@ UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, st
 
 void trimEndRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const std::pair<size_t, bool> pos, const size_t trimAmount)
 {
+	if (resolvableGraph.precalcedUnitigLengths.size() > pos.first) resolvableGraph.precalcedUnitigLengths[pos.first] = 0;
 	assert(trimAmount > 0);
 	assert(resolvableGraph.unitigs[pos.first].size() > trimAmount);
 	for (auto edge : resolvableGraph.edges[pos])
