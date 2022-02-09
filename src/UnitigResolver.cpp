@@ -2077,6 +2077,57 @@ UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, st
 	return result;
 }
 
+bool canTrimRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const std::pair<size_t, bool> pos, const size_t trimAmount)
+{
+	assert(trimAmount > 0);
+	assert(resolvableGraph.unitigs[pos.first].size() > trimAmount);
+	for (auto edge : resolvableGraph.edges[pos])
+	{
+		if (resolvableGraph.overlaps.at(canon(pos, edge)) < trimAmount) return false;
+	}
+	for (auto edge : resolvableGraph.edges[reverse(pos)])
+	{
+		size_t overlap = resolvableGraph.overlaps.at(canon(reverse(pos), edge));
+		if (overlap >= resolvableGraph.unitigs[pos.first].size() - trimAmount)
+		{
+			size_t trimThere = overlap - (resolvableGraph.unitigs[pos.first].size() - trimAmount) + 1;
+			assert(trimThere <= trimAmount);
+			assert(trimThere < resolvableGraph.unitigs[edge.first].size());
+			assert(trimThere > 0);
+			if (!canTrimRecursive(resolvableGraph, readPaths, reverse(edge), trimThere)) return false;
+		}
+	}
+	size_t maxReadTrim = resolvableGraph.unitigs[pos.first].size();
+	for (const size_t i : resolvableGraph.readsCrossingNode[pos.first])
+	{
+		for (size_t j = 0; j < readPaths[i].path.size(); j++)
+		{
+			if (readPaths[i].path[j].first != pos.first) continue;
+			if (j == 0 && readPaths[i].path[j] == reverse(pos))
+			{
+				for (size_t k = 0; k < readPaths[i].reads.size(); k++)
+				{
+					maxReadTrim = std::min(maxReadTrim, readPaths[i].reads[k].leftClip);
+				}
+			}
+			else if (j == readPaths[i].path.size()-1 && readPaths[i].path[j] == pos)
+			{
+				for (size_t k = 0; k < readPaths[i].reads.size(); k++)
+				{
+					maxReadTrim = std::min(maxReadTrim, readPaths[i].reads[k].rightClip);
+				}
+			}
+			else
+			{
+				maxReadTrim = 0;
+			}
+		}
+		if (maxReadTrim == 0) break;
+	}
+	if (maxReadTrim < trimAmount) return false;
+	return true;
+}
+
 void trimEndRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const std::pair<size_t, bool> pos, const size_t trimAmount)
 {
 	if (resolvableGraph.precalcedUnitigLengths.size() > pos.first) resolvableGraph.precalcedUnitigLengths[pos.first] = 0;
@@ -2089,9 +2140,10 @@ void trimEndRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGr
 	}
 	for (auto edge : resolvableGraph.edges[reverse(pos)])
 	{
-		if (resolvableGraph.overlaps.at(canon(reverse(pos), edge)) >= resolvableGraph.unitigs[pos.first].size() - trimAmount)
+		size_t overlap = resolvableGraph.overlaps.at(canon(reverse(pos), edge));
+		if (overlap >= resolvableGraph.unitigs[pos.first].size() - trimAmount)
 		{
-			size_t trimThere = resolvableGraph.overlaps.at(canon(reverse(pos), edge)) - (resolvableGraph.unitigs[pos.first].size() - trimAmount) + 1;
+			size_t trimThere = overlap - (resolvableGraph.unitigs[pos.first].size() - trimAmount) + 1;
 			assert(trimThere <= trimAmount);
 			assert(trimThere < resolvableGraph.unitigs[edge.first].size());
 			assert(trimThere > 0);
@@ -2133,6 +2185,10 @@ void trimEndRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGr
 					readPaths[i].reads[k].rightClip -= trimAmount;
 				}
 			}
+			else
+			{
+				assert(false);
+			}
 		}
 	}
 }
@@ -2171,6 +2227,12 @@ void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& r
 	}
 	if (maxReadTrim == 0) return;
 	assert(maxReadTrim <= maxTrim);
+	if (!canTrimRecursive(resolvableGraph, readPaths, pos, maxReadTrim))
+	{
+		std::cout << "removed trim problem node " << pos.first << std::endl;
+		removeNode(resolvableGraph, readPaths, pos.first);
+		return;
+	}
 	trimEndRecursive(resolvableGraph, readPaths, pos, maxReadTrim);
 }
 
