@@ -1493,6 +1493,51 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			}
 		}
 	}
+	if (unconditional)
+	{
+		for (auto pair : newEdgeNodes)
+		{
+			auto fromnode = pair.first.first;
+			auto tonode = pair.first.second;
+			if (!actuallyResolvables.get(fromnode.first) || !actuallyResolvables.get(tonode.first)) continue;
+			bool fromHasTo = false;
+			bool toHasFrom = false;
+			for (auto triplet : getValidTriplets(resolvableGraph, resolvables, readPaths, fromnode.first, minCoverage, unconditional))
+			{
+				if (fromnode.second && triplet.second == tonode)
+				{
+					fromHasTo = true;
+				}
+				if (!fromnode.second && reverse(triplet.first) == tonode)
+				{
+					fromHasTo = true;
+				}
+			}
+			for (auto triplet : getValidTriplets(resolvableGraph, resolvables, readPaths, tonode.first, minCoverage, unconditional))
+			{
+				if (tonode.second && triplet.second == reverse(fromnode))
+				{
+					toHasFrom = true;
+				}
+				if (!tonode.second && reverse(triplet.first) == reverse(fromnode))
+				{
+					toHasFrom = true;
+				}
+			}
+			assert(fromHasTo || toHasFrom);
+			if (fromHasTo && toHasFrom) continue;
+			if (fromHasTo)
+			{
+				assert(!toHasFrom);
+				result.maybeTrimmable[std::make_pair(pair.second, true)] = resolvableGraph.unitigs[tonode.first].size();
+			}
+			if (toHasFrom)
+			{
+				assert(!fromHasTo);
+				result.maybeTrimmable[std::make_pair(pair.second, false)] = resolvableGraph.unitigs[fromnode.first].size();
+			}
+		}
+	}
 	for (auto node : actuallyResolvables)
 	{
 		auto triplets = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional);
