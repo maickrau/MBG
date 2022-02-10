@@ -45,7 +45,7 @@ uint64_t findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize,
 		size_t seqPos = smerSize+i-1;
 		fwkmerHasher.addChar(sequence[seqPos]);
 		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
-		size_t hash = fwkmerHasher.hash();
+		uint64_t hash = fwkmerHasher.hash();
 		minHash = std::min(minHash, hash);
 		if (endSmer(hash)) hash = 0;
 		while (smerOrder.size() > 0 && std::get<1>(smerOrder.back()) > hash) smerOrder.pop_back();
@@ -60,7 +60,7 @@ uint64_t findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize,
 		size_t seqPos = smerSize+i-1;
 		fwkmerHasher.addChar(sequence[seqPos]);
 		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
-		size_t hash = fwkmerHasher.hash();
+		uint64_t hash = fwkmerHasher.hash();
 		minHash = std::min(minHash, hash);
 		if (endSmer(hash)) hash = 0;
 		// even though pop_front is used it turns out std::vector is faster than std::deque ?!
