@@ -2090,6 +2090,7 @@ bool canTrimRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGr
 		size_t overlap = resolvableGraph.overlaps.at(canon(reverse(pos), edge));
 		if (overlap >= resolvableGraph.unitigs[pos.first].size() - trimAmount)
 		{
+			assert(overlap < resolvableGraph.unitigs[pos.first].size());
 			size_t trimThere = overlap - (resolvableGraph.unitigs[pos.first].size() - trimAmount) + 1;
 			assert(trimThere <= trimAmount);
 			assert(trimThere < resolvableGraph.unitigs[edge.first].size());
@@ -2143,6 +2144,7 @@ void trimEndRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGr
 		size_t overlap = resolvableGraph.overlaps.at(canon(reverse(pos), edge));
 		if (overlap >= resolvableGraph.unitigs[pos.first].size() - trimAmount)
 		{
+			assert(overlap < resolvableGraph.unitigs[pos.first].size());
 			size_t trimThere = overlap - (resolvableGraph.unitigs[pos.first].size() - trimAmount) + 1;
 			assert(trimThere <= trimAmount);
 			assert(trimThere < resolvableGraph.unitigs[edge.first].size());
