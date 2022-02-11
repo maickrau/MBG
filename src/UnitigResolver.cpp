@@ -2230,7 +2230,21 @@ void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& r
 	if (!canTrimRecursive(resolvableGraph, readPaths, pos, maxReadTrim))
 	{
 		std::cout << "removed trim problem node " << pos.first << std::endl;
+		std::vector<std::pair<std::pair<size_t, bool>, size_t>> alsoTrim;
+		for (auto edge : resolvableGraph.edges[reverse(pos)])
+		{
+			size_t lessTrim = resolvableGraph.unitigs[pos.first].size() - resolvableGraph.overlaps.at(canon(reverse(pos), edge));
+			assert(lessTrim > 0);
+			if (maxTrim > lessTrim)
+			{
+				alsoTrim.emplace_back(reverse(edge), maxTrim - lessTrim);
+			}
+		}
 		removeNode(resolvableGraph, readPaths, pos.first);
+		for (auto pair : alsoTrim)
+		{
+			maybeTrim(resolvableGraph, readPaths, kmerSize, pair.first, pair.second);
+		}
 		return;
 	}
 	trimEndRecursive(resolvableGraph, readPaths, pos, maxReadTrim);
