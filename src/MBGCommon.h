@@ -18,6 +18,7 @@ using CompressedSequenceType = CompressedSequence;
 HashType hash(VectorView<uint16_t> sequence);
 HashType hash(VectorView<uint16_t> sequence, VectorView<uint16_t> reverseSequence);
 HashType hash(std::vector<uint16_t> sequence);
+HashType reverseHash(HashType fw);
 std::ostream& operator<<(std::ostream& os, HashType t);
 std::istream& operator>>(std::istream& is, HashType& t);
 std::pair<size_t, bool> reverse(std::pair<size_t, bool> pos);

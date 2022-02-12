@@ -6,6 +6,11 @@
 
 uint16_t complement(const uint16_t original);
 
+HashType reverseHash(HashType fw)
+{
+	return (fw << 64) + (fw >> 64);
+}
+
 HashType hash(VectorView<uint16_t> sequence)
 {
 	assert(sequence.size() % 2 == 1);

@@ -88,6 +88,24 @@ public:
 	{
 	}
 	template <typename F>
+	void iteratePartHashes(const FastQ& read, F callback) const
+	{
+		iteratePartKmers(read, [this, callback](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
+		{
+			std::vector<std::pair<size_t, HashType>> hashes;
+			SequenceCharType revSeq = revCompRLE(seq);
+			for (auto pos : positions)
+			{
+				VectorView<CharType> minimizerSequence { seq, pos, pos + kmerSize };
+				size_t revPos = seq.size() - (pos + kmerSize);
+				VectorView<CharType> revMinimizerSequence { revSeq, revPos, revPos + kmerSize };
+				HashType h = hash(minimizerSequence, revMinimizerSequence);
+				hashes.emplace_back(pos, h);
+			}
+			callback(seq, poses, rawSeq, minHash, hashes);
+		});
+	}
+	template <typename F>
 	void iteratePartKmers(const FastQ& read, F callback) const
 	{
 		if (read.sequence.size() < kmerSize) return;

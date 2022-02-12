@@ -68,22 +68,12 @@ size_t HashList::size() const
 
 std::pair<size_t, bool> HashList::getNodeOrNull(VectorView<CharType> sequence) const
 {
-	HashType fwHash = hash(sequence);
-	HashType bwHash = (fwHash << 64) + (fwHash >> 64);
-	HashType canonHash = std::min(fwHash, bwHash);
-	assert(fwHash != bwHash);
-	bool fw = fwHash < bwHash;
-	auto found = hashToNode.find(canonHash);
-	if (found != hashToNode.end())
-	{
-		return std::make_pair(found->second, fw);
-	}
-	return std::pair<size_t, bool> { std::numeric_limits<size_t>::max(), true };
+	return getNodeOrNull(hash(sequence));
 }
 
 std::pair<size_t, bool> HashList::getNodeOrNull(HashType fwHash) const
 {
-	HashType bwHash = (fwHash << 64) + (fwHash >> 64);
+	HashType bwHash = reverseHash(fwHash);
 	HashType canonHash = std::min(fwHash, bwHash);
 	assert(fwHash != bwHash);
 	bool fw = fwHash < bwHash;
@@ -109,9 +99,14 @@ void HashList::addEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, b
 std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(VectorView<CharType> sequence, VectorView<CharType> reverse)
 {
 	HashType fwHash = hash(sequence, reverse);
-	HashType bwHash = (fwHash << 64) + (fwHash >> 64);
 	// this is a true assertion but commented out just for performance
-	// assert(bwHash == hash(reverse));
+	// assert(reverseHash(fwHash) == hash(reverse));
+	return std::make_pair(addNode(fwHash), fwHash);
+}
+
+std::pair<size_t, bool> HashList::addNode(HashType fwHash)
+{
+	HashType bwHash = reverseHash(fwHash);
 	HashType canonHash = std::min(fwHash, bwHash);
 	assert(fwHash != bwHash);
 	bool fw = fwHash < bwHash;
@@ -122,7 +117,7 @@ std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(VectorView<CharTy
 		{
 			coverage.set(found->second, coverage.get(found->second)+1);
 			auto node = std::make_pair(found->second, fw);
-			return std::make_pair(node, fwHash);
+			return node;
 		}
 		assert(found == hashToNode.end());
 		size_t fwNode = size();
@@ -133,7 +128,7 @@ std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(VectorView<CharTy
 		coverage.emplace_back(1);
 		edgeCoverage.emplace_back();
 		sequenceOverlap.emplace_back();
-		return std::make_pair(std::make_pair(fwNode, fw), fwHash);
+		return std::make_pair(fwNode, fw);
 	}
 }
 

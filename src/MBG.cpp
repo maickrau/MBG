@@ -68,21 +68,18 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 	std::atomic<size_t> totalNodes = 0;
 	iterateReadsMultithreaded(files, numThreads, [&result, &totalNodes, kmerSize, &partIterator](size_t thread, FastQ& read)
 	{
-		partIterator.iteratePartKmers(read, [&result, &totalNodes, kmerSize](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
+		partIterator.iteratePartHashes(read, [&result, &totalNodes, kmerSize](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<std::pair<size_t, HashType>>& hashes)
 		{
-			SequenceCharType revSeq = revCompRLE(seq);
 			size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 			std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
-			for (auto pos : positions)
+			for (const auto pair : hashes)
 			{
+				const size_t pos = pair.first;
+				const HashType hash = pair.second;
 				assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
-				VectorView<CharType> minimizerSequence { seq, pos, pos + kmerSize };
-				size_t revPos = seq.size() - (pos + kmerSize);
-				VectorView<CharType> revMinimizerSequence { revSeq, revPos, revPos + kmerSize };
 				std::pair<size_t, bool> current;
 				size_t overlap = lastMinimizerPosition + kmerSize - pos;
-				HashType hash;
-				std::tie(current, hash) = result.addNode(minimizerSequence, revMinimizerSequence);
+				current = result.addNode(hash);
 				assert(pos+kmerSize < poses.size());
 				assert(pos - lastMinimizerPosition < kmerSize);
 				if (last.first != std::numeric_limits<size_t>::max())
@@ -1059,7 +1056,7 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 	std::mutex resultMutex;
 	iterateReadsMultithreaded(readFiles, numThreads, [&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist, &partIterator](size_t thread, FastQ& read)
 	{
-		partIterator.iteratePartKmers(read, [&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist, &read](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
+		partIterator.iteratePartHashes(read, [&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist, &read](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<std::pair<size_t, HashType>>& hashes)
 		{
 			ReadPath current;
 			current.readName = read.seq_id;
@@ -1068,11 +1065,12 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 			size_t lastReadPos = std::numeric_limits<size_t>::max();
 			std::pair<size_t, bool> lastKmer { std::numeric_limits<size_t>::max(), true };
 			std::tuple<size_t, size_t, bool> lastPos = std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true);
-			for (const size_t readPos : positions)
+			for (const auto pair : hashes)
 			{
-				VectorView<CharType> minimizerSequence { seq, readPos, readPos + kmerSize };
+				const size_t readPos = pair.first;
+				const HashType hash = pair.second;
 				assert(readPos + kmerSize <= seq.size());
-				std::pair<size_t, bool> kmer = hashlist.getNodeOrNull(minimizerSequence);
+				std::pair<size_t, bool> kmer = hashlist.getNodeOrNull(hash);
 				if (kmer.first == std::numeric_limits<size_t>::max()) continue;
 				size_t readPosExpandedStart = poses[readPos];
 				size_t readPosExpandedEnd = poses[readPos+kmerSize];
