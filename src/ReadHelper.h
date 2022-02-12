@@ -88,9 +88,9 @@ public:
 	{
 	}
 	template <typename F>
-	void iteratePartHashes(const FastQ& read, F callback) const
+	void iteratePartHashes(const FastQ& read, const std::unordered_set<HashType>& tips, F callback) const
 	{
-		iteratePartKmers(read, [this, callback](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
+		iteratePartKmers(read, [this, callback, &tips](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
 		{
 			std::vector<std::pair<size_t, HashType>> hashes;
 			SequenceCharType revSeq = revCompRLE(seq);
@@ -102,7 +102,52 @@ public:
 				HashType h = hash(minimizerSequence, revMinimizerSequence);
 				hashes.emplace_back(pos, h);
 			}
-			callback(seq, poses, rawSeq, minHash, hashes);
+			if (tips.size() == 0)
+			{
+				callback(seq, poses, rawSeq, minHash, hashes);
+				return;
+			}
+			std::vector<std::pair<size_t, HashType>> result;
+			for (size_t i = 0; i < hashes.size(); i++)
+			{
+				if (i == 0 && tips.count(reverseHash(hashes[i].second)) == 1)
+				{
+					// start at 1 because the first character might not be reliable due to split microsatellite
+					for (size_t pos = 1; pos < hashes[i].first; pos++)
+					{
+						VectorView<CharType> minimizerSequence { seq, pos, pos + kmerSize };
+						size_t revPos = seq.size() - (pos + kmerSize);
+						VectorView<CharType> revMinimizerSequence { revSeq, revPos, revPos + kmerSize };
+						HashType h = hash(minimizerSequence, revMinimizerSequence);
+						result.emplace_back(pos, h);
+					}
+				}
+				else if (i > 0 && (tips.count(hashes[i-1].second) == 1 || tips.count(reverseHash(hashes[i].second)) == 1))
+				{
+					for (size_t pos = hashes[i-1].first+1; pos < hashes[i].first; pos++)
+					{
+						VectorView<CharType> minimizerSequence { seq, pos, pos + kmerSize };
+						size_t revPos = seq.size() - (pos + kmerSize);
+						VectorView<CharType> revMinimizerSequence { revSeq, revPos, revPos + kmerSize };
+						HashType h = hash(minimizerSequence, revMinimizerSequence);
+						result.emplace_back(pos, h);
+					}
+				}
+				result.emplace_back(hashes[i]);
+				if (i == hashes.size()-1 && tips.count(hashes[i].second) == 1)
+				{
+					// end at seq.size()-1 because the last character might not be reliable due to split microsatellite
+					for (size_t pos = hashes[i].first+1; pos + kmerSize <= seq.size()-1; pos++)
+					{
+						VectorView<CharType> minimizerSequence { seq, pos, pos + kmerSize };
+						size_t revPos = seq.size() - (pos + kmerSize);
+						VectorView<CharType> revMinimizerSequence { revSeq, revPos, revPos + kmerSize };
+						HashType h = hash(minimizerSequence, revMinimizerSequence);
+						result.emplace_back(pos, h);
+					}
+				}
+			}
+			callback(seq, poses, rawSeq, minHash, result);
 		});
 	}
 	template <typename F>
