@@ -1349,6 +1349,21 @@ std::vector<double> getRawKmerCoverages(const UnitigGraph& unitigs, const std::v
 	return result;
 }
 
+void sortPaths(std::vector<ReadPath>& readPaths)
+{
+	std::sort(readPaths.begin(), readPaths.end(), [](const ReadPath& left, const ReadPath& right)
+	{
+		if (left.readName < right.readName) return true;
+		if (left.readName > right.readName) return false;
+		assert(left.readName == right.readName);
+		assert(left.readPoses.size() > 0);
+		assert(right.readPoses.size() > 0);
+		if (left.readPoses[0] < right.readPoses[0]) return true;
+		if (left.readPoses[0] > right.readPoses[0]) return false;
+		assert(false);
+	});
+}
+
 void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength)
 {
 	auto beforeReading = getTime();
@@ -1430,6 +1445,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	if (outputSequencePaths != "")
 	{
 		std::cerr << "Writing paths to " << outputSequencePaths << std::endl;
+		sortPaths(readPaths);
 		writePaths(reads, unitigs, unitigSequences, stringIndex, readPaths, kmerSize, outputSequencePaths);
 	}
 	auto afterPaths = getTime();
