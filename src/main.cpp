@@ -23,6 +23,7 @@ int main(int argc, char** argv)
 		("output-sequence-paths", "Output the paths of the input sequences to a file (.gaf)", cxxopts::value<std::string>())
 		("r,resolve-maxk", "Maximum k-mer size for multiplex DBG resolution", cxxopts::value<size_t>())
 		("R,resolve-maxk-allowgaps", "Allow multiplex resolution to add gaps up to this k-mer size", cxxopts::value<size_t>())
+		("node-name-prefix", "Add a prefix to output node names", cxxopts::value<std::string>())
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
@@ -82,6 +83,7 @@ int main(int argc, char** argv)
 	bool blunt = false;
 	bool includeEndKmers = false;
 	std::string errorMaskingStr = "hpc";
+	std::string nodeNamePrefix = "";
 	if (params.count("r") == 1) maxResolveLength = params["r"].as<size_t>();
 	if (params.count("R") == 1) maxUnconditionalResolveLength = params["R"].as<size_t>();
 	if (params.count("blunt") == 1) blunt = true;
@@ -124,6 +126,7 @@ int main(int argc, char** argv)
 	}
 	if (params.count("include-end-kmers") == 1) includeEndKmers = true;
 	if (params.count("output-sequence-paths") == 1) outputSequencePaths = params["output-sequence-paths"].as<std::string>();
+	if (params.count("node-name-prefix") == 1) nodeNamePrefix = params["node-name-prefix"].as<std::string>();
 
 	if (numThreads == 0)
 	{
@@ -180,5 +183,5 @@ int main(int argc, char** argv)
 	std::cerr << "blunt=" << (blunt ? "yes" : "no");
 	std::cerr << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix);
 }

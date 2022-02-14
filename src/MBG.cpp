@@ -139,7 +139,7 @@ void updatePathRemaining(size_t& rleRemaining, size_t& expanded, bool fw, const 
 	}
 }
 
-void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const std::vector<ReadPath>& readPaths, const size_t kmerSize, const std::string& outputSequencePaths)
+void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const std::vector<ReadPath>& readPaths, const size_t kmerSize, const std::string& outputSequencePaths, const std::string& nodeNamePrefix)
 {
 	std::ofstream outPaths { outputSequencePaths };
 	std::vector<std::vector<size_t>> unitigExpandedPoses;
@@ -221,6 +221,7 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 		for (size_t i = 0; i < path.path.size(); i++)
 		{
 			pathStr += (path.path[i].second ? ">" : "<");
+			pathStr += nodeNamePrefix;
 			pathStr += std::to_string(path.path[i].first+1);
 		}
 		assert(readEnd - readStart > readRightClip + readLeftClip);
@@ -708,7 +709,7 @@ size_t getOverlapFromRLE(const std::vector<CompressedSequenceType>& unitigSequen
 	return overlap;
 }
 
-AssemblyStats writeGraph(const BluntGraph& graph, const std::string& filename)
+AssemblyStats writeGraph(const BluntGraph& graph, const std::string& filename, const std::string& nodeNamePrefix)
 {
 	AssemblyStats stats;
 	stats.size = 0;
@@ -721,19 +722,19 @@ AssemblyStats writeGraph(const BluntGraph& graph, const std::string& filename)
 	file << "H\tVN:Z:1.0" << std::endl;
 	for (size_t i = 0; i < graph.nodes.size(); i++)
 	{
-		file << "S\t" << (i+1) << "\t" << graph.nodes[i] << "\tll:f:" << graph.nodeAvgCoverage[i] << "\tFC:f:" << (graph.nodes[i].size() * graph.nodeAvgCoverage[i]) << std::endl;
+		file << "S\t" << nodeNamePrefix << (i+1) << "\t" << graph.nodes[i] << "\tll:f:" << graph.nodeAvgCoverage[i] << "\tFC:f:" << (graph.nodes[i].size() * graph.nodeAvgCoverage[i]) << std::endl;
 		stats.size += graph.nodes[i].size();
 		nodeSizes.push_back(graph.nodes[i].size());
 	}
 	for (auto edge : graph.edges)
 	{
-		file << "L\t" << (std::get<0>(edge)+1) << "\t" << (std::get<1>(edge) ? "+" : "-") << "\t" << (std::get<2>(edge)+1) << "\t" << (std::get<3>(edge) ? "+" : "-") << "\t0M\tec:i:" << std::get<4>(edge) << std::endl;
+		file << "L\t" << nodeNamePrefix << (std::get<0>(edge)+1) << "\t" << (std::get<1>(edge) ? "+" : "-") << "\t" << nodeNamePrefix << (std::get<2>(edge)+1) << "\t" << (std::get<3>(edge) ? "+" : "-") << "\t0M\tec:i:" << std::get<4>(edge) << std::endl;
 	}
 	stats.N50 = getN50(nodeSizes, stats.size);
 	return stats;
 }
 
-AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename, const HashList& hashlist, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const size_t kmerSize, const std::vector<double>& unitigRawKmerCoverages)
+AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename, const HashList& hashlist, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const size_t kmerSize, const std::vector<double>& unitigRawKmerCoverages, const std::string& nodeNamePrefix)
 {
 	AssemblyStats stats;
 	stats.size = 0;
@@ -746,7 +747,7 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 	file << "H\tVN:Z:1.0" << std::endl;
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
-		file << "S\t" << (i+1) << "\t";
+		file << "S\t" << nodeNamePrefix << (i+1) << "\t";
 		std::string realSequence = unitigSequences[i].getExpandedSequence(stringIndex);
 		file << realSequence;
 		file << "\tll:f:" << unitigs.averageCoverage(i);
@@ -774,7 +775,7 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 			assert(rleOverlap > fromClip + toClip);
 			rleOverlap -= fromClip + toClip;
 			size_t overlap = getOverlapFromRLE(unitigSequences, stringIndex, fw, rleOverlap);
-			file << "L\t" << (fw.first+1) << "\t" << (fw.second ? "+" : "-") << "\t" << (to.first+1) << "\t" << (to.second ? "+" : "-") << "\t" << overlap << "M\tec:i:" << unitigs.edgeCoverage(fw, to) << std::endl;
+			file << "L\t" << nodeNamePrefix << (fw.first+1) << "\t" << (fw.second ? "+" : "-") << "\t" << nodeNamePrefix << (to.first+1) << "\t" << (to.second ? "+" : "-") << "\t" << overlap << "M\tec:i:" << unitigs.edgeCoverage(fw, to) << std::endl;
 		}
 		std::vector<std::pair<size_t, bool>> bwEdges { unitigs.edges[bw].begin(), unitigs.edges[bw].end() };
 		std::sort(bwEdges.begin(), bwEdges.end());
@@ -787,7 +788,7 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 			assert(rleOverlap > fromClip + toClip);
 			rleOverlap -= fromClip + toClip;
 			size_t overlap = getOverlapFromRLE(unitigSequences, stringIndex, bw, rleOverlap);
-			file << "L\t" << (bw.first+1) << "\t" << (bw.second ? "+" : "-") << "\t" << (to.first+1) << "\t" << (to.second ? "+" : "-") << "\t" << overlap << "M\tec:i:" << unitigs.edgeCoverage(bw, to) << std::endl;
+			file << "L\t" << nodeNamePrefix << (bw.first+1) << "\t" << (bw.second ? "+" : "-") << "\t" << nodeNamePrefix << (to.first+1) << "\t" << (to.second ? "+" : "-") << "\t" << overlap << "M\tec:i:" << unitigs.edgeCoverage(bw, to) << std::endl;
 		}
 	}
 	stats.N50 = getN50(nodeSizes, stats.size);
@@ -1364,7 +1365,7 @@ void sortPaths(std::vector<ReadPath>& readPaths)
 	});
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix)
 {
 	auto beforeReading = getTime();
 	// check that all files actually exist
@@ -1433,20 +1434,20 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	{
 		BluntGraph bluntGraph { reads, unitigs, unitigSequences, stringIndex, kmerSize };
 		std::cerr << "Writing graph to " << outputGraph << std::endl;
-		stats = writeGraph(bluntGraph, outputGraph);
+		stats = writeGraph(bluntGraph, outputGraph, nodeNamePrefix);
 	}
 	else
 	{
 		std::vector<double> unitigRawKmerCoverages = getRawKmerCoverages(unitigs, unitigSequences, reads, kmerSize);
 		std::cerr << "Writing graph to " << outputGraph << std::endl;
-		stats = writeGraph(unitigs, outputGraph, reads, unitigSequences, stringIndex, kmerSize, unitigRawKmerCoverages);
+		stats = writeGraph(unitigs, outputGraph, reads, unitigSequences, stringIndex, kmerSize, unitigRawKmerCoverages, nodeNamePrefix);
 	}
 	auto afterWrite = getTime();
 	if (outputSequencePaths != "")
 	{
 		std::cerr << "Writing paths to " << outputSequencePaths << std::endl;
 		sortPaths(readPaths);
-		writePaths(reads, unitigs, unitigSequences, stringIndex, readPaths, kmerSize, outputSequencePaths);
+		writePaths(reads, unitigs, unitigSequences, stringIndex, readPaths, kmerSize, outputSequencePaths, nodeNamePrefix);
 	}
 	auto afterPaths = getTime();
 	std::cerr << "selecting k-mers and building graph topology took " << formatTime(beforeReading, beforeUnitigs) << std::endl;
