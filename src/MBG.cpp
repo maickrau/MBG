@@ -68,13 +68,14 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 	std::atomic<size_t> totalNodes = 0;
 	iterateReadsMultithreaded(files, numThreads, [&result, &totalNodes, kmerSize, &partIterator](size_t thread, FastQ& read)
 	{
-		partIterator.iteratePartKmers(read, [&result, &totalNodes, kmerSize](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
+		partIterator.iteratePartKmers(read, [&result, &totalNodes, kmerSize, &read](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
 		{
 			SequenceCharType revSeq = revCompRLE(seq);
 			size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 			std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
-			for (auto pos : positions)
+			for (size_t i = 0; i < positions.size(); i++)
 			{
+				const auto pos = positions[i];
 				assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
 				VectorView<CharType> minimizerSequence { seq, pos, pos + kmerSize };
 				size_t revPos = seq.size() - (pos + kmerSize);
@@ -82,7 +83,41 @@ void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::strin
 				std::pair<size_t, bool> current;
 				size_t overlap = lastMinimizerPosition + kmerSize - pos;
 				HashType hash;
-				std::tie(current, hash) = result.addNode(minimizerSequence, revMinimizerSequence);
+				try
+				{
+					std::tie(current, hash) = result.addNode(minimizerSequence, revMinimizerSequence);
+				}
+				catch (const PalindromicKmer&)
+				{
+					bool palindrome = true;
+					for (size_t j = 0; j < kmerSize/2; j++)
+					{
+						if (minimizerSequence[j] != complement(minimizerSequence[kmerSize-1-j]))
+						{
+							palindrome = false;
+							break;
+						}
+					}
+					if (palindrome)
+					{
+						if (i == 0 || i == positions.size()-1 || positions[i+1] - positions[i-1] < kmerSize)
+						{
+							// palindromic k-mer, but it can be safely dropped without creating gaps
+							continue;
+						}
+						else
+						{
+							std::cerr << "The genome has a palindromic k-mer. Cannot build a graph. Try running with a different -w" << std::endl;
+							std::cerr << "Example read around the palindromic k-mer: " << read.seq_id << std::endl;
+							std::abort();
+						}
+					}
+					else
+					{
+						std::cerr << "Unhashable k-mer around read: " << read.seq_id << std::endl;
+						std::abort();
+					}
+				}
 				assert(pos+kmerSize < poses.size());
 				assert(pos - lastMinimizerPosition < kmerSize);
 				if (last.first != std::numeric_limits<size_t>::max())
@@ -1069,11 +1104,47 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 			size_t lastReadPos = std::numeric_limits<size_t>::max();
 			std::pair<size_t, bool> lastKmer { std::numeric_limits<size_t>::max(), true };
 			std::tuple<size_t, size_t, bool> lastPos = std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true);
-			for (const size_t readPos : positions)
+			for (size_t i = 0; i < positions.size(); i++)
 			{
+				const size_t readPos = positions[i];
 				VectorView<CharType> minimizerSequence { seq, readPos, readPos + kmerSize };
 				assert(readPos + kmerSize <= seq.size());
-				std::pair<size_t, bool> kmer = hashlist.getNodeOrNull(minimizerSequence);
+				std::pair<size_t, bool> kmer;
+				try
+				{
+					kmer = hashlist.getNodeOrNull(minimizerSequence);
+				}
+				catch (const PalindromicKmer&)
+				{
+					bool palindrome = true;
+					for (size_t j = 0; j < kmerSize/2; j++)
+					{
+						if (minimizerSequence[j] != complement(minimizerSequence[kmerSize-1-j]))
+						{
+							palindrome = false;
+							break;
+						}
+					}
+					if (palindrome)
+					{
+						if (i == 0 || i == positions.size()-1 || positions[i+1] - positions[i-1] < kmerSize)
+						{
+							// palindromic k-mer, but it can be safely dropped without creating gaps
+							continue;
+						}
+						else
+						{
+							std::cerr << "The genome has a palindromic k-mer. Cannot build a graph. Try running with a different -w" << std::endl;
+							std::cerr << "Example read around the palindromic k-mer: " << read.seq_id << std::endl;
+							std::abort();
+						}
+					}
+					else
+					{
+						std::cerr << "Unhashable k-mer around read: " << read.seq_id << std::endl;
+						std::abort();
+					}
+				}
 				if (kmer.first == std::numeric_limits<size_t>::max()) continue;
 				size_t readPosExpandedStart = poses[readPos];
 				size_t readPosExpandedEnd = poses[readPos+kmerSize];

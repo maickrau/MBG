@@ -69,22 +69,17 @@ size_t HashList::size() const
 std::pair<size_t, bool> HashList::getNodeOrNull(VectorView<CharType> sequence) const
 {
 	HashType fwHash = hash(sequence);
-	HashType bwHash = (fwHash << 64) + (fwHash >> 64);
-	HashType canonHash = std::min(fwHash, bwHash);
-	assert(fwHash != bwHash);
-	bool fw = fwHash < bwHash;
-	auto found = hashToNode.find(canonHash);
-	if (found != hashToNode.end())
-	{
-		return std::make_pair(found->second, fw);
-	}
-	return std::pair<size_t, bool> { std::numeric_limits<size_t>::max(), true };
+	return getNodeOrNull(fwHash);
 }
 
 std::pair<size_t, bool> HashList::getNodeOrNull(HashType fwHash) const
 {
 	HashType bwHash = (fwHash << 64) + (fwHash >> 64);
 	HashType canonHash = std::min(fwHash, bwHash);
+	if (fwHash == bwHash)
+	{
+		throw PalindromicKmer {};
+	}
 	assert(fwHash != bwHash);
 	bool fw = fwHash < bwHash;
 	auto found = hashToNode.find(canonHash);
@@ -113,6 +108,10 @@ std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(VectorView<CharTy
 	// this is a true assertion but commented out just for performance
 	// assert(bwHash == hash(reverse));
 	HashType canonHash = std::min(fwHash, bwHash);
+	if (fwHash == bwHash)
+	{
+		throw PalindromicKmer {};
+	}
 	assert(fwHash != bwHash);
 	bool fw = fwHash < bwHash;
 	{
