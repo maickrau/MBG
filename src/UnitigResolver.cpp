@@ -1115,6 +1115,7 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		std::vector<size_t> nodePosEnds;
 		size_t runningKmerStartPos = 0;
 		size_t runningKmerEndPos = 0;
+		std::vector<size_t> breakFromInvalidEdge;
 		for (size_t j = 0; j < readPaths[i].path.size(); j++)
 		{
 			runningKmerStartPos = runningKmerEndPos;
@@ -1141,6 +1142,17 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 				assert(end == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j + 1 }));
 				nodePosEnds.push_back(end);
 				continue;
+			}
+			if (j > 0 && j < readPaths[i].path.size()-1 && !actuallyResolvables.get(readPaths[i].path[j-1].first) && !actuallyResolvables.get(readPaths[i].path[j+1].first))
+			{
+				if (newEdgeNodes.count(std::make_pair(reverse(readPaths[i].path[j]), reverse(readPaths[i].path[j-1]))) == 0 && newEdgeNodes.count(std::make_pair(readPaths[i].path[j-1], readPaths[i].path[j])) == 0)
+				{
+					if (newEdgeNodes.count(std::make_pair(readPaths[i].path[j], readPaths[i].path[j+1])) == 0 && newEdgeNodes.count(std::make_pair(reverse(readPaths[i].path[j+1]), reverse(readPaths[i].path[j]))) == 0)
+					{
+						breakFromInvalidEdge.push_back(newPath.path.size());
+						continue;
+					}
+				}
 			}
 			if (j > 0 && newEdgeNodes.count(std::make_pair(reverse(readPaths[i].path[j]), reverse(readPaths[i].path[j-1]))) == 1)
 			{
@@ -1185,6 +1197,7 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 				newPath.path.emplace_back(newEdgeNodes.at(std::make_pair(readPaths[i].path[j], readPaths[i].path[j+1])), true);
 			}
 		}
+		std::reverse(breakFromInvalidEdge.begin(), breakFromInvalidEdge.end());
 		size_t kmerPathLength = runningKmerEndPos;
 		assert(kmerPathLength == getNumberOfHashes(resolvableGraph, 0, 0, readPaths[i].path));
 		if (newPath.path.size() == 0)
@@ -1238,8 +1251,13 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		for (size_t j = 1; j < newPath.path.size(); j++)
 		{
 			assert(resolvableGraph.edges[newPath.path[j-1]].count(newPath.path[j]) == resolvableGraph.edges[reverse(newPath.path[j])].count(reverse(newPath.path[j-1])));
-			if (resolvableGraph.edges[newPath.path[j-1]].count(newPath.path[j]) == 0)
+			assert(breakFromInvalidEdge.size() == 0 || breakFromInvalidEdge.back() >= j);
+			if (resolvableGraph.edges[newPath.path[j-1]].count(newPath.path[j]) == 0 || (breakFromInvalidEdge.size() > 0 && breakFromInvalidEdge.back() == j))
 			{
+				if (breakFromInvalidEdge.size() > 0 && breakFromInvalidEdge.back() == j)
+				{
+					breakFromInvalidEdge.pop_back();
+				}
 				PathGroup path;
 				path.path.insert(path.path.end(), newPath.path.begin() + lastStart, newPath.path.begin() + j);
 				path.reads.reserve(newPath.reads.size());
