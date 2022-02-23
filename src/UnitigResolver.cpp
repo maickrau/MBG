@@ -1924,8 +1924,9 @@ void removeNode(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& 
 						rightClipRemove = read.rightClip;
 						posesEnd = read.readPoses.size() - (read.leftClip + read.readPoses.size() - posesEnd);
 					}
-					else if (posesEnd < read.leftClip + read.rightClip + read.readPoses.size())
+					else
 					{
+						assert(posesEnd <= read.leftClip + read.rightClip + read.readPoses.size());
 						rightClipRemove = (read.leftClip + read.rightClip + read.readPoses.size()) - posesEnd;
 						posesEnd = read.readPoses.size();
 					}
@@ -1934,7 +1935,7 @@ void removeNode(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& 
 						leftClipRemove = read.leftClip;
 						posesStart = posesStart - read.leftClip;
 					}
-					else if (posesStart > 0)
+					else
 					{
 						leftClipRemove = posesStart;
 						posesStart = 0;
@@ -1977,6 +1978,7 @@ void removeNode(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& 
 				}
 				else
 				{
+					assert(posesEnd <= read.leftClip + read.rightClip + read.readPoses.size());
 					rightClipRemove = (read.leftClip + read.rightClip + read.readPoses.size()) - posesEnd;
 					posesEnd = read.readPoses.size();
 				}
@@ -1985,7 +1987,7 @@ void removeNode(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& 
 					leftClipRemove = read.leftClip;
 					posesStart = posesStart - read.leftClip;
 				}
-				else if (posesStart > 0)
+				else
 				{
 					leftClipRemove = posesStart;
 					posesStart = 0;
@@ -2108,6 +2110,8 @@ bool canTrimRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGr
 		size_t overlap = resolvableGraph.overlaps.at(canon(reverse(pos), edge));
 		if (overlap >= resolvableGraph.unitigs[pos.first].size() - trimAmount)
 		{
+			// todo: this might actually be trimmable, but it's hard so don't try for now
+			if (overlap == resolvableGraph.unitigs[pos.first].size()) return false;
 			assert(overlap < resolvableGraph.unitigs[pos.first].size());
 			size_t trimThere = overlap - (resolvableGraph.unitigs[pos.first].size() - trimAmount) + 1;
 			assert(trimThere <= trimAmount);
@@ -2253,12 +2257,7 @@ void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& r
 		std::vector<std::pair<std::pair<size_t, bool>, size_t>> alsoTrim;
 		for (auto edge : resolvableGraph.edges[reverse(pos)])
 		{
-			size_t lessTrim = resolvableGraph.unitigs[pos.first].size() - resolvableGraph.overlaps.at(canon(reverse(pos), edge));
-			assert(lessTrim > 0);
-			if (maxTrim > lessTrim)
-			{
-				alsoTrim.emplace_back(reverse(edge), maxTrim - lessTrim);
-			}
+			alsoTrim.emplace_back(reverse(edge), resolvableGraph.overlaps.at(canon(reverse(pos), edge)));
 		}
 		removeNode(resolvableGraph, readPaths, pos.first);
 		for (auto pair : alsoTrim)
