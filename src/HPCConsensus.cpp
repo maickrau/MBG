@@ -46,7 +46,7 @@ void addCounts(ConsensusMaker& consensusMaker, const SequenceCharType& seq, cons
 	});
 }
 
-std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<std::string>& filenames, std::vector<ReadPath>& readPaths, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
+std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, std::vector<ReadPath>& readPaths, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	std::vector<size_t> unitigLengths;
 	std::vector<std::vector<size_t>> bpOffsets;
@@ -233,34 +233,30 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 	}
 	consensusMaker.findParentLinks();
 	std::mutex expandedPosMutex;
-	iterateReadsMultithreaded(filenames, numThreads, [&consensusMaker, &readPaths, &expandedPosMutex, &unitigLengths, &bpOffsets, &unitigs, &partIterator, &hashlist, &matchBlocks, kmerSize](size_t thread, FastQ& read)
+	partIterator.iterateParts([&consensusMaker, &readPaths, &expandedPosMutex, &hashlist, &unitigLengths, &unitigs, &bpOffsets, &matchBlocks, kmerSize](const FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq)
 	{
-		if (matchBlocks.count(read.seq_id) == 0) return;
-		partIterator.iterateParts(read, [read, &consensusMaker, &readPaths, &expandedPosMutex, &hashlist, &unitigLengths, &unitigs, &bpOffsets, &matchBlocks, kmerSize](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq)
+		for (auto block : matchBlocks.at(read.seq_id))
 		{
-			for (auto block : matchBlocks.at(read.seq_id))
+			size_t unitig = std::get<0>(block);
+			size_t readStartPos = std::get<1>(block);
+			size_t unitigStartPos = std::get<2>(block);
+			size_t matchLength = std::get<3>(block);
+			bool forward = std::get<4>(block);
+			addCounts(consensusMaker, seq, poses, rawSeq, readStartPos, readStartPos + matchLength, unitig, unitigStartPos, unitigStartPos + matchLength, forward);
+			if (std::get<5>(block) != std::numeric_limits<size_t>::max() || std::get<6>(block) != std::numeric_limits<size_t>::max())
 			{
-				size_t unitig = std::get<0>(block);
-				size_t readStartPos = std::get<1>(block);
-				size_t unitigStartPos = std::get<2>(block);
-				size_t matchLength = std::get<3>(block);
-				bool forward = std::get<4>(block);
-				addCounts(consensusMaker, seq, poses, rawSeq, readStartPos, readStartPos + matchLength, unitig, unitigStartPos, unitigStartPos + matchLength, forward);
-				if (std::get<5>(block) != std::numeric_limits<size_t>::max() || std::get<6>(block) != std::numeric_limits<size_t>::max())
+				assert(readStartPos + matchLength < poses.size());
+				std::lock_guard<std::mutex> lock { expandedPosMutex };
+				if (std::get<5>(block) != std::numeric_limits<size_t>::max())
 				{
-					assert(readStartPos + matchLength < poses.size());
-					std::lock_guard<std::mutex> lock { expandedPosMutex };
-					if (std::get<5>(block) != std::numeric_limits<size_t>::max())
-					{
-						readPaths[std::get<5>(block)].expandedReadPosStart = poses[readStartPos];
-					}
-					if (std::get<6>(block) != std::numeric_limits<size_t>::max())
-					{
-						readPaths[std::get<6>(block)].expandedReadPosEnd = poses[readStartPos + matchLength];
-					}
+					readPaths[std::get<5>(block)].expandedReadPosStart = poses[readStartPos];
+				}
+				if (std::get<6>(block) != std::numeric_limits<size_t>::max())
+				{
+					readPaths[std::get<6>(block)].expandedReadPosEnd = poses[readStartPos + matchLength];
 				}
 			}
-		});
+		}
 	});
 	return consensusMaker.getSequences();
 }

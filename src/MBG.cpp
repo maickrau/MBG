@@ -39,99 +39,93 @@ public:
 	size_t approxKmers;
 };
 
-void collectEndSmers(std::vector<bool>& endSmer, const std::vector<std::string>& files, const size_t kmerSize, const size_t windowSize, const ReadpartIterator& partIterator)
+void collectEndSmers(std::vector<bool>& endSmer, const size_t kmerSize, const size_t windowSize, const ReadpartIterator& partIterator)
 {
 	size_t smerSize = kmerSize - windowSize + 1;
 	size_t addedEndSmers = 0;
-	iterateReadsMultithreaded(files, 1, [&endSmer, smerSize, &addedEndSmers, &partIterator](size_t thread, FastQ& read)
-	{
-		partIterator.iterateParts(read, [&endSmer, smerSize, &addedEndSmers](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
-			if (seq.size() < smerSize) return;
-			FastHasher startKmer { smerSize };
-			FastHasher endKmer { smerSize };
-			for (size_t i = 0; i < smerSize; i++)
-			{
-				startKmer.addChar(seq[i]);
-				endKmer.addChar(complement(seq[seq.size()-1-i]));
-			}
-			if (!endSmer[startKmer.hash() % endSmer.size()]) addedEndSmers += 1;
-			if (!endSmer[endKmer.hash() % endSmer.size()]) addedEndSmers += 1;
-			endSmer[startKmer.hash() % endSmer.size()] = true;
-			endSmer[endKmer.hash() % endSmer.size()] = true;
-		});
+	partIterator.iterateParts([&endSmer, smerSize, &addedEndSmers](FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
+		if (seq.size() < smerSize) return;
+		FastHasher startKmer { smerSize };
+		FastHasher endKmer { smerSize };
+		for (size_t i = 0; i < smerSize; i++)
+		{
+			startKmer.addChar(seq[i]);
+			endKmer.addChar(complement(seq[seq.size()-1-i]));
+		}
+		if (!endSmer[startKmer.hash() % endSmer.size()]) addedEndSmers += 1;
+		if (!endSmer[endKmer.hash() % endSmer.size()]) addedEndSmers += 1;
+		endSmer[startKmer.hash() % endSmer.size()] = true;
+		endSmer[endKmer.hash() % endSmer.size()] = true;
 	});
 	std::cerr << addedEndSmers << " end k-mers" << std::endl;
 }
 
-void loadReadsAsHashesMultithread(HashList& result, const std::vector<std::string>& files, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
+void loadReadsAsHashesMultithread(HashList& result, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	std::atomic<size_t> totalNodes = 0;
-	iterateReadsMultithreaded(files, numThreads, [&result, &totalNodes, kmerSize, &partIterator](size_t thread, FastQ& read)
+	partIterator.iteratePartKmers([&result, &totalNodes, kmerSize](const FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
 	{
-		partIterator.iteratePartKmers(read, [&result, &totalNodes, kmerSize, &read](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
+		SequenceCharType revSeq = revCompRLE(seq);
+		size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
+		std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
+		for (size_t i = 0; i < positions.size(); i++)
 		{
-			SequenceCharType revSeq = revCompRLE(seq);
-			size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
-			std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
-			for (size_t i = 0; i < positions.size(); i++)
+			const auto pos = positions[i];
+			assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
+			VectorView<CharType> minimizerSequence { seq, pos, pos + kmerSize };
+			size_t revPos = seq.size() - (pos + kmerSize);
+			VectorView<CharType> revMinimizerSequence { revSeq, revPos, revPos + kmerSize };
+			std::pair<size_t, bool> current;
+			size_t overlap = lastMinimizerPosition + kmerSize - pos;
+			HashType hash;
+			try
 			{
-				const auto pos = positions[i];
-				assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
-				VectorView<CharType> minimizerSequence { seq, pos, pos + kmerSize };
-				size_t revPos = seq.size() - (pos + kmerSize);
-				VectorView<CharType> revMinimizerSequence { revSeq, revPos, revPos + kmerSize };
-				std::pair<size_t, bool> current;
-				size_t overlap = lastMinimizerPosition + kmerSize - pos;
-				HashType hash;
-				try
+				std::tie(current, hash) = result.addNode(minimizerSequence, revMinimizerSequence);
+			}
+			catch (const PalindromicKmer&)
+			{
+				bool palindrome = true;
+				for (size_t j = 0; j < kmerSize/2; j++)
 				{
-					std::tie(current, hash) = result.addNode(minimizerSequence, revMinimizerSequence);
-				}
-				catch (const PalindromicKmer&)
-				{
-					bool palindrome = true;
-					for (size_t j = 0; j < kmerSize/2; j++)
+					if (minimizerSequence[j] != complement(minimizerSequence[kmerSize-1-j]))
 					{
-						if (minimizerSequence[j] != complement(minimizerSequence[kmerSize-1-j]))
-						{
-							palindrome = false;
-							break;
-						}
+						palindrome = false;
+						break;
 					}
-					if (palindrome)
+				}
+				if (palindrome)
+				{
+					if (i == 0 || i == positions.size()-1 || positions[i+1] - positions[i-1] < kmerSize)
 					{
-						if (i == 0 || i == positions.size()-1 || positions[i+1] - positions[i-1] < kmerSize)
-						{
-							// palindromic k-mer, but it can be safely dropped without creating gaps
-							continue;
-						}
-						else
-						{
-							std::cerr << "The genome has a palindromic k-mer. Cannot build a graph. Try running with a different -w" << std::endl;
-							std::cerr << "Example read around the palindromic k-mer: " << read.seq_id << std::endl;
-							std::abort();
-						}
+						// palindromic k-mer, but it can be safely dropped without creating gaps
+						continue;
 					}
 					else
 					{
-						std::cerr << "Unhashable k-mer around read: " << read.seq_id << std::endl;
+						std::cerr << "The genome has a palindromic k-mer. Cannot build a graph. Try running with a different -w" << std::endl;
+						std::cerr << "Example read around the palindromic k-mer: " << read.seq_id << std::endl;
 						std::abort();
 					}
 				}
-				assert(pos+kmerSize < poses.size());
-				assert(pos - lastMinimizerPosition < kmerSize);
-				if (last.first != std::numeric_limits<size_t>::max())
+				else
 				{
-					assert(lastMinimizerPosition + kmerSize >= pos);
-					result.addSequenceOverlap(last, current, overlap);
-					auto pair = canon(last, current);
-					result.addEdgeCoverage(pair.first, pair.second);
+					std::cerr << "Unhashable k-mer around read: " << read.seq_id << std::endl;
+					std::abort();
 				}
-				lastMinimizerPosition = pos;
-				last = current;
-				totalNodes += 1;
-			};
-		});
+			}
+			assert(pos+kmerSize < poses.size());
+			assert(pos - lastMinimizerPosition < kmerSize);
+			if (last.first != std::numeric_limits<size_t>::max())
+			{
+				assert(lastMinimizerPosition + kmerSize >= pos);
+				result.addSequenceOverlap(last, current, overlap);
+				auto pair = canon(last, current);
+				result.addEdgeCoverage(pair.first, pair.second);
+			}
+			lastMinimizerPosition = pos;
+			last = current;
+			totalNodes += 1;
+		};
 	});
 	std::cerr << totalNodes << " total selected k-mers in reads" << std::endl;
 	std::cerr << result.size() << " distinct selected k-mers in reads" << std::endl;
@@ -1064,7 +1058,7 @@ void verifyEdgeConsistency(const UnitigGraph& unitigs, const HashList& hashlist,
 	}
 }
 
-std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& hashlist, const std::vector<std::string>& readFiles, const size_t numThreads, const ReadpartIterator& partIterator, const size_t kmerSize)
+std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& hashlist, const size_t numThreads, const ReadpartIterator& partIterator, const size_t kmerSize)
 {
 	size_t maxKmer = 0;
 	for (size_t i = 0; i < graph.unitigs.size(); i++)
@@ -1093,155 +1087,62 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 	}
 	std::vector<ReadPath> result;
 	std::mutex resultMutex;
-	iterateReadsMultithreaded(readFiles, numThreads, [&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist, &partIterator](size_t thread, FastQ& read)
+	partIterator.iteratePartKmers([&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist](const FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
 	{
-		partIterator.iteratePartKmers(read, [&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist, &read](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
+		ReadPath current;
+		current.readName = read.seq_id;
+		current.readLength = rawSeq.size();
+		current.readLengthHPC = seq.size();
+		size_t lastReadPos = std::numeric_limits<size_t>::max();
+		std::pair<size_t, bool> lastKmer { std::numeric_limits<size_t>::max(), true };
+		std::tuple<size_t, size_t, bool> lastPos = std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true);
+		for (size_t i = 0; i < positions.size(); i++)
 		{
-			ReadPath current;
-			current.readName = read.seq_id;
-			current.readLength = rawSeq.size();
-			current.readLengthHPC = seq.size();
-			size_t lastReadPos = std::numeric_limits<size_t>::max();
-			std::pair<size_t, bool> lastKmer { std::numeric_limits<size_t>::max(), true };
-			std::tuple<size_t, size_t, bool> lastPos = std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true);
-			for (size_t i = 0; i < positions.size(); i++)
+			const size_t readPos = positions[i];
+			VectorView<CharType> minimizerSequence { seq, readPos, readPos + kmerSize };
+			assert(readPos + kmerSize <= seq.size());
+			std::pair<size_t, bool> kmer;
+			try
 			{
-				const size_t readPos = positions[i];
-				VectorView<CharType> minimizerSequence { seq, readPos, readPos + kmerSize };
-				assert(readPos + kmerSize <= seq.size());
-				std::pair<size_t, bool> kmer;
-				try
+				kmer = hashlist.getNodeOrNull(minimizerSequence);
+			}
+			catch (const PalindromicKmer&)
+			{
+				bool palindrome = true;
+				for (size_t j = 0; j < kmerSize/2; j++)
 				{
-					kmer = hashlist.getNodeOrNull(minimizerSequence);
-				}
-				catch (const PalindromicKmer&)
-				{
-					bool palindrome = true;
-					for (size_t j = 0; j < kmerSize/2; j++)
+					if (minimizerSequence[j] != complement(minimizerSequence[kmerSize-1-j]))
 					{
-						if (minimizerSequence[j] != complement(minimizerSequence[kmerSize-1-j]))
-						{
-							palindrome = false;
-							break;
-						}
+						palindrome = false;
+						break;
 					}
-					if (palindrome)
+				}
+				if (palindrome)
+				{
+					if (i == 0 || i == positions.size()-1 || positions[i+1] - positions[i-1] < kmerSize)
 					{
-						if (i == 0 || i == positions.size()-1 || positions[i+1] - positions[i-1] < kmerSize)
-						{
-							// palindromic k-mer, but it can be safely dropped without creating gaps
-							continue;
-						}
-						else
-						{
-							std::cerr << "The genome has a palindromic k-mer. Cannot build a graph. Try running with a different -w" << std::endl;
-							std::cerr << "Example read around the palindromic k-mer: " << read.seq_id << std::endl;
-							std::abort();
-						}
+						// palindromic k-mer, but it can be safely dropped without creating gaps
+						continue;
 					}
 					else
 					{
-						std::cerr << "Unhashable k-mer around read: " << read.seq_id << std::endl;
+						std::cerr << "The genome has a palindromic k-mer. Cannot build a graph. Try running with a different -w" << std::endl;
+						std::cerr << "Example read around the palindromic k-mer: " << read.seq_id << std::endl;
 						std::abort();
 					}
 				}
-				if (kmer.first == std::numeric_limits<size_t>::max()) continue;
-				size_t readPosExpandedStart = poses[readPos];
-				size_t readPosExpandedEnd = poses[readPos+kmerSize];
-				if (kmer.first >= kmerLocator.size() || std::get<0>(kmerLocator[kmer.first]) == std::numeric_limits<size_t>::max())
+				else
 				{
-					if (current.path.size() > 0)
-					{
-						assert(current.readPoses.back() + kmerSize <= current.readLengthHPC);
-						std::lock_guard<std::mutex> lock { resultMutex };
-						result.emplace_back();
-						std::swap(result.back(), current);
-					}
-					current.path.clear();
-					current.readName = read.seq_id;
-					current.readLength = rawSeq.size();
-					current.readLengthHPC = seq.size();
-					current.leftClip = 0;
-					current.rightClip = 0;
-					lastPos = std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true);
-					lastReadPos = readPos;
-					lastKmer = kmer;
-					continue;
+					std::cerr << "Unhashable k-mer around read: " << read.seq_id << std::endl;
+					std::abort();
 				}
-				auto pos = kmerLocator[kmer.first];
-				assert(std::get<0>(pos) < graph.unitigs.size());
-				if (!kmer.second)
-				{
-					std::get<2>(pos) = !std::get<2>(pos);
-					std::get<1>(pos) = graph.unitigs[std::get<0>(pos)].size()-1-std::get<1>(pos);
-				}
-				if (std::get<0>(lastPos) == std::numeric_limits<size_t>::max())
-				{
-					assert(current.path.size() == 0);
-					current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
-					current.readPoses.push_back(readPos);
-					current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
-					current.leftClip = std::get<1>(pos);
-					assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
-					lastPos = pos;
-					lastReadPos = readPos;
-					lastKmer = kmer;
-					continue;
-				}
-				if (lastKmer.first != std::numeric_limits<size_t>::max())
-				{
-					assert(lastReadPos != std::numeric_limits<size_t>::max());
-					if (!hashlist.hasSequenceOverlap(lastKmer, kmer) || readPos - lastReadPos != kmerSize - hashlist.getOverlap(lastKmer, kmer))
-					{
-						assert(current.path.size() > 0);
-						{
-							assert(current.readPoses.back() + kmerSize <= current.readLengthHPC);
-							std::lock_guard<std::mutex> lock { resultMutex };
-							result.emplace_back();
-							std::swap(result.back(), current);
-						}
-						current.path.clear();
-						current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
-						current.readPoses.clear();
-						current.readPoses.push_back(readPos);
-						current.leftClip = std::get<1>(pos);
-						current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
-						current.readName = read.seq_id;
-						current.readLength = rawSeq.size();
-						current.readLengthHPC = seq.size();
-						assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
-						lastPos = pos;
-						lastReadPos = readPos;
-						lastKmer = kmer;
-						continue;
-					}
-				}
-				assert(current.path.size() > 0);
-				if (std::get<0>(pos) == std::get<0>(lastPos) && std::get<2>(pos) == std::get<2>(lastPos) && std::get<1>(pos) == std::get<1>(lastPos)+1)
-				{
-					lastPos = pos;
-					lastReadPos = readPos;
-					lastKmer = kmer;
-					current.rightClip -= 1;
-					current.readPoses.push_back(readPos);
-					assert(current.rightClip == graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos));
-					continue;
-				}
-				std::pair<size_t, bool> fromEdge { std::get<0>(lastPos), std::get<2>(lastPos) };
-				std::pair<size_t, bool> toEdge { std::get<0>(pos), std::get<2>(pos) };
-				assert(graph.edges[fromEdge].count(toEdge) == graph.edges[reverse(toEdge)].count(reverse(fromEdge)));
-				if (graph.edges[fromEdge].count(toEdge) == 1 && std::get<1>(pos) == 0 && std::get<1>(lastPos) == graph.unitigs[std::get<0>(lastPos)].size()-1)
-				{
-					assert(current.rightClip == 0);
-					current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
-					current.readPoses.push_back(readPos);
-					current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1;
-					lastPos = pos;
-					lastReadPos = readPos;
-					lastKmer = kmer;
-					continue;
-				}
-				assert(current.path.size() > 0);
+			}
+			if (kmer.first == std::numeric_limits<size_t>::max()) continue;
+			size_t readPosExpandedStart = poses[readPos];
+			size_t readPosExpandedEnd = poses[readPos+kmerSize];
+			if (kmer.first >= kmerLocator.size() || std::get<0>(kmerLocator[kmer.first]) == std::numeric_limits<size_t>::max())
+			{
+				if (current.path.size() > 0)
 				{
 					assert(current.readPoses.back() + kmerSize <= current.readLengthHPC);
 					std::lock_guard<std::mutex> lock { resultMutex };
@@ -1249,28 +1150,118 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 					std::swap(result.back(), current);
 				}
 				current.path.clear();
-				current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
-				current.readPoses.clear();
-				current.readPoses.push_back(readPos);
-				current.leftClip = std::get<1>(pos);
-				current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
 				current.readName = read.seq_id;
 				current.readLength = rawSeq.size();
 				current.readLengthHPC = seq.size();
+				current.leftClip = 0;
+				current.rightClip = 0;
+				lastPos = std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true);
+				lastReadPos = readPos;
+				lastKmer = kmer;
+				continue;
+			}
+			auto pos = kmerLocator[kmer.first];
+			assert(std::get<0>(pos) < graph.unitigs.size());
+			if (!kmer.second)
+			{
+				std::get<2>(pos) = !std::get<2>(pos);
+				std::get<1>(pos) = graph.unitigs[std::get<0>(pos)].size()-1-std::get<1>(pos);
+			}
+			if (std::get<0>(lastPos) == std::numeric_limits<size_t>::max())
+			{
+				assert(current.path.size() == 0);
+				current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
+				current.readPoses.push_back(readPos);
+				current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
+				current.leftClip = std::get<1>(pos);
 				assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
 				lastPos = pos;
 				lastReadPos = readPos;
 				lastKmer = kmer;
 				continue;
 			}
-			if (current.path.size() > 0)
+			if (lastKmer.first != std::numeric_limits<size_t>::max())
+			{
+				assert(lastReadPos != std::numeric_limits<size_t>::max());
+				if (!hashlist.hasSequenceOverlap(lastKmer, kmer) || readPos - lastReadPos != kmerSize - hashlist.getOverlap(lastKmer, kmer))
+				{
+					assert(current.path.size() > 0);
+					{
+						assert(current.readPoses.back() + kmerSize <= current.readLengthHPC);
+						std::lock_guard<std::mutex> lock { resultMutex };
+						result.emplace_back();
+						std::swap(result.back(), current);
+					}
+					current.path.clear();
+					current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
+					current.readPoses.clear();
+					current.readPoses.push_back(readPos);
+					current.leftClip = std::get<1>(pos);
+					current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
+					current.readName = read.seq_id;
+					current.readLength = rawSeq.size();
+					current.readLengthHPC = seq.size();
+					assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
+					lastPos = pos;
+					lastReadPos = readPos;
+					lastKmer = kmer;
+					continue;
+				}
+			}
+			assert(current.path.size() > 0);
+			if (std::get<0>(pos) == std::get<0>(lastPos) && std::get<2>(pos) == std::get<2>(lastPos) && std::get<1>(pos) == std::get<1>(lastPos)+1)
+			{
+				lastPos = pos;
+				lastReadPos = readPos;
+				lastKmer = kmer;
+				current.rightClip -= 1;
+				current.readPoses.push_back(readPos);
+				assert(current.rightClip == graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos));
+				continue;
+			}
+			std::pair<size_t, bool> fromEdge { std::get<0>(lastPos), std::get<2>(lastPos) };
+			std::pair<size_t, bool> toEdge { std::get<0>(pos), std::get<2>(pos) };
+			assert(graph.edges[fromEdge].count(toEdge) == graph.edges[reverse(toEdge)].count(reverse(fromEdge)));
+			if (graph.edges[fromEdge].count(toEdge) == 1 && std::get<1>(pos) == 0 && std::get<1>(lastPos) == graph.unitigs[std::get<0>(lastPos)].size()-1)
+			{
+				assert(current.rightClip == 0);
+				current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
+				current.readPoses.push_back(readPos);
+				current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1;
+				lastPos = pos;
+				lastReadPos = readPos;
+				lastKmer = kmer;
+				continue;
+			}
+			assert(current.path.size() > 0);
 			{
 				assert(current.readPoses.back() + kmerSize <= current.readLengthHPC);
 				std::lock_guard<std::mutex> lock { resultMutex };
 				result.emplace_back();
 				std::swap(result.back(), current);
 			}
-		});
+			current.path.clear();
+			current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));
+			current.readPoses.clear();
+			current.readPoses.push_back(readPos);
+			current.leftClip = std::get<1>(pos);
+			current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
+			current.readName = read.seq_id;
+			current.readLength = rawSeq.size();
+			current.readLengthHPC = seq.size();
+			assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
+			lastPos = pos;
+			lastReadPos = readPos;
+			lastKmer = kmer;
+			continue;
+		}
+		if (current.path.size() > 0)
+		{
+			assert(current.readPoses.back() + kmerSize <= current.readLengthHPC);
+			std::lock_guard<std::mutex> lock { resultMutex };
+			result.emplace_back();
+			std::swap(result.back(), current);
+		}
 	});
 
 	return result;
@@ -1449,7 +1440,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 			std::exit(1);
 		}
 	}
-	ReadpartIterator partIterator { kmerSize, windowSize, errorMasking };
+	ReadpartIterator partIterator { kmerSize, windowSize, errorMasking, numThreads, inputReads };
 	if (includeEndKmers)
 	{
 		std::cerr << "Collecting end k-mers" << std::endl;
@@ -1460,12 +1451,12 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		// note that this also limits the effective window size to 250-300 regardless of what parameter is given
 		std::vector<bool> endSmer;
 		endSmer.resize(4294967296, false);
-		collectEndSmers(endSmer, inputReads, kmerSize, windowSize, partIterator);
+		collectEndSmers(endSmer, kmerSize, windowSize, partIterator);
 		std::swap(endSmer, partIterator.endSmers);
 	}
 	HashList reads { kmerSize };
 	std::cerr << "Collecting selected k-mers" << std::endl;
-	loadReadsAsHashesMultithread(reads, inputReads, kmerSize, partIterator, numThreads);
+	loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads);
 	auto beforeUnitigs = getTime();
 	std::cerr << "Unitigifying" << std::endl;
 	auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage);
@@ -1481,7 +1472,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	auto beforePaths = getTime();
 	std::vector<ReadPath> readPaths;
 	std::cerr << "Getting read paths" << std::endl;
-	readPaths = getReadPaths(unitigs, reads, inputReads, numThreads, partIterator, kmerSize);
+	readPaths = getReadPaths(unitigs, reads, numThreads, partIterator, kmerSize);
 	auto beforeResolve = getTime();
 	if (maxResolveLength > 0)
 	{
@@ -1494,7 +1485,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	std::cerr << "Building unitig sequences" << std::endl;
 	std::vector<CompressedSequenceType> unitigSequences;
 	StringIndex stringIndex;
-	std::tie(unitigSequences, stringIndex) = getHPCUnitigSequences(reads, unitigs, inputReads, readPaths, kmerSize, partIterator, numThreads);
+	std::tie(unitigSequences, stringIndex) = getHPCUnitigSequences(reads, unitigs, readPaths, kmerSize, partIterator, numThreads);
 	assert(unitigSequences.size() == unitigs.unitigs.size());
 	auto beforeConsistency = getTime();
 	AssemblyStats stats;
