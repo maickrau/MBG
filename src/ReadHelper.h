@@ -85,11 +85,58 @@ public:
 	{
 	}
 	template <typename F>
-	void iteratePartKmers(F callback) const
+	void iterateHashes(F callback) const
 	{
 		iterateParts([this, callback](FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
 			if (read.sequence.size() < kmerSize) return;
-			iterateKmers(read, seq, rawSeq, poses, callback);
+			iterateKmers(read, seq, rawSeq, poses, [this, callback](FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positionsWithPalindromes) {
+				SequenceCharType revSeq = revCompRLE(seq);
+				std::vector<size_t> positions;
+				std::vector<HashType> hashes;
+				for (size_t i = 0; i < positionsWithPalindromes.size(); i++)
+				{
+					const auto pos = positionsWithPalindromes[i];
+					VectorView<CharType> minimizerSequence { seq, pos, pos + kmerSize };
+					size_t revPos = seq.size() - (pos + kmerSize);
+					VectorView<CharType> revMinimizerSequence { revSeq, revPos, revPos + kmerSize };
+					HashType fwHash = hash(minimizerSequence, revMinimizerSequence);
+					HashType bwHash = (fwHash << 64) + (fwHash >> 64);
+					if (fwHash == bwHash)
+					{
+						bool palindrome = true;
+						for (size_t j = 0; j < kmerSize/2; j++)
+						{
+							if (minimizerSequence[j] != complement(minimizerSequence[kmerSize-1-j]))
+							{
+								palindrome = false;
+								break;
+							}
+						}
+						if (palindrome)
+						{
+							if (i == 0 || i == positionsWithPalindromes.size()-1 || positionsWithPalindromes[i+1] - positionsWithPalindromes[i-1] < kmerSize)
+							{
+								// palindromic k-mer, but it can be safely dropped without creating gaps
+								continue;
+							}
+							else
+							{
+								std::cerr << "The genome has a palindromic k-mer. Cannot build a graph. Try running with a different -w" << std::endl;
+								std::cerr << "Example read around the palindromic k-mer: " << read.seq_id << std::endl;
+								std::abort();
+							}
+						}
+						else
+						{
+							std::cerr << "Unhashable k-mer around read: " << read.seq_id << std::endl;
+							std::abort();
+						}
+					}
+					positions.push_back(positionsWithPalindromes[i]);
+					hashes.push_back(fwHash);
+				}
+				callback(read, seq, poses, rawSeq, positions, hashes);
+			});
 		});
 	}
 	template <typename F>

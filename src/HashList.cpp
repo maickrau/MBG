@@ -113,10 +113,6 @@ std::pair<size_t, bool> HashList::addNode(HashType fwHash)
 	// this is a true assertion but commented out just for performance
 	// assert(bwHash == hash(reverse));
 	HashType canonHash = std::min(fwHash, bwHash);
-	if (fwHash == bwHash)
-	{
-		throw PalindromicKmer {};
-	}
 	assert(fwHash != bwHash);
 	bool fw = fwHash < bwHash;
 	{

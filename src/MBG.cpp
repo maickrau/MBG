@@ -63,56 +63,18 @@ void collectEndSmers(std::vector<bool>& endSmer, const size_t kmerSize, const si
 void loadReadsAsHashesMultithread(HashList& result, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	std::atomic<size_t> totalNodes = 0;
-	partIterator.iteratePartKmers([&result, &totalNodes, kmerSize](const FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions)
+	partIterator.iterateHashes([&result, &totalNodes, kmerSize](const FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
 	{
-		SequenceCharType revSeq = revCompRLE(seq);
 		size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 		std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
+		assert(positions.size() == hashes.size());
 		for (size_t i = 0; i < positions.size(); i++)
 		{
 			const auto pos = positions[i];
+			const HashType fwHash = hashes[i];
 			assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
-			VectorView<CharType> minimizerSequence { seq, pos, pos + kmerSize };
-			size_t revPos = seq.size() - (pos + kmerSize);
-			VectorView<CharType> revMinimizerSequence { revSeq, revPos, revPos + kmerSize };
-			std::pair<size_t, bool> current;
+			std::pair<size_t, bool> current = result.addNode(fwHash);
 			size_t overlap = lastMinimizerPosition + kmerSize - pos;
-			HashType hash;
-			try
-			{
-				std::tie(current, hash) = result.addNode(minimizerSequence, revMinimizerSequence);
-			}
-			catch (const PalindromicKmer&)
-			{
-				bool palindrome = true;
-				for (size_t j = 0; j < kmerSize/2; j++)
-				{
-					if (minimizerSequence[j] != complement(minimizerSequence[kmerSize-1-j]))
-					{
-						palindrome = false;
-						break;
-					}
-				}
-				if (palindrome)
-				{
-					if (i == 0 || i == positions.size()-1 || positions[i+1] - positions[i-1] < kmerSize)
-					{
-						// palindromic k-mer, but it can be safely dropped without creating gaps
-						continue;
-					}
-					else
-					{
-						std::cerr << "The genome has a palindromic k-mer. Cannot build a graph. Try running with a different -w" << std::endl;
-						std::cerr << "Example read around the palindromic k-mer: " << read.seq_id << std::endl;
-						std::abort();
-					}
-				}
-				else
-				{
-					std::cerr << "Unhashable k-mer around read: " << read.seq_id << std::endl;
-					std::abort();
-				}
-			}
 			assert(pos+kmerSize < poses.size());
 			assert(pos - lastMinimizerPosition < kmerSize);
 			if (last.first != std::numeric_limits<size_t>::max())
@@ -1087,7 +1049,7 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 	}
 	std::vector<ReadPath> result;
 	std::mutex resultMutex;
-	partIterator.iteratePartKmers([&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist](const FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions)
+	partIterator.iterateHashes([&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist](const FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
 	{
 		ReadPath current;
 		current.readName = read.seq_id;
@@ -1096,47 +1058,13 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 		size_t lastReadPos = std::numeric_limits<size_t>::max();
 		std::pair<size_t, bool> lastKmer { std::numeric_limits<size_t>::max(), true };
 		std::tuple<size_t, size_t, bool> lastPos = std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true);
+		assert(positions.size() == hashes.size());
 		for (size_t i = 0; i < positions.size(); i++)
 		{
 			const size_t readPos = positions[i];
-			VectorView<CharType> minimizerSequence { seq, readPos, readPos + kmerSize };
+			const HashType fwHash = hashes[i];
 			assert(readPos + kmerSize <= seq.size());
-			std::pair<size_t, bool> kmer;
-			try
-			{
-				kmer = hashlist.getNodeOrNull(minimizerSequence);
-			}
-			catch (const PalindromicKmer&)
-			{
-				bool palindrome = true;
-				for (size_t j = 0; j < kmerSize/2; j++)
-				{
-					if (minimizerSequence[j] != complement(minimizerSequence[kmerSize-1-j]))
-					{
-						palindrome = false;
-						break;
-					}
-				}
-				if (palindrome)
-				{
-					if (i == 0 || i == positions.size()-1 || positions[i+1] - positions[i-1] < kmerSize)
-					{
-						// palindromic k-mer, but it can be safely dropped without creating gaps
-						continue;
-					}
-					else
-					{
-						std::cerr << "The genome has a palindromic k-mer. Cannot build a graph. Try running with a different -w" << std::endl;
-						std::cerr << "Example read around the palindromic k-mer: " << read.seq_id << std::endl;
-						std::abort();
-					}
-				}
-				else
-				{
-					std::cerr << "Unhashable k-mer around read: " << read.seq_id << std::endl;
-					std::abort();
-				}
-			}
+			std::pair<size_t, bool> kmer = hashlist.getNodeOrNull(fwHash);
 			if (kmer.first == std::numeric_limits<size_t>::max()) continue;
 			size_t readPosExpandedStart = poses[readPos];
 			size_t readPosExpandedEnd = poses[readPos+kmerSize];
