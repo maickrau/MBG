@@ -24,19 +24,17 @@ enum ErrorMasking
 };
 
 template <typename F, typename EdgeCheckFunction>
-uint64_t findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, EdgeCheckFunction endSmer, F callback)
+void findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, EdgeCheckFunction endSmer, F callback)
 {
-	if (sequence.size() < kmerSize) return 0;
+	if (sequence.size() < kmerSize) return;
 	assert(smerSize <= kmerSize);
 	size_t windowSize = kmerSize - smerSize + 1;
 	assert(windowSize >= 1);
-	uint64_t minHash = std::numeric_limits<uint64_t>::max();
 	FastHasher fwkmerHasher { smerSize };
 	for (size_t i = 0; i < smerSize; i++)
 	{
 		fwkmerHasher.addChar(sequence[i]);
 	}
-	minHash = std::min(minHash, fwkmerHasher.hash());
 	auto thisHash = fwkmerHasher.hash();
 	if (endSmer(thisHash)) thisHash = 0;
 	smerOrder.emplace_back(0, thisHash);
@@ -46,7 +44,6 @@ uint64_t findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize,
 		fwkmerHasher.addChar(sequence[seqPos]);
 		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
 		size_t hash = fwkmerHasher.hash();
-		minHash = std::min(minHash, hash);
 		if (endSmer(hash)) hash = 0;
 		while (smerOrder.size() > 0 && std::get<1>(smerOrder.back()) > hash) smerOrder.pop_back();
 		smerOrder.emplace_back(i, hash);
@@ -61,7 +58,6 @@ uint64_t findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize,
 		fwkmerHasher.addChar(sequence[seqPos]);
 		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
 		size_t hash = fwkmerHasher.hash();
-		minHash = std::min(minHash, hash);
 		if (endSmer(hash)) hash = 0;
 		// even though pop_front is used it turns out std::vector is faster than std::deque ?!
 		// because pop_front is O(w), but it is only called in O(1/w) fraction of loops
@@ -75,7 +71,6 @@ uint64_t findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize,
 			callback(i-windowSize+1);
 		}
 	}
-	return minHash;
 }
 
 class ReadpartIterator
@@ -373,10 +368,9 @@ private:
 		thread_local std::vector<std::tuple<size_t, uint64_t>> smerOrder;
 		smerOrder.resize(0);
 		std::vector<size_t> positions;
-		uint64_t minHash;
 		if (endSmers.size() > 0)
 		{
-			minHash = findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [this](uint64_t hash) { return endSmers[hash % endSmers.size()]; }, [this, &positions](size_t pos)
+			findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [this](uint64_t hash) { return endSmers[hash % endSmers.size()]; }, [this, &positions](size_t pos)
 			{
 				assert(positions.size() == 0 || pos > positions.back());
 				assert(positions.size() == 0 || pos - positions.back() <= windowSize);
@@ -385,14 +379,14 @@ private:
 		}
 		else
 		{
-			minHash = findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [](uint64_t hash) { return false; }, [this, &positions](size_t pos)
+			findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [](uint64_t hash) { return false; }, [this, &positions](size_t pos)
 			{
 				// assert(positions.size() == 0 || pos > positions.back());
 				// assert(positions.size() == 0 || pos - positions.back() <= windowSize);
 				positions.push_back(pos);
 			});
 		}
-		callback(read, seq, poses, rawSeq, minHash, positions);
+		callback(read, seq, poses, rawSeq, positions);
 	}
 	template <typename F>
 	void iterateReadsMultithreaded(const std::vector<std::string>& files, const size_t numThreads, F readCallback) const

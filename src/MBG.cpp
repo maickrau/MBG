@@ -63,7 +63,7 @@ void collectEndSmers(std::vector<bool>& endSmer, const size_t kmerSize, const si
 void loadReadsAsHashesMultithread(HashList& result, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	std::atomic<size_t> totalNodes = 0;
-	partIterator.iteratePartKmers([&result, &totalNodes, kmerSize](const FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
+	partIterator.iteratePartKmers([&result, &totalNodes, kmerSize](const FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions)
 	{
 		SequenceCharType revSeq = revCompRLE(seq);
 		size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
@@ -1087,7 +1087,7 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 	}
 	std::vector<ReadPath> result;
 	std::mutex resultMutex;
-	partIterator.iteratePartKmers([&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist](const FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, uint64_t minHash, const std::vector<size_t>& positions)
+	partIterator.iteratePartKmers([&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist](const FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions)
 	{
 		ReadPath current;
 		current.readName = read.seq_id;
