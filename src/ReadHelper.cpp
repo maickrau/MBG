@@ -53,7 +53,6 @@ void ReadpartIterator::buildCache()
 	{
 		std::lock_guard<std::mutex> lock { writeMutex };
 		Serializer::write(cache, read.readName);
-		Serializer::write(cache, read.readLength);
 		Serializer::write(cache, seq);
 		Serializer::write(cache, poses);
 		Serializer::write(cache, rawSeq);

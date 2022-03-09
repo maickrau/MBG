@@ -78,7 +78,6 @@ class ReadInfo
 {
 public:
 	std::string readName;
-	size_t readLength;
 };
 
 class ReadpartIterator
@@ -149,7 +148,6 @@ private:
 			std::vector<size_t> positions;
 			std::vector<HashType> hashes;
 			Serializer::read(cache, readInfo.readName);
-			Serializer::read(cache, readInfo.readLength);
 			Serializer::read(cache, seq);
 			Serializer::read(cache, poses);
 			Serializer::read(cache, rawSeq);
@@ -535,7 +533,6 @@ private:
 					assert(read != nullptr);
 					ReadInfo info;
 					info.readName = read->seq_id;
-					info.readLength = read->sequence.size();
 					readCallback(info, read->sequence);
 				}
 			});
