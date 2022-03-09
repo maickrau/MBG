@@ -84,8 +84,20 @@ class ReadpartIterator
 {
 public:
 	ReadpartIterator(const size_t kmerSize, const size_t windowSize, const ErrorMasking errorMasking, const size_t numThreads, const std::vector<std::string>& readFiles, const bool includeEndSmers);
+public:
 	template <typename F>
 	void iterateHashes(F callback) const
+	{
+		iterateHashesFromFiles(callback);
+	}
+	template <typename F>
+	void iterateParts(F callback) const
+	{
+		iteratePartsFromFiles(callback);
+	}
+private:
+	template <typename F>
+	void iterateHashesFromFiles(F callback) const
 	{
 		iterateParts([this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
 			if (seq.size() < kmerSize) return;
@@ -140,7 +152,7 @@ public:
 		});
 	}
 	template <typename F>
-	void iterateParts(F callback) const
+	void iteratePartsFromFiles(F callback) const
 	{
 		iterateReadsMultithreaded(readFiles, numThreads, [this, callback](const ReadInfo& read, const std::string& rawSeq)
 		{
@@ -175,7 +187,6 @@ public:
 			}
 		});
 	}
-private:
 	const size_t kmerSize;
 	const size_t windowSize;
 	const ErrorMasking errorMasking;
