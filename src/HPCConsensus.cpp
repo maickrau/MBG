@@ -233,9 +233,9 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 	}
 	consensusMaker.findParentLinks();
 	std::mutex expandedPosMutex;
-	partIterator.iterateParts([&consensusMaker, &readPaths, &expandedPosMutex, &hashlist, &unitigLengths, &unitigs, &bpOffsets, &matchBlocks, kmerSize](const FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq)
+	partIterator.iterateParts([&consensusMaker, &readPaths, &expandedPosMutex, &hashlist, &unitigLengths, &unitigs, &bpOffsets, &matchBlocks, kmerSize](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq)
 	{
-		for (auto block : matchBlocks.at(read.seq_id))
+		for (auto block : matchBlocks.at(read.readName))
 		{
 			size_t unitig = std::get<0>(block);
 			size_t readStartPos = std::get<1>(block);

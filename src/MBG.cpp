@@ -43,7 +43,7 @@ void collectEndSmers(std::vector<bool>& endSmer, const size_t kmerSize, const si
 {
 	size_t smerSize = kmerSize - windowSize + 1;
 	size_t addedEndSmers = 0;
-	partIterator.iterateParts([&endSmer, smerSize, &addedEndSmers](FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
+	partIterator.iterateParts([&endSmer, smerSize, &addedEndSmers](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
 		if (seq.size() < smerSize) return;
 		FastHasher startKmer { smerSize };
 		FastHasher endKmer { smerSize };
@@ -63,7 +63,7 @@ void collectEndSmers(std::vector<bool>& endSmer, const size_t kmerSize, const si
 void loadReadsAsHashesMultithread(HashList& result, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	std::atomic<size_t> totalNodes = 0;
-	partIterator.iterateHashes([&result, &totalNodes, kmerSize](const FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
+	partIterator.iterateHashes([&result, &totalNodes, kmerSize](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
 	{
 		size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 		std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
@@ -1049,10 +1049,10 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 	}
 	std::vector<ReadPath> result;
 	std::mutex resultMutex;
-	partIterator.iterateHashes([&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist](const FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
+	partIterator.iterateHashes([&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
 	{
 		ReadPath current;
-		current.readName = read.seq_id;
+		current.readName = read.readName;
 		current.readLength = rawSeq.size();
 		current.readLengthHPC = seq.size();
 		size_t lastReadPos = std::numeric_limits<size_t>::max();
@@ -1078,7 +1078,7 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 					std::swap(result.back(), current);
 				}
 				current.path.clear();
-				current.readName = read.seq_id;
+				current.readName = read.readName;
 				current.readLength = rawSeq.size();
 				current.readLengthHPC = seq.size();
 				current.leftClip = 0;
@@ -1126,7 +1126,7 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 					current.readPoses.push_back(readPos);
 					current.leftClip = std::get<1>(pos);
 					current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
-					current.readName = read.seq_id;
+					current.readName = read.readName;
 					current.readLength = rawSeq.size();
 					current.readLengthHPC = seq.size();
 					assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
@@ -1174,7 +1174,7 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 			current.readPoses.push_back(readPos);
 			current.leftClip = std::get<1>(pos);
 			current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
-			current.readName = read.seq_id;
+			current.readName = read.readName;
 			current.readLength = rawSeq.size();
 			current.readLengthHPC = seq.size();
 			assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());

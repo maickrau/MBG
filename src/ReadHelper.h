@@ -73,6 +73,13 @@ void findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize, siz
 	}
 }
 
+class ReadInfo
+{
+public:
+	std::string readName;
+	size_t readLength;
+};
+
 class ReadpartIterator
 {
 public:
@@ -87,9 +94,9 @@ public:
 	template <typename F>
 	void iterateHashes(F callback) const
 	{
-		iterateParts([this, callback](FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
-			if (read.sequence.size() < kmerSize) return;
-			iterateKmers(read, seq, rawSeq, poses, [this, callback](FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positionsWithPalindromes) {
+		iterateParts([this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
+			if (seq.size() < kmerSize) return;
+			iterateKmers(read, seq, rawSeq, poses, [this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positionsWithPalindromes) {
 				SequenceCharType revSeq = revCompRLE(seq);
 				std::vector<size_t> positions;
 				std::vector<HashType> hashes;
@@ -122,13 +129,13 @@ public:
 							else
 							{
 								std::cerr << "The genome has a palindromic k-mer. Cannot build a graph. Try running with a different -w" << std::endl;
-								std::cerr << "Example read around the palindromic k-mer: " << read.seq_id << std::endl;
+								std::cerr << "Example read around the palindromic k-mer: " << read.readName << std::endl;
 								std::abort();
 							}
 						}
 						else
 						{
-							std::cerr << "Unhashable k-mer around read: " << read.seq_id << std::endl;
+							std::cerr << "Unhashable k-mer around read: " << read.readName << std::endl;
 							std::abort();
 						}
 					}
@@ -142,36 +149,36 @@ public:
 	template <typename F>
 	void iterateParts(F callback) const
 	{
-		iterateReadsMultithreaded(readFiles, numThreads, [this, callback](FastQ& read)
+		iterateReadsMultithreaded(readFiles, numThreads, [this, callback](const ReadInfo& read, const std::string& rawSeq)
 		{
 			if (errorMasking == ErrorMasking::Hpc)
 			{
-				iterateRLE(read, read.sequence, callback);
+				iterateRLE(read, rawSeq, callback);
 			}
 			else if (errorMasking == ErrorMasking::Collapse)
 			{
-				iterateCollapse(read, read.sequence, callback);
+				iterateCollapse(read, rawSeq, callback);
 			}
 			else if (errorMasking == ErrorMasking::Dinuc)
 			{
-				iterateDinuc(read, read.sequence, callback);
+				iterateDinuc(read, rawSeq, callback);
 			}
 			else if (errorMasking == ErrorMasking::Microsatellite)
 			{
-				iterateMicrosatellite(read, read.sequence, callback);
+				iterateMicrosatellite(read, rawSeq, callback);
 			}
 			else if (errorMasking == ErrorMasking::CollapseDinuc)
 			{
-				iterateCollapseDinuc(read, read.sequence, callback);
+				iterateCollapseDinuc(read, rawSeq, callback);
 			}
 			else if (errorMasking == ErrorMasking::CollapseMicrosatellite)
 			{
-				iterateCollapseMicrosatellite(read, read.sequence, callback);
+				iterateCollapseMicrosatellite(read, rawSeq, callback);
 			}
 			else
 			{
 				assert(errorMasking == ErrorMasking::No);
-				iterateNoRLE(read, read.sequence, callback);
+				iterateNoRLE(read, rawSeq, callback);
 			}
 		});
 	}
@@ -183,9 +190,9 @@ private:
 	const size_t numThreads;
 	const std::vector<std::string> readFiles;
 	template <typename F>
-	void iterateMicrosatellite(FastQ& read, const std::string& seq, F callback) const
+	void iterateMicrosatellite(const ReadInfo& read, const std::string& seq, F callback) const
 	{
-		iterateRLE(read, seq, [callback](FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
+		iterateRLE(read, seq, [callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
 			auto pieces = multiRLECompress(seq, poses, 6);
 			for (const auto& pair : pieces)
@@ -195,9 +202,9 @@ private:
 		});
 	}
 	template <typename F>
-	void iterateCollapseMicrosatellite(FastQ& read, const std::string& seq, F callback) const
+	void iterateCollapseMicrosatellite(const ReadInfo& read, const std::string& seq, F callback) const
 	{
-		iterateCollapse(read, seq, [callback](FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
+		iterateCollapse(read, seq, [callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
 			auto pieces = multiRLECompress(seq, poses, 6);
 			for (const auto& pair : pieces)
@@ -207,7 +214,7 @@ private:
 		});
 	}
 	template <typename F>
-	void iterateCollapse(FastQ& read, const std::string& seq, F callback) const
+	void iterateCollapse(const ReadInfo& read, const std::string& seq, F callback) const
 	{
 		if (seq.size() == 0) return;
 		std::string collapseSeq;
@@ -220,9 +227,9 @@ private:
 		iterateRLE(read, collapseSeq, callback);
 	}
 	template <typename F>
-	void iterateDinuc(FastQ& read, const std::string& seq, F callback) const
+	void iterateDinuc(const ReadInfo& read, const std::string& seq, F callback) const
 	{
-		iterateRLE(read, seq, [callback](FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
+		iterateRLE(read, seq, [callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
 			auto pieces = multiRLECompress(seq, poses, 2);
 			for (const auto& pair : pieces)
@@ -232,9 +239,9 @@ private:
 		});
 	}
 	template <typename F>
-	void iterateCollapseDinuc(FastQ& read, const std::string& seq, F callback) const
+	void iterateCollapseDinuc(const ReadInfo& read, const std::string& seq, F callback) const
 	{
-		iterateCollapse(read, seq, [callback](FastQ& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
+		iterateCollapse(read, seq, [callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
 			auto pieces = multiRLECompress(seq, poses, 2);
 			for (const auto& pair : pieces)
@@ -244,7 +251,7 @@ private:
 		});
 	}
 	template <typename F>
-	void iterateRLE(FastQ& read, const std::string& seq, F callback) const
+	void iterateRLE(const ReadInfo& read, const std::string& seq, F callback) const
 	{
 		SequenceCharType currentSeq;
 		SequenceLengthType currentPos;
@@ -358,7 +365,7 @@ private:
 		}
 	}
 	template <typename F>
-	void iterateNoRLE(FastQ& read, const std::string& seq, F callback) const
+	void iterateNoRLE(const ReadInfo& read, const std::string& seq, F callback) const
 	{
 		SequenceCharType currentSeq;
 		SequenceLengthType currentPos;
@@ -408,7 +415,7 @@ private:
 		}
 	}
 	template <typename F>
-	void iterateKmers(FastQ& read, const SequenceCharType& seq, const std::string& rawSeq, const SequenceLengthType& poses, F callback) const
+	void iterateKmers(const ReadInfo& read, const SequenceCharType& seq, const std::string& rawSeq, const SequenceLengthType& poses, F callback) const
 	{
 		if (seq.size() < kmerSize) return;
 		// keep the same smerOrder to reduce mallocs which destroy multithreading performance
@@ -460,7 +467,10 @@ private:
 						}
 					}
 					assert(read != nullptr);
-					readCallback(*read);
+					ReadInfo info;
+					info.readName = read->seq_id;
+					info.readLength = read->sequence.size();
+					readCallback(info, read->sequence);
 				}
 			});
 		}
