@@ -39,27 +39,6 @@ public:
 	size_t approxKmers;
 };
 
-void collectEndSmers(std::vector<bool>& endSmer, const size_t kmerSize, const size_t windowSize, const ReadpartIterator& partIterator)
-{
-	size_t smerSize = kmerSize - windowSize + 1;
-	size_t addedEndSmers = 0;
-	partIterator.iterateParts([&endSmer, smerSize, &addedEndSmers](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
-		if (seq.size() < smerSize) return;
-		FastHasher startKmer { smerSize };
-		FastHasher endKmer { smerSize };
-		for (size_t i = 0; i < smerSize; i++)
-		{
-			startKmer.addChar(seq[i]);
-			endKmer.addChar(complement(seq[seq.size()-1-i]));
-		}
-		if (!endSmer[startKmer.hash() % endSmer.size()]) addedEndSmers += 1;
-		if (!endSmer[endKmer.hash() % endSmer.size()]) addedEndSmers += 1;
-		endSmer[startKmer.hash() % endSmer.size()] = true;
-		endSmer[endKmer.hash() % endSmer.size()] = true;
-	});
-	std::cerr << addedEndSmers << " end k-mers" << std::endl;
-}
-
 void loadReadsAsHashesMultithread(HashList& result, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	std::atomic<size_t> totalNodes = 0;
@@ -1368,20 +1347,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 			std::exit(1);
 		}
 	}
-	ReadpartIterator partIterator { kmerSize, windowSize, errorMasking, numThreads, inputReads };
-	if (includeEndKmers)
-	{
-		std::cerr << "Collecting end k-mers" << std::endl;
-		// 2^32 arbitrarily, should be big enough for a human genome
-		// a 30x coverage error-free hifi dataset will have an edge s-mer about every 250-300bp
-		// so a human genome will have about 10000000-12000000 set bits
-		// so about ~0.3% filled -> ~0.3% of kmers have a hash collision and are picked even though they are not edge k-mers
-		// note that this also limits the effective window size to 250-300 regardless of what parameter is given
-		std::vector<bool> endSmer;
-		endSmer.resize(4294967296, false);
-		collectEndSmers(endSmer, kmerSize, windowSize, partIterator);
-		std::swap(endSmer, partIterator.endSmers);
-	}
+	ReadpartIterator partIterator { kmerSize, windowSize, errorMasking, numThreads, inputReads, includeEndKmers };
 	HashList reads { kmerSize };
 	std::cerr << "Collecting selected k-mers" << std::endl;
 	loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads);
