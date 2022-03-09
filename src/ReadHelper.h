@@ -80,6 +80,17 @@ public:
 	std::string readName;
 };
 
+class ReadBundle
+{
+public:
+	ReadInfo readInfo;
+	SequenceCharType seq;
+	SequenceLengthType poses;
+	std::string rawSeq;
+	std::vector<size_t> positions;
+	std::vector<HashType> hashes;
+};
+
 class ReadpartIterator
 {
 public:
@@ -130,6 +141,32 @@ private:
 	template <typename F>
 	void iterateHashesFromCache(F callback) const
 	{
+		std::atomic<bool> readDone;
+		readDone = false;
+		std::vector<std::thread> threads;
+		moodycamel::ConcurrentQueue<std::shared_ptr<ReadBundle>> sequenceQueue;
+		for (size_t i = 0; i < numThreads; i++)
+		{
+			threads.emplace_back([&readDone, &sequenceQueue, callback]()
+			{
+				while (true)
+				{
+					std::shared_ptr<ReadBundle> read;
+					if (!sequenceQueue.try_dequeue(read))
+					{
+						bool tryBreaking = readDone;
+						if (!sequenceQueue.try_dequeue(read))
+						{
+							if (tryBreaking) return;
+							std::this_thread::sleep_for(std::chrono::milliseconds(10));
+							continue;
+						}
+					}
+					assert(read != nullptr);
+					callback(read->readInfo, read->seq, read->poses, read->rawSeq, read->positions, read->hashes);
+				}
+			});
+		}
 		std::ifstream cache { cacheFileName, std::ios::binary };
 		if (!cache.good())
 		{
@@ -141,25 +178,36 @@ private:
 		{
 			cache.peek();
 			if (!cache.good()) break;
-			ReadInfo readInfo;
-			SequenceCharType seq;
-			SequenceLengthType poses;
-			std::string rawSeq;
-			std::vector<size_t> positions;
-			std::vector<HashType> hashes;
-			Serializer::read(cache, readInfo.readName);
-			Serializer::read(cache, seq);
-			Serializer::read(cache, poses);
-			Serializer::read(cache, rawSeq);
-			Serializer::read(cache, positions);
-			Serializer::read(cache, hashes);
+			std::shared_ptr<ReadBundle> readInfo { new ReadBundle };
+			Serializer::read(cache, readInfo->readInfo.readName);
+			Serializer::read(cache, readInfo->seq);
+			Serializer::read(cache, readInfo->poses);
+			Serializer::read(cache, readInfo->rawSeq);
+			Serializer::read(cache, readInfo->positions);
+			Serializer::read(cache, readInfo->hashes);
 			itemsRead += 1;
-			callback(readInfo, seq, poses, rawSeq, positions, hashes);
+			bool queued = sequenceQueue.try_enqueue(readInfo);
+			if (queued) continue;
+			size_t triedSleeping = 0;
+			while (triedSleeping < 1000)
+			{
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+				queued = sequenceQueue.try_enqueue(readInfo);
+				if (queued) break;
+				triedSleeping += 1;
+			}
+			if (queued) continue;
+			sequenceQueue.enqueue(readInfo);
 		}
 		if (itemsRead != cacheItems)
 		{
 			std::cerr << "Sequence cache has been corrupted. Try re-running, or running without sequence cache." << std::endl;
 			std::abort();
+		}
+		readDone = true;
+		for (size_t i = 0; i < threads.size(); i++)
+		{
+			threads[i].join();
 		}
 	}
 	template <typename F>
