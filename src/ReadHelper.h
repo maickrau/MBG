@@ -157,9 +157,9 @@ private:
 			std::lock_guard<std::mutex> lock { writeMutex };
 			Serializer::write(cache, read.readName);
 			Serializer::writeMostlyTwobits(cache, seq);
-			Serializer::write(cache, poses);
+			Serializer::writeMonotoneIncreasing(cache, poses);
 			Serializer::writeTwobits(cache, rawSeq);
-			Serializer::write(cache, positions);
+			Serializer::writeMonotoneIncreasing(cache, positions);
 			Serializer::write(cache, hashes);
 			cacheItems += 1;
 		});
@@ -222,10 +222,12 @@ private:
 			std::shared_ptr<ReadBundle> readInfo { new ReadBundle };
 			Serializer::read(cache, readInfo->readInfo.readName);
 			Serializer::readMostlyTwobits(cache, readInfo->seq);
-			Serializer::read(cache, readInfo->poses);
+			Serializer::readMonotoneIncreasing(cache, readInfo->poses);
 			Serializer::readTwobits(cache, readInfo->rawSeq);
-			Serializer::read(cache, readInfo->positions);
+			Serializer::readMonotoneIncreasing(cache, readInfo->positions);
 			Serializer::read(cache, readInfo->hashes);
+			assert(readInfo->poses.size() == 0 || readInfo->poses[0] == 0);
+			assert(readInfo->poses.size() == 0 || readInfo->poses.back() == readInfo->rawSeq.size());
 			itemsRead += 1;
 			bool queued = sequenceQueue.try_enqueue(readInfo);
 			if (queued) continue;

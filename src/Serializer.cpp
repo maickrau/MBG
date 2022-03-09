@@ -1,3 +1,4 @@
+#include <iostream>
 #include <cassert>
 #include "Serializer.h"
 
@@ -100,6 +101,75 @@ namespace Serializer
 		stream.write((const char*)twobits.data(), twobits.size());
 	}
 
+	void writeMonotoneIncreasing(std::ostream& stream, const std::vector<uint64_t>& value)
+	{
+		size_t numBytes = 0;
+		for (size_t i = 0; i < value.size(); i++)
+		{
+			size_t val = value[i];
+			if (i > 0)
+			{
+				assert(value[i] >= value[i-1]);
+				val = value[i] - value[i-1];
+			}
+			if (val < 128) // 2^7, one byte minus one bit for length
+			{
+				numBytes += 1;
+			}
+			else if (val < 16384) // 2^14, two bytes minus two bits for length
+			{
+				numBytes += 2;
+			}
+			else
+			{
+				assert(val < std::numeric_limits<uint64_t>::max() / 4); // minus two bits for length
+				numBytes += 8;
+			}
+		}
+		std::vector<uint8_t> compressed;
+		compressed.resize(numBytes, 0);
+		write(stream, value.size());
+		write(stream, compressed.size());
+		size_t pos = 0;
+		for (size_t i = 0; i < value.size(); i++)
+		{
+			size_t val = value[i];
+			if (i > 0) val = value[i] - value[i-1];
+			if (val < 128)
+			{
+				compressed[pos] = val;
+				assert((compressed[pos] & 128) == 0);
+				pos += 1;
+			}
+			else if (val < 16384)
+			{
+				assert((val >> 7) < 128);
+				compressed[pos] = 128 + (val >> 7);
+				compressed[pos+1] = val & 127;
+				assert((compressed[pos] & 128) == 128);
+				assert((compressed[pos+1] & 128) == 0);
+				pos += 2;
+			}
+			else
+			{
+				assert((val >> 55) < 128);
+				compressed[pos] = 128 + (val >> 55);
+				compressed[pos+1] = 128 + ((val >> 48) & 127);
+				compressed[pos+2] = (val >> 40) & 255;
+				compressed[pos+3] = (val >> 32) & 255;
+				compressed[pos+4] = (val >> 24) & 255;
+				compressed[pos+5] = (val >> 16) & 255;
+				compressed[pos+6] = (val >> 8) & 255;
+				compressed[pos+7] = (val) & 255;
+				assert((compressed[pos] & 128) == 128);
+				assert((compressed[pos+1] & 128) == 128);
+				pos += 8;
+			}
+		}
+		assert(pos == numBytes);
+		stream.write((const char*)compressed.data(), compressed.size());
+	}
+
 	void writeMostlyTwobits(std::ostream& stream, const std::vector<uint16_t>& value)
 	{
 		write(stream, value.size());
@@ -184,6 +254,59 @@ namespace Serializer
 					break;
 			}
 		}
+	}
+
+	void readMonotoneIncreasing(std::istream& stream, std::vector<uint64_t>& value)
+	{
+		size_t realSize;
+		size_t numBytes;
+		read(stream, realSize);
+		read(stream, numBytes);
+		value.resize(realSize);
+		std::vector<uint8_t> compressed;
+		compressed.resize(numBytes, 0);
+		stream.read((char*)compressed.data(), numBytes);
+		size_t pos = 0;
+		size_t runningTotal = 0;
+		for (size_t i = 0; i < value.size(); i++)
+		{
+			size_t val = 0;
+			assert(pos < numBytes);
+			if ((compressed[pos] & 128) == 0)
+			{
+				val = compressed[pos];
+				pos += 1;
+			}
+			else if ((compressed[pos+1] & 128) == 0)
+			{
+				val = compressed[pos] & 127;
+				val <<= 7;
+				val += compressed[pos+1];
+				pos += 2;
+			}
+			else
+			{
+				val = compressed[pos] & 127;
+				val <<= 7;
+				val += compressed[pos+1] & 127;
+				val <<= 7;
+				val += compressed[pos+2];
+				val <<= 8;
+				val += compressed[pos+3];
+				val <<= 8;
+				val += compressed[pos+4];
+				val <<= 8;
+				val += compressed[pos+5];
+				val <<= 8;
+				val += compressed[pos+6];
+				val <<= 8;
+				val += compressed[pos+7];
+				pos += 8;
+			}
+			runningTotal += val;
+			value[i] = runningTotal;
+		}
+		assert(pos == numBytes);
 	}
 
 	void readMostlyTwobits(std::istream& stream, std::vector<uint16_t>& value)
