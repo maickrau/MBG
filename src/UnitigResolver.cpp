@@ -985,6 +985,11 @@ void createEdgeNode(ResolvableUnitigGraph& resolvableGraph, const HashList& hash
 		assert(resolvableGraph.getBpOverlap(std::make_pair(newIndex, true), to) < resolvableGraph.unitigLength(to.first));
 	}
 	assert(resolvableGraph.unitigLength(newIndex) > resolvableGraph.unitigLength(from.first));
+	if (resolvableGraph.unitigs[newIndex].size() >= 2)
+	{
+		assert(resolvableGraph.unitigLeftClipBp[newIndex] < kmerSize - resolvableGraph.hashlist.getOverlap(resolvableGraph.unitigs[newIndex][0], resolvableGraph.unitigs[newIndex][1]));
+		assert(resolvableGraph.unitigRightClipBp[newIndex] < kmerSize - resolvableGraph.hashlist.getOverlap(resolvableGraph.unitigs[newIndex][resolvableGraph.unitigs[newIndex].size()-2], resolvableGraph.unitigs[newIndex][resolvableGraph.unitigs[newIndex].size()-1]));
+	}
 }
 
 std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getValidTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool unconditional)
@@ -1680,6 +1685,11 @@ void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<PathGro
 			assert(graph.edges[std::make_pair(i, false)].size() == 0);
 			continue;
 		}
+		if (graph.unitigs[i].size() >= 2)
+		{
+			assert(graph.unitigLeftClipBp[i] < kmerSize - graph.hashlist.getOverlap(graph.unitigs[i][0], graph.unitigs[i][1]));
+			assert(graph.unitigRightClipBp[i] < kmerSize - graph.hashlist.getOverlap(graph.unitigs[i][graph.unitigs[i].size()-2], graph.unitigs[i][graph.unitigs[i].size()-1]));
+		}
 		assert(graph.unitigLeftClipBp[i] < kmerSize);
 		assert(graph.unitigRightClipBp[i] < kmerSize);
 		std::pair<size_t, bool> fw { i, true };
@@ -2151,7 +2161,7 @@ bool canTrimRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGr
 	return true;
 }
 
-void trimEndRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const std::pair<size_t, bool> pos, const size_t trimAmount)
+void trimEndRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const std::pair<size_t, bool> pos, const size_t trimAmount, const size_t kmerSize)
 {
 	if (resolvableGraph.precalcedUnitigLengths.size() > pos.first) resolvableGraph.precalcedUnitigLengths[pos.first] = 0;
 	assert(trimAmount > 0);
@@ -2171,20 +2181,20 @@ void trimEndRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGr
 			assert(trimThere <= trimAmount);
 			assert(trimThere < resolvableGraph.unitigs[edge.first].size());
 			assert(trimThere > 0);
-			trimEndRecursive(resolvableGraph, readPaths, reverse(edge), trimThere);
+			trimEndRecursive(resolvableGraph, readPaths, reverse(edge), trimThere, kmerSize);
 			assert(resolvableGraph.overlaps.at(canon(reverse(pos), edge)) == resolvableGraph.unitigs[pos.first].size() - trimAmount - 1);
 		}
 		assert(resolvableGraph.overlaps.at(canon(reverse(pos), edge)) < resolvableGraph.unitigs[pos.first].size() - trimAmount);
 	}
 	if (pos.second)
 	{
-		assert(resolvableGraph.unitigRightClipBp[pos.first] < resolvableGraph.hashlist.getOverlap(resolvableGraph.unitigs[pos.first][resolvableGraph.unitigs[pos.first].size()-2], resolvableGraph.unitigs[pos.first].back()));
+		assert(resolvableGraph.unitigRightClipBp[pos.first] < kmerSize - resolvableGraph.hashlist.getOverlap(resolvableGraph.unitigs[pos.first][resolvableGraph.unitigs[pos.first].size()-2], resolvableGraph.unitigs[pos.first].back()));
 		resolvableGraph.unitigs[pos.first].erase(resolvableGraph.unitigs[pos.first].end() - trimAmount, resolvableGraph.unitigs[pos.first].end());
 		resolvableGraph.unitigRightClipBp[pos.first] = 0;
 	}
 	else
 	{
-		assert(resolvableGraph.unitigLeftClipBp[pos.first] < resolvableGraph.hashlist.getOverlap(resolvableGraph.unitigs[pos.first][0], resolvableGraph.unitigs[pos.first][1]));
+		assert(resolvableGraph.unitigLeftClipBp[pos.first] < kmerSize - resolvableGraph.hashlist.getOverlap(resolvableGraph.unitigs[pos.first][0], resolvableGraph.unitigs[pos.first][1]));
 		resolvableGraph.unitigs[pos.first].erase(resolvableGraph.unitigs[pos.first].begin(), resolvableGraph.unitigs[pos.first].begin() + trimAmount);
 		resolvableGraph.unitigLeftClipBp[pos.first] = 0;
 	}
@@ -2266,7 +2276,7 @@ void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& r
 		}
 		return;
 	}
-	trimEndRecursive(resolvableGraph, readPaths, pos, maxReadTrim);
+	trimEndRecursive(resolvableGraph, readPaths, pos, maxReadTrim, kmerSize);
 }
 
 void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength)
