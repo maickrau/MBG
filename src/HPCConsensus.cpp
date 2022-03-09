@@ -235,6 +235,7 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 	std::mutex expandedPosMutex;
 	partIterator.iterateParts([&consensusMaker, &readPaths, &expandedPosMutex, &hashlist, &unitigLengths, &unitigs, &bpOffsets, &matchBlocks, kmerSize](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq)
 	{
+		if (matchBlocks.count(read.readName) == 0) return;
 		for (auto block : matchBlocks.at(read.readName))
 		{
 			size_t unitig = std::get<0>(block);
