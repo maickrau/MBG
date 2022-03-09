@@ -10,7 +10,8 @@ ReadpartIterator::ReadpartIterator(const size_t kmerSize, const size_t windowSiz
 	numThreads(numThreads),
 	readFiles(readFiles),
 	cacheFileName(cacheFileName),
-	cacheItems(0)
+	cacheItems(0),
+	cacheBuilt(false)
 {
 	if (includeEndSmers)
 	{
@@ -23,10 +24,6 @@ ReadpartIterator::ReadpartIterator(const size_t kmerSize, const size_t windowSiz
 		endSmers.resize(4294967296, false);
 		collectEndSmers();
 	}
-	if (cacheFileName.size() > 0)
-	{
-		buildCache();
-	}
 }
 
 ReadpartIterator::~ReadpartIterator()
@@ -35,39 +32,6 @@ ReadpartIterator::~ReadpartIterator()
 	{
 		remove(cacheFileName.c_str());
 	}
-}
-
-void ReadpartIterator::buildCache()
-{
-	std::cerr << "Building sequence cache" << std::endl;
-	assert(cacheFileName.size() > 0);
-	std::ofstream cache { cacheFileName, std::ios::binary };
-	if (!cache.good())
-	{
-		std::cerr << "Could not build cache. Try running without sequence cache." << std::endl;
-		std::abort();
-	}
-	std::mutex writeMutex;
-	cacheItems = 0;
-	iterateHashesFromFiles([this, &cache, &writeMutex](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
-	{
-		std::lock_guard<std::mutex> lock { writeMutex };
-		Serializer::write(cache, read.readName);
-		Serializer::write(cache, seq);
-		Serializer::write(cache, poses);
-		Serializer::write(cache, rawSeq);
-		Serializer::write(cache, positions);
-		Serializer::write(cache, hashes);
-		cacheItems += 1;
-	});
-	if (!cache.good())
-	{
-		std::cerr << "Could not build cache. Try running without sequence cache." << std::endl;
-		cache.close();
-		remove(cacheFileName.c_str());
-		std::abort();
-	}
-	std::cerr << "Stored " << cacheItems << " sequences in the cache" << std::endl;
 }
 
 void ReadpartIterator::collectEndSmers()

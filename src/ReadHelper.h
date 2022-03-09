@@ -128,9 +128,9 @@ private:
 	const size_t numThreads;
 	const std::vector<std::string> readFiles;
 	const std::string cacheFileName;
-	size_t cacheItems;
+	mutable size_t cacheItems;
+	mutable bool cacheBuilt;
 	void collectEndSmers();
-	void buildCache();
 	template <typename F>
 	void iteratePartsFromCache(F callback) const
 	{
@@ -139,8 +139,49 @@ private:
 		});
 	}
 	template <typename F>
+	void buildCacheAndIterateHashes(F callback) const
+	{
+		std::cerr << "Building sequence cache" << std::endl;
+		assert(cacheFileName.size() > 0);
+		std::ofstream cache { cacheFileName, std::ios::binary };
+		if (!cache.good())
+		{
+			std::cerr << "Could not build cache. Try running without sequence cache." << std::endl;
+			std::abort();
+		}
+		std::mutex writeMutex;
+		cacheItems = 0;
+		iterateHashesFromFiles([this, &cache, &writeMutex, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
+		{
+			callback(read, seq, poses, rawSeq, positions, hashes);
+			std::lock_guard<std::mutex> lock { writeMutex };
+			Serializer::write(cache, read.readName);
+			Serializer::write(cache, seq);
+			Serializer::write(cache, poses);
+			Serializer::write(cache, rawSeq);
+			Serializer::write(cache, positions);
+			Serializer::write(cache, hashes);
+			cacheItems += 1;
+		});
+		if (!cache.good())
+		{
+			std::cerr << "Could not build cache. Try running without sequence cache." << std::endl;
+			cache.close();
+			remove(cacheFileName.c_str());
+			std::abort();
+		}
+		std::cerr << "Stored " << cacheItems << " sequences in the cache" << std::endl;
+		cacheBuilt = true;
+	}
+	template <typename F>
 	void iterateHashesFromCache(F callback) const
 	{
+		if (!cacheBuilt)
+		{
+			buildCacheAndIterateHashes(callback);
+			assert(cacheBuilt);
+			return;
+		}
 		std::atomic<bool> readDone;
 		readDone = false;
 		std::vector<std::thread> threads;
