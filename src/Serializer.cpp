@@ -1,6 +1,62 @@
 #include <cassert>
 #include "Serializer.h"
 
+void writeTightly(std::vector<uint8_t>& compressed, size_t pos, size_t numBits, size_t value)
+{
+	while (true)
+	{
+		size_t bitsInByte = 8 - (pos % 8);
+		if (numBits <= bitsInByte)
+		{
+			assert((value << (pos % 8)) < 256);
+			compressed[pos/8] |= (uint8_t)(value << (pos % 8));
+			return;
+		}
+		size_t addHere = (value >> (numBits - bitsInByte));
+		assert((addHere << (pos % 8)) < 256);
+		compressed[pos/8] |= (uint8_t)(addHere << (pos % 8));
+		value &= (1 << (numBits - bitsInByte)) - 1;
+		numBits -= bitsInByte;
+		pos += bitsInByte;
+	}
+}
+
+void writeTightly(std::vector<uint8_t>& compressed, size_t pos, uint16_t value)
+{
+	if (value < 4)
+	{
+		writeTightly(compressed, pos+1, 2, value);
+	}
+	else
+	{
+		compressed[pos/8] |= (uint8_t)(1 << (pos % 8));
+		writeTightly(compressed, pos+1, 16, value);
+	}
+}
+
+uint16_t readTightly(std::vector<uint8_t>& compressed, size_t pos)
+{
+	bool longValue = ((compressed[pos/8] >> (pos % 8)) & 1) == 1;
+	pos += 1;
+	uint16_t value = 0;
+	size_t numBits = longValue ? 16 : 2;
+	while (numBits > 0)
+	{
+		size_t bitsInByte = 8 - (pos % 8);
+		value <<= std::min(numBits, bitsInByte);
+		if (numBits <= bitsInByte)
+		{
+			value |= ((size_t)compressed[pos/8] >> (pos % 8)) & ((1 << numBits) - 1);
+			return value;
+		}
+		value |= ((size_t)compressed[pos/8] >> (pos % 8));
+		pos += bitsInByte;
+		numBits -= bitsInByte;
+	}
+	assert(false);
+	return value;
+}
+
 namespace Serializer
 {
 
@@ -42,6 +98,41 @@ namespace Serializer
 			twobits[i / 4] |= val << ((i % 4) * 2);
 		}
 		stream.write((const char*)twobits.data(), twobits.size());
+	}
+
+	void writeMostlyTwobits(std::ostream& stream, const std::vector<uint16_t>& value)
+	{
+		write(stream, value.size());
+		std::vector<uint8_t> compressed;
+		size_t numBits = 0;
+		for (size_t i = 0; i < value.size(); i++)
+		{
+			if (value[i] < 4)
+			{
+				numBits += 3;
+			}
+			else
+			{
+				numBits += 17;
+			}
+		}
+		compressed.resize((numBits+7)/8, 0);
+		write(stream, compressed.size());
+		size_t pos = 0;
+		for (size_t i = 0; i < value.size(); i++)
+		{
+			writeTightly(compressed, pos, value[i]);
+			if (value[i] < 4)
+			{
+				pos += 3;
+			}
+			else
+			{
+				pos += 17;
+			}
+		}
+		assert(pos == numBits);
+		stream.write((const char*)compressed.data(), compressed.size());
 	}
 
 	void write(std::ostream& stream, const std::string& value)
@@ -93,6 +184,33 @@ namespace Serializer
 					break;
 			}
 		}
+	}
+
+	void readMostlyTwobits(std::istream& stream, std::vector<uint16_t>& value)
+	{
+		size_t realSize;
+		size_t numBytes;
+		read(stream, realSize);
+		read(stream, numBytes);
+		std::vector<uint8_t> compressed;
+		compressed.resize(numBytes, 0);
+		stream.read((char*)compressed.data(), compressed.size());
+		size_t pos = 0;
+		value.resize(realSize);
+		for (size_t i = 0; i < value.size(); i++)
+		{
+			uint16_t val = readTightly(compressed, pos);
+			if (val < 4)
+			{
+				pos += 3;
+			}
+			else
+			{
+				pos += 17;
+			}
+			value[i] = val;
+		}
+		assert((pos + 7) / 8 == numBytes);
 	}
 
 }

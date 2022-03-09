@@ -156,7 +156,7 @@ private:
 			callback(read, seq, poses, rawSeq, positions, hashes);
 			std::lock_guard<std::mutex> lock { writeMutex };
 			Serializer::write(cache, read.readName);
-			Serializer::write(cache, seq);
+			Serializer::writeMostlyTwobits(cache, seq);
 			Serializer::write(cache, poses);
 			Serializer::writeTwobits(cache, rawSeq);
 			Serializer::write(cache, positions);
@@ -221,7 +221,7 @@ private:
 			if (!cache.good()) break;
 			std::shared_ptr<ReadBundle> readInfo { new ReadBundle };
 			Serializer::read(cache, readInfo->readInfo.readName);
-			Serializer::read(cache, readInfo->seq);
+			Serializer::readMostlyTwobits(cache, readInfo->seq);
 			Serializer::read(cache, readInfo->poses);
 			Serializer::readTwobits(cache, readInfo->rawSeq);
 			Serializer::read(cache, readInfo->positions);
