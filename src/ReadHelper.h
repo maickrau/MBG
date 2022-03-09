@@ -158,7 +158,7 @@ private:
 			Serializer::write(cache, read.readName);
 			Serializer::write(cache, seq);
 			Serializer::write(cache, poses);
-			Serializer::write(cache, rawSeq);
+			Serializer::writeTwobits(cache, rawSeq);
 			Serializer::write(cache, positions);
 			Serializer::write(cache, hashes);
 			cacheItems += 1;
@@ -223,7 +223,7 @@ private:
 			Serializer::read(cache, readInfo->readInfo.readName);
 			Serializer::read(cache, readInfo->seq);
 			Serializer::read(cache, readInfo->poses);
-			Serializer::read(cache, readInfo->rawSeq);
+			Serializer::readTwobits(cache, readInfo->rawSeq);
 			Serializer::read(cache, readInfo->positions);
 			Serializer::read(cache, readInfo->hashes);
 			itemsRead += 1;
