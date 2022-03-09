@@ -84,7 +84,6 @@ class ReadpartIterator
 {
 public:
 	ReadpartIterator(const size_t kmerSize, const size_t windowSize, const ErrorMasking errorMasking, const size_t numThreads, const std::vector<std::string>& readFiles, const bool includeEndSmers);
-public:
 	template <typename F>
 	void iterateHashes(F callback) const
 	{
@@ -96,6 +95,13 @@ public:
 		iteratePartsFromFiles(callback);
 	}
 private:
+	const size_t kmerSize;
+	const size_t windowSize;
+	const ErrorMasking errorMasking;
+	std::vector<bool> endSmers;
+	const size_t numThreads;
+	const std::vector<std::string> readFiles;
+	void collectEndSmers();
 	template <typename F>
 	void iterateHashesFromFiles(F callback) const
 	{
@@ -187,13 +193,6 @@ private:
 			}
 		});
 	}
-	const size_t kmerSize;
-	const size_t windowSize;
-	const ErrorMasking errorMasking;
-	std::vector<bool> endSmers;
-	const size_t numThreads;
-	const std::vector<std::string> readFiles;
-	void collectEndSmers();
 	template <typename F>
 	void iterateMicrosatellite(const ReadInfo& read, const std::string& seq, F callback) const
 	{
