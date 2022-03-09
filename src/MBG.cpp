@@ -1334,7 +1334,7 @@ void sortPaths(std::vector<ReadPath>& readPaths)
 	});
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile)
 {
 	auto beforeReading = getTime();
 	// check that all files actually exist
@@ -1347,7 +1347,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 			std::exit(1);
 		}
 	}
-	ReadpartIterator partIterator { kmerSize, windowSize, errorMasking, numThreads, inputReads, includeEndKmers };
+	ReadpartIterator partIterator { kmerSize, windowSize, errorMasking, numThreads, inputReads, includeEndKmers, sequenceCacheFile };
 	HashList reads { kmerSize };
 	std::cerr << "Collecting selected k-mers" << std::endl;
 	loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads);

@@ -11,6 +11,7 @@
 #include "fastqloader.h"
 #include "FastHasher.h"
 #include "ErrorMaskHelper.h"
+#include "Serializer.h"
 
 enum ErrorMasking
 {
@@ -83,16 +84,31 @@ public:
 class ReadpartIterator
 {
 public:
-	ReadpartIterator(const size_t kmerSize, const size_t windowSize, const ErrorMasking errorMasking, const size_t numThreads, const std::vector<std::string>& readFiles, const bool includeEndSmers);
+	ReadpartIterator(const size_t kmerSize, const size_t windowSize, const ErrorMasking errorMasking, const size_t numThreads, const std::vector<std::string>& readFiles, const bool includeEndSmers, const std::string& cacheFileName);
+	~ReadpartIterator();
 	template <typename F>
 	void iterateHashes(F callback) const
 	{
-		iterateHashesFromFiles(callback);
+		if (cacheFileName.size() > 0)
+		{
+			iterateHashesFromCache(callback);
+		}
+		else
+		{
+			iterateHashesFromFiles(callback);
+		}
 	}
 	template <typename F>
 	void iterateParts(F callback) const
 	{
-		iteratePartsFromFiles(callback);
+		if (cacheFileName.size() > 0)
+		{
+			iteratePartsFromCache(callback);
+		}
+		else
+		{
+			iteratePartsFromFiles(callback);
+		}
 	}
 private:
 	const size_t kmerSize;
@@ -101,11 +117,57 @@ private:
 	std::vector<bool> endSmers;
 	const size_t numThreads;
 	const std::vector<std::string> readFiles;
+	const std::string cacheFileName;
+	size_t cacheItems;
 	void collectEndSmers();
+	void buildCache();
+	template <typename F>
+	void iteratePartsFromCache(F callback) const
+	{
+		iterateHashesFromCache([callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes) {
+			callback(read, seq, poses, rawSeq);
+		});
+	}
+	template <typename F>
+	void iterateHashesFromCache(F callback) const
+	{
+		std::ifstream cache { cacheFileName, std::ios::binary };
+		if (!cache.good())
+		{
+			std::cerr << "Could not read cache. Try running without sequence cache." << std::endl;
+			std::abort();
+		}
+		size_t itemsRead = 0;
+		while (cache.good())
+		{
+			cache.peek();
+			if (!cache.good()) break;
+			ReadInfo readInfo;
+			SequenceCharType seq;
+			SequenceLengthType poses;
+			std::string rawSeq;
+			std::vector<size_t> positions;
+			std::vector<HashType> hashes;
+			Serializer::read(cache, readInfo.readName);
+			Serializer::read(cache, readInfo.readLength);
+			Serializer::read(cache, seq);
+			Serializer::read(cache, poses);
+			Serializer::read(cache, rawSeq);
+			Serializer::read(cache, positions);
+			Serializer::read(cache, hashes);
+			itemsRead += 1;
+			callback(readInfo, seq, poses, rawSeq, positions, hashes);
+		}
+		if (itemsRead != cacheItems)
+		{
+			std::cerr << "Sequence cache has been corrupted. Try re-running, or running without sequence cache." << std::endl;
+			std::abort();
+		}
+	}
 	template <typename F>
 	void iterateHashesFromFiles(F callback) const
 	{
-		iterateParts([this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
+		iteratePartsFromFiles([this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
 			if (seq.size() < kmerSize) return;
 			iterateKmers(read, seq, rawSeq, poses, [this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positionsWithPalindromes) {
 				SequenceCharType revSeq = revCompRLE(seq);
