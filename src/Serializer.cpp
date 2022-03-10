@@ -122,12 +122,12 @@ namespace Serializer
 		{
 			if (value[i] >= 4) numLongs += 1;
 		}
-		std::vector<uint8_t> isLong;
-		std::vector<uint8_t> twoBits;
+		std::vector<uint64_t> isLong;
+		std::vector<uint64_t> twoBits;
 		std::vector<uint16_t> longs;
 		write(stream, numLongs);
-		isLong.resize((value.size() + 7) / 8, 0);
-		twoBits.resize((value.size() - numLongs + 3) / 4, 0);
+		isLong.resize((value.size() + 63) / 64, 0);
+		twoBits.resize((value.size() - numLongs + 31) / 32, 0);
 		longs.resize(numLongs, 0);
 		size_t twobitPos = 0;
 		size_t longPos = 0;
@@ -137,18 +137,18 @@ namespace Serializer
 			{
 				longs[longPos] = value[i];
 				longPos += 1;
-				isLong[i / 8] |= 1 << (i % 8);
+				isLong[i / 64] |= 1ull << (i % 64ull);
 			}
 			else
 			{
-				twoBits[twobitPos / 4] |= value[i] << ((twobitPos % 4) * 2);
+				twoBits[twobitPos / 32] |= (size_t)(value[i]) << ((twobitPos % 32ull) * 2ull);
 				twobitPos += 1;
 			}
 		}
 		assert(longPos == longs.size());
 		assert(twobitPos + longPos == value.size());
-		stream.write((const char*)isLong.data(), isLong.size());
-		stream.write((const char*)twoBits.data(), twoBits.size());
+		stream.write((const char*)isLong.data(), isLong.size() * sizeof(uint64_t));
+		stream.write((const char*)twoBits.data(), twoBits.size() * sizeof(uint64_t));
 		stream.write((const char*)longs.data(), longs.size() * sizeof(uint16_t));
 	}
 
@@ -262,28 +262,28 @@ namespace Serializer
 		size_t numLongs;
 		read(stream, realSize);
 		read(stream, numLongs);
-		std::vector<uint8_t> isLong;
-		std::vector<uint8_t> twoBits;
+		std::vector<uint64_t> isLong;
+		std::vector<uint64_t> twoBits;
 		std::vector<uint16_t> longs;
-		isLong.resize((realSize + 7) / 8);
-		twoBits.resize((realSize - numLongs + 3) / 4);
+		isLong.resize((realSize + 63) / 64);
+		twoBits.resize((realSize - numLongs + 31) / 32);
 		longs.resize(numLongs);
-		stream.read((char*)isLong.data(), isLong.size());
-		stream.read((char*)twoBits.data(), twoBits.size());
+		stream.read((char*)isLong.data(), isLong.size() * sizeof(uint64_t));
+		stream.read((char*)twoBits.data(), twoBits.size() * sizeof(uint64_t));
 		stream.read((char*)longs.data(), longs.size() * sizeof(uint16_t));
 		value.resize(realSize);
 		size_t twobitPos = 0;
 		size_t longPos = 0;
 		for (size_t i = 0; i < value.size(); i++)
 		{
-			if (((isLong[i/8] >> (i % 8)) & 1) == 1)
+			if (((isLong[i/64] >> (i % 64ull)) & 1ull) == 1ull)
 			{
 				value[i] = longs[longPos];
 				longPos += 1;
 			}
 			else
 			{
-				value[i] = (twoBits[twobitPos/4] >> ((twobitPos % 4) * 2)) & 3;
+				value[i] = (twoBits[twobitPos/32] >> ((twobitPos % 32ull) * 2ull)) & 3;
 				twobitPos += 1;
 			}
 		}
