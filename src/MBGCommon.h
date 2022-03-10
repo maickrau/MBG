@@ -25,6 +25,8 @@ std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> canon(std::pair<size
 std::string revCompRaw(const std::string& seq);
 std::vector<std::pair<size_t, bool>> revCompPath(const std::vector<std::pair<size_t, bool>>& original);
 
+class PalindromicKmer : std::exception {};
+
 namespace std
 {
 	template <> struct hash<HashType>

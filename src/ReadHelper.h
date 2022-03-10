@@ -11,6 +11,7 @@
 #include "fastqloader.h"
 #include "FastHasher.h"
 #include "ErrorMaskHelper.h"
+#include "Serializer.h"
 
 enum ErrorMasking
 {
@@ -24,19 +25,17 @@ enum ErrorMasking
 };
 
 template <typename F, typename EdgeCheckFunction>
-uint64_t findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, EdgeCheckFunction endSmer, F callback)
+void findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, EdgeCheckFunction endSmer, F callback)
 {
-	if (sequence.size() < kmerSize) return 0;
+	if (sequence.size() < kmerSize) return;
 	assert(smerSize <= kmerSize);
 	size_t windowSize = kmerSize - smerSize + 1;
 	assert(windowSize >= 1);
-	uint64_t minHash = std::numeric_limits<uint64_t>::max();
 	FastHasher fwkmerHasher { smerSize };
 	for (size_t i = 0; i < smerSize; i++)
 	{
 		fwkmerHasher.addChar(sequence[i]);
 	}
-	minHash = std::min(minHash, fwkmerHasher.hash());
 	auto thisHash = fwkmerHasher.hash();
 	if (endSmer(thisHash)) thisHash = 0;
 	smerOrder.emplace_back(0, thisHash);
@@ -46,7 +45,6 @@ uint64_t findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize,
 		fwkmerHasher.addChar(sequence[seqPos]);
 		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
 		uint64_t hash = fwkmerHasher.hash();
-		minHash = std::min(minHash, hash);
 		if (endSmer(hash)) hash = 0;
 		while (smerOrder.size() > 0 && std::get<1>(smerOrder.back()) > hash) smerOrder.pop_back();
 		smerOrder.emplace_back(i, hash);
@@ -61,7 +59,6 @@ uint64_t findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize,
 		fwkmerHasher.addChar(sequence[seqPos]);
 		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
 		uint64_t hash = fwkmerHasher.hash();
-		minHash = std::min(minHash, hash);
 		if (endSmer(hash)) hash = 0;
 		// even though pop_front is used it turns out std::vector is faster than std::deque ?!
 		// because pop_front is O(w), but it is only called in O(1/w) fraction of loops
@@ -75,90 +72,304 @@ uint64_t findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize,
 			callback(i-windowSize+1);
 		}
 	}
-	return minHash;
 }
+
+class ReadInfo
+{
+public:
+	std::string readName;
+};
+
+class ReadBundle
+{
+public:
+	ReadInfo readInfo;
+	SequenceCharType seq;
+	SequenceLengthType poses;
+	std::string rawSeq;
+	std::vector<size_t> positions;
+	std::vector<HashType> hashes;
+};
 
 class ReadpartIterator
 {
 public:
-	ReadpartIterator(const size_t kmerSize, const size_t windowSize, const ErrorMasking errorMasking) :
-	kmerSize(kmerSize),
-	windowSize(windowSize),
-	errorMasking(errorMasking)
-	{
-	}
+	ReadpartIterator(const size_t kmerSize, const size_t windowSize, const ErrorMasking errorMasking, const size_t numThreads, const std::vector<std::string>& readFiles, const bool includeEndSmers, const std::string& cacheFileName);
+	~ReadpartIterator();
 	template <typename F>
-	void iteratePartKmers(const FastQ& read, F callback) const
+	void iterateHashes(F callback) const
 	{
-		if (read.sequence.size() < kmerSize) return;
-		iterateParts(read, [this, callback](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
-			iterateKmers(seq, rawSeq, poses, callback);
-		});
-	}
-	template <typename F>
-	void iterateParts(const FastQ& read, F callback) const
-	{
-		if (errorMasking == ErrorMasking::Hpc)
+		if (cacheFileName.size() > 0)
 		{
-			iterateRLE(read.sequence, callback);
-		}
-		else if (errorMasking == ErrorMasking::Collapse)
-		{
-			iterateCollapse(read.sequence, callback);
-		}
-		else if (errorMasking == ErrorMasking::Dinuc)
-		{
-			iterateDinuc(read.sequence, callback);
-		}
-		else if (errorMasking == ErrorMasking::Microsatellite)
-		{
-			iterateMicrosatellite(read.sequence, callback);
-		}
-		else if (errorMasking == ErrorMasking::CollapseDinuc)
-		{
-			iterateCollapseDinuc(read.sequence, callback);
-		}
-		else if (errorMasking == ErrorMasking::CollapseMicrosatellite)
-		{
-			iterateCollapseMicrosatellite(read.sequence, callback);
+			iterateHashesFromCache(callback);
 		}
 		else
 		{
-			assert(errorMasking == ErrorMasking::No);
-			iterateNoRLE(read.sequence, callback);
+			iterateHashesFromFiles(callback);
 		}
 	}
+	template <typename F>
+	void iterateParts(F callback) const
+	{
+		if (cacheFileName.size() > 0)
+		{
+			iteratePartsFromCache(callback);
+		}
+		else
+		{
+			iteratePartsFromFiles(callback);
+		}
+	}
+private:
 	const size_t kmerSize;
 	const size_t windowSize;
 	const ErrorMasking errorMasking;
 	std::vector<bool> endSmers;
-private:
+	const size_t numThreads;
+	const std::vector<std::string> readFiles;
+	const std::string cacheFileName;
+	mutable size_t cacheItems;
+	mutable bool cacheBuilt;
+	void collectEndSmers();
 	template <typename F>
-	void iterateMicrosatellite(const std::string& seq, F callback) const
+	void iteratePartsFromCache(F callback) const
 	{
-		iterateRLE(seq, [callback](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
+		iterateHashesFromCache([callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes) {
+			callback(read, seq, poses, rawSeq);
+		});
+	}
+	template <typename F>
+	void buildCacheAndIterateHashes(F callback) const
+	{
+		std::cerr << "Building sequence cache" << std::endl;
+		assert(cacheFileName.size() > 0);
+		std::ofstream cache { cacheFileName, std::ios::binary };
+		if (!cache.good())
 		{
-			auto pieces = multiRLECompress(seq, poses, 6);
-			for (const auto& pair : pieces)
+			std::cerr << "Could not build cache. Try running without sequence cache." << std::endl;
+			std::abort();
+		}
+		std::mutex writeMutex;
+		cacheItems = 0;
+		iterateHashesFromFiles([this, &cache, &writeMutex, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
+		{
+			callback(read, seq, poses, rawSeq, positions, hashes);
+			std::lock_guard<std::mutex> lock { writeMutex };
+			Serializer::write(cache, read.readName);
+			Serializer::writeMostlyTwobits(cache, seq);
+			Serializer::writeMonotoneIncreasing(cache, poses);
+			Serializer::writeTwobits(cache, rawSeq);
+			Serializer::writeMonotoneIncreasing(cache, positions);
+			Serializer::write(cache, hashes);
+			cacheItems += 1;
+		});
+		if (!cache.good())
+		{
+			std::cerr << "Could not build cache. Try running without sequence cache." << std::endl;
+			cache.close();
+			remove(cacheFileName.c_str());
+			std::abort();
+		}
+		std::cerr << "Stored " << cacheItems << " sequences in the cache" << std::endl;
+		cacheBuilt = true;
+	}
+	template <typename F>
+	void iterateHashesFromCache(F callback) const
+	{
+		if (!cacheBuilt)
+		{
+			buildCacheAndIterateHashes(callback);
+			assert(cacheBuilt);
+			return;
+		}
+		std::atomic<bool> readDone;
+		readDone = false;
+		std::vector<std::thread> threads;
+		moodycamel::ConcurrentQueue<std::shared_ptr<ReadBundle>> sequenceQueue;
+		for (size_t i = 0; i < numThreads; i++)
+		{
+			threads.emplace_back([&readDone, &sequenceQueue, callback]()
 			{
-				callback(pair.first, pair.second, raw);
+				while (true)
+				{
+					std::shared_ptr<ReadBundle> read;
+					if (!sequenceQueue.try_dequeue(read))
+					{
+						bool tryBreaking = readDone;
+						if (!sequenceQueue.try_dequeue(read))
+						{
+							if (tryBreaking) return;
+							std::this_thread::sleep_for(std::chrono::milliseconds(10));
+							continue;
+						}
+					}
+					assert(read != nullptr);
+					callback(read->readInfo, read->seq, read->poses, read->rawSeq, read->positions, read->hashes);
+				}
+			});
+		}
+		std::ifstream cache { cacheFileName, std::ios::binary };
+		if (!cache.good())
+		{
+			std::cerr << "Could not read cache. Try running without sequence cache." << std::endl;
+			std::abort();
+		}
+		size_t itemsRead = 0;
+		while (cache.good())
+		{
+			cache.peek();
+			if (!cache.good()) break;
+			std::shared_ptr<ReadBundle> readInfo { new ReadBundle };
+			Serializer::read(cache, readInfo->readInfo.readName);
+			Serializer::readMostlyTwobits(cache, readInfo->seq);
+			Serializer::readMonotoneIncreasing(cache, readInfo->poses);
+			Serializer::readTwobits(cache, readInfo->rawSeq);
+			Serializer::readMonotoneIncreasing(cache, readInfo->positions);
+			Serializer::read(cache, readInfo->hashes);
+			assert(readInfo->poses.size() == 0 || readInfo->poses[0] == 0);
+			assert(readInfo->poses.size() == 0 || readInfo->poses.back() == readInfo->rawSeq.size());
+			itemsRead += 1;
+			bool queued = sequenceQueue.try_enqueue(readInfo);
+			if (queued) continue;
+			size_t triedSleeping = 0;
+			while (triedSleeping < 1000)
+			{
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+				queued = sequenceQueue.try_enqueue(readInfo);
+				if (queued) break;
+				triedSleeping += 1;
+			}
+			if (queued) continue;
+			sequenceQueue.enqueue(readInfo);
+		}
+		if (itemsRead != cacheItems)
+		{
+			std::cerr << "Sequence cache has been corrupted. Try re-running, or running without sequence cache." << std::endl;
+			std::abort();
+		}
+		readDone = true;
+		for (size_t i = 0; i < threads.size(); i++)
+		{
+			threads[i].join();
+		}
+	}
+	template <typename F>
+	void iterateHashesFromFiles(F callback) const
+	{
+		iteratePartsFromFiles([this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
+			if (seq.size() < kmerSize) return;
+			iterateKmers(read, seq, rawSeq, poses, [this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positionsWithPalindromes) {
+				SequenceCharType revSeq = revCompRLE(seq);
+				std::vector<size_t> positions;
+				std::vector<HashType> hashes;
+				for (size_t i = 0; i < positionsWithPalindromes.size(); i++)
+				{
+					const auto pos = positionsWithPalindromes[i];
+					VectorView<CharType> minimizerSequence { seq, pos, pos + kmerSize };
+					size_t revPos = seq.size() - (pos + kmerSize);
+					VectorView<CharType> revMinimizerSequence { revSeq, revPos, revPos + kmerSize };
+					HashType fwHash = hash(minimizerSequence, revMinimizerSequence);
+					HashType bwHash = (fwHash << 64) + (fwHash >> 64);
+					if (fwHash == bwHash)
+					{
+						bool palindrome = true;
+						for (size_t j = 0; j < kmerSize/2; j++)
+						{
+							if (minimizerSequence[j] != complement(minimizerSequence[kmerSize-1-j]))
+							{
+								palindrome = false;
+								break;
+							}
+						}
+						if (palindrome)
+						{
+							if (i == 0 || i == positionsWithPalindromes.size()-1 || positionsWithPalindromes[i+1] - positionsWithPalindromes[i-1] < kmerSize)
+							{
+								// palindromic k-mer, but it can be safely dropped without creating gaps
+								continue;
+							}
+							else
+							{
+								std::cerr << "The genome has a palindromic k-mer. Cannot build a graph. Try running with a different -w" << std::endl;
+								std::cerr << "Example read around the palindromic k-mer: " << read.readName << std::endl;
+								std::abort();
+							}
+						}
+						else
+						{
+							std::cerr << "Unhashable k-mer around read: " << read.readName << std::endl;
+							std::abort();
+						}
+					}
+					positions.push_back(positionsWithPalindromes[i]);
+					hashes.push_back(fwHash);
+				}
+				callback(read, seq, poses, rawSeq, positions, hashes);
+			});
+		});
+	}
+	template <typename F>
+	void iteratePartsFromFiles(F callback) const
+	{
+		iterateReadsMultithreaded(readFiles, numThreads, [this, callback](const ReadInfo& read, const std::string& rawSeq)
+		{
+			if (errorMasking == ErrorMasking::Hpc)
+			{
+				iterateRLE(read, rawSeq, callback);
+			}
+			else if (errorMasking == ErrorMasking::Collapse)
+			{
+				iterateCollapse(read, rawSeq, callback);
+			}
+			else if (errorMasking == ErrorMasking::Dinuc)
+			{
+				iterateDinuc(read, rawSeq, callback);
+			}
+			else if (errorMasking == ErrorMasking::Microsatellite)
+			{
+				iterateMicrosatellite(read, rawSeq, callback);
+			}
+			else if (errorMasking == ErrorMasking::CollapseDinuc)
+			{
+				iterateCollapseDinuc(read, rawSeq, callback);
+			}
+			else if (errorMasking == ErrorMasking::CollapseMicrosatellite)
+			{
+				iterateCollapseMicrosatellite(read, rawSeq, callback);
+			}
+			else
+			{
+				assert(errorMasking == ErrorMasking::No);
+				iterateNoRLE(read, rawSeq, callback);
 			}
 		});
 	}
 	template <typename F>
-	void iterateCollapseMicrosatellite(const std::string& seq, F callback) const
+	void iterateMicrosatellite(const ReadInfo& read, const std::string& seq, F callback) const
 	{
-		iterateCollapse(seq, [callback](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
+		iterateRLE(read, seq, [callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
 			auto pieces = multiRLECompress(seq, poses, 6);
 			for (const auto& pair : pieces)
 			{
-				callback(pair.first, pair.second, raw);
+				callback(read, pair.first, pair.second, raw);
 			}
 		});
 	}
 	template <typename F>
-	void iterateCollapse(const std::string& seq, F callback) const
+	void iterateCollapseMicrosatellite(const ReadInfo& read, const std::string& seq, F callback) const
+	{
+		iterateCollapse(read, seq, [callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
+		{
+			auto pieces = multiRLECompress(seq, poses, 6);
+			for (const auto& pair : pieces)
+			{
+				callback(read, pair.first, pair.second, raw);
+			}
+		});
+	}
+	template <typename F>
+	void iterateCollapse(const ReadInfo& read, const std::string& seq, F callback) const
 	{
 		if (seq.size() == 0) return;
 		std::string collapseSeq;
@@ -168,34 +379,34 @@ private:
 		{
 			if (seq[i] != seq[i-1]) collapseSeq.push_back(seq[i]);
 		}
-		iterateRLE(collapseSeq, callback);
+		iterateRLE(read, collapseSeq, callback);
 	}
 	template <typename F>
-	void iterateDinuc(const std::string& seq, F callback) const
+	void iterateDinuc(const ReadInfo& read, const std::string& seq, F callback) const
 	{
-		iterateRLE(seq, [callback](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
+		iterateRLE(read, seq, [callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
 			auto pieces = multiRLECompress(seq, poses, 2);
 			for (const auto& pair : pieces)
 			{
-				callback(pair.first, pair.second, raw);
+				callback(read, pair.first, pair.second, raw);
 			}
 		});
 	}
 	template <typename F>
-	void iterateCollapseDinuc(const std::string& seq, F callback) const
+	void iterateCollapseDinuc(const ReadInfo& read, const std::string& seq, F callback) const
 	{
-		iterateCollapse(seq, [callback](const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
+		iterateCollapse(read, seq, [callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
 			auto pieces = multiRLECompress(seq, poses, 2);
 			for (const auto& pair : pieces)
 			{
-				callback(pair.first, pair.second, raw);
+				callback(read, pair.first, pair.second, raw);
 			}
 		});
 	}
 	template <typename F>
-	void iterateRLE(const std::string& seq, F callback) const
+	void iterateRLE(const ReadInfo& read, const std::string& seq, F callback) const
 	{
 		SequenceCharType currentSeq;
 		SequenceLengthType currentPos;
@@ -270,7 +481,7 @@ private:
 					break;
 				default:
 					currentPos.push_back(i);
-					callback(currentSeq, currentPos, seq);
+					callback(read, currentSeq, currentPos, seq);
 					currentSeq.clear();
 					currentPos.clear();
 					while (i < seq.size() && seq[i] != 'a' && seq[i] != 'A' && seq[i] != 'c' && seq[i] != 'C' && seq[i] != 'g' && seq[i] != 'G' && seq[i] != 't' && seq[i] != 'T') i += 1;
@@ -305,11 +516,11 @@ private:
 		if (currentSeq.size() > 0)
 		{
 			currentPos.push_back(seq.size());
-			callback(currentSeq, currentPos, seq);
+			callback(read, currentSeq, currentPos, seq);
 		}
 	}
 	template <typename F>
-	void iterateNoRLE(const std::string& seq, F callback) const
+	void iterateNoRLE(const ReadInfo& read, const std::string& seq, F callback) const
 	{
 		SequenceCharType currentSeq;
 		SequenceLengthType currentPos;
@@ -346,7 +557,7 @@ private:
 					if (currentSeq.size() > 0)
 					{
 						currentPos.push_back(i);
-						callback(currentSeq, currentPos, seq);
+						callback(read, currentSeq, currentPos, seq);
 					}
 					currentSeq.clear();
 					currentPos.clear();
@@ -355,21 +566,20 @@ private:
 		if (currentSeq.size() > 0)
 		{
 			currentPos.push_back(i);
-			callback(currentSeq, currentPos, seq);
+			callback(read, currentSeq, currentPos, seq);
 		}
 	}
 	template <typename F>
-	void iterateKmers(const SequenceCharType& seq, const std::string& rawSeq, const SequenceLengthType& poses, F callback) const
+	void iterateKmers(const ReadInfo& read, const SequenceCharType& seq, const std::string& rawSeq, const SequenceLengthType& poses, F callback) const
 	{
 		if (seq.size() < kmerSize) return;
 		// keep the same smerOrder to reduce mallocs which destroy multithreading performance
 		thread_local std::vector<std::tuple<size_t, uint64_t>> smerOrder;
 		smerOrder.resize(0);
 		std::vector<size_t> positions;
-		uint64_t minHash;
 		if (endSmers.size() > 0)
 		{
-			minHash = findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [this](uint64_t hash) { return endSmers[hash % endSmers.size()]; }, [this, &positions](size_t pos)
+			findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [this](uint64_t hash) { return endSmers[hash % endSmers.size()]; }, [this, &positions](size_t pos)
 			{
 				assert(positions.size() == 0 || pos > positions.back());
 				assert(positions.size() == 0 || pos - positions.back() <= windowSize);
@@ -378,71 +588,73 @@ private:
 		}
 		else
 		{
-			minHash = findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [](uint64_t hash) { return false; }, [this, &positions](size_t pos)
+			findSyncmerPositions(seq, kmerSize, kmerSize - windowSize + 1, smerOrder, [](uint64_t hash) { return false; }, [this, &positions](size_t pos)
 			{
 				// assert(positions.size() == 0 || pos > positions.back());
 				// assert(positions.size() == 0 || pos - positions.back() <= windowSize);
 				positions.push_back(pos);
 			});
 		}
-		callback(seq, poses, rawSeq, minHash, positions);
+		callback(read, seq, poses, rawSeq, positions);
 	}
-};
-
-template <typename F>
-void iterateReadsMultithreaded(const std::vector<std::string>& files, const size_t numThreads, F readCallback)
-{
-	std::atomic<bool> readDone;
-	readDone = false;
-	std::vector<std::thread> threads;
-	moodycamel::ConcurrentQueue<std::shared_ptr<FastQ>> sequenceQueue;
-	for (size_t i = 0; i < numThreads; i++)
+	template <typename F>
+	void iterateReadsMultithreaded(const std::vector<std::string>& files, const size_t numThreads, F readCallback) const
 	{
-		threads.emplace_back([&readDone, &sequenceQueue, readCallback, i]()
+		std::atomic<bool> readDone;
+		readDone = false;
+		std::vector<std::thread> threads;
+		moodycamel::ConcurrentQueue<std::shared_ptr<FastQ>> sequenceQueue;
+		for (size_t i = 0; i < numThreads; i++)
 		{
-			while (true)
+			threads.emplace_back([&readDone, &sequenceQueue, readCallback, i]()
 			{
-				std::shared_ptr<FastQ> read;
-				if (!sequenceQueue.try_dequeue(read))
+				while (true)
 				{
-					bool tryBreaking = readDone;
+					std::shared_ptr<FastQ> read;
 					if (!sequenceQueue.try_dequeue(read))
 					{
-						if (tryBreaking) return;
-						std::this_thread::sleep_for(std::chrono::milliseconds(10));
-						continue;
+						bool tryBreaking = readDone;
+						if (!sequenceQueue.try_dequeue(read))
+						{
+							if (tryBreaking) return;
+							std::this_thread::sleep_for(std::chrono::milliseconds(10));
+							continue;
+						}
 					}
+					assert(read != nullptr);
+					ReadInfo info;
+					info.readName = read->seq_id;
+					readCallback(info, read->sequence);
 				}
-				assert(read != nullptr);
-				readCallback(i, *read);
-			}
-		});
-	}
-	for (const std::string& filename : files)
-	{
-		std::cerr << "Reading sequences from " << filename << std::endl;
-		FastQ::streamFastqFromFile(filename, false, [&sequenceQueue](FastQ& read)
+			});
+		}
+		for (const std::string& filename : files)
 		{
-			std::shared_ptr<FastQ> ptr = std::make_shared<FastQ>();
-			std::swap(*ptr, read);
-			bool queued = sequenceQueue.try_enqueue(ptr);
-			if (queued) return;
-			size_t triedSleeping = 0;
-			while (triedSleeping < 1000)
+			std::cerr << "Reading sequences from " << filename << std::endl;
+			FastQ::streamFastqFromFile(filename, false, [&sequenceQueue](FastQ& read)
 			{
-				std::this_thread::sleep_for(std::chrono::milliseconds(10));
-				queued = sequenceQueue.try_enqueue(ptr);
+				std::shared_ptr<FastQ> ptr = std::make_shared<FastQ>();
+				std::swap(*ptr, read);
+				bool queued = sequenceQueue.try_enqueue(ptr);
 				if (queued) return;
-				triedSleeping += 1;
-			}
-			sequenceQueue.enqueue(ptr);
-		});
+				size_t triedSleeping = 0;
+				while (triedSleeping < 1000)
+				{
+					std::this_thread::sleep_for(std::chrono::milliseconds(10));
+					queued = sequenceQueue.try_enqueue(ptr);
+					if (queued) return;
+					triedSleeping += 1;
+				}
+				sequenceQueue.enqueue(ptr);
+			});
+		}
+		readDone = true;
+		for (size_t i = 0; i < threads.size(); i++)
+		{
+			threads[i].join();
+		}
 	}
-	readDone = true;
-	for (size_t i = 0; i < threads.size(); i++)
-	{
-		threads[i].join();
-	}
-}
+
+};
 
 #endif
