@@ -198,6 +198,70 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 			size_t fromClip = pos.second ? unitigs.rightClip[pos.first] : unitigs.leftClip[pos.first];
 			size_t toClip = edge.second ? unitigs.leftClip[edge.first] : unitigs.rightClip[edge.first];
 			assert(bpOverlap > fromClip + toClip);
+			consensusMaker.prepareEdgeOverlap(pos, edge, bpOverlap - fromClip - toClip);
+		}
+		pos = std::make_pair(i, false);
+		for (auto edge : unitigs.edges[pos])
+		{
+			size_t kmerOverlap = unitigs.edgeOverlap(pos, edge);
+			size_t bpOverlap = 0;
+			if (kmerOverlap == 0)
+			{
+				std::pair<size_t, bool> fromKmer = unitigs.unitigs[pos.first].back();
+				if (!pos.second) fromKmer = reverse(unitigs.unitigs[pos.first][0]);
+				std::pair<size_t, bool> toKmer = unitigs.unitigs[edge.first][0];
+				if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
+				bpOverlap = hashlist.getOverlap(fromKmer, toKmer);
+			}
+			else
+			{
+				std::pair<size_t, bool> lastKmer;
+				for (size_t i = 0; i < kmerOverlap; i++)
+				{
+					std::pair<size_t, bool> kmer = unitigs.unitigs[edge.first][i];
+					if (!edge.second) kmer = reverse(unitigs.unitigs[edge.first][unitigs.unitigs[edge.first].size() - 1 - i]);
+					bpOverlap += kmerSize;
+					if (i > 0) bpOverlap -= hashlist.getOverlap(lastKmer, kmer);
+					lastKmer = kmer;
+				}
+			}
+			size_t fromClip = pos.second ? unitigs.rightClip[pos.first] : unitigs.leftClip[pos.first];
+			size_t toClip = edge.second ? unitigs.leftClip[edge.first] : unitigs.rightClip[edge.first];
+			assert(bpOverlap > fromClip + toClip);
+			consensusMaker.prepareEdgeOverlap(pos, edge, bpOverlap - fromClip - toClip);
+		}
+	}
+	consensusMaker.allocateParent();
+	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
+	{
+		std::pair<size_t, bool> pos { i, true };
+		for (auto edge : unitigs.edges[pos])
+		{
+			size_t kmerOverlap = unitigs.edgeOverlap(pos, edge);
+			size_t bpOverlap = 0;
+			if (kmerOverlap == 0)
+			{
+				std::pair<size_t, bool> fromKmer = unitigs.unitigs[pos.first].back();
+				if (!pos.second) fromKmer = reverse(unitigs.unitigs[edge.first][0]);
+				std::pair<size_t, bool> toKmer = unitigs.unitigs[edge.first][0];
+				if (!edge.second) toKmer = reverse(unitigs.unitigs[edge.first].back());
+				bpOverlap = hashlist.getOverlap(fromKmer, toKmer);
+			}
+			else
+			{
+				std::pair<size_t, bool> lastKmer;
+				for (size_t i = 0; i < kmerOverlap; i++)
+				{
+					std::pair<size_t, bool> kmer = unitigs.unitigs[edge.first][i];
+					if (!edge.second) kmer = reverse(unitigs.unitigs[edge.first][unitigs.unitigs[edge.first].size() - 1 - i]);
+					bpOverlap += kmerSize;
+					if (i > 0) bpOverlap -= hashlist.getOverlap(lastKmer, kmer);
+					lastKmer = kmer;
+				}
+			}
+			size_t fromClip = pos.second ? unitigs.rightClip[pos.first] : unitigs.leftClip[pos.first];
+			size_t toClip = edge.second ? unitigs.leftClip[edge.first] : unitigs.rightClip[edge.first];
+			assert(bpOverlap > fromClip + toClip);
 			consensusMaker.addEdgeOverlap(pos, edge, bpOverlap - fromClip - toClip);
 		}
 		pos = std::make_pair(i, false);

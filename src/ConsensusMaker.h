@@ -46,9 +46,9 @@ public:
 			size_t expandedIndex = sequences[i].second;
 			size_t off = unitigStart + i;
 			// no find because it might mutate parent, instead rely on parent being correct already
-			auto found = parent[unitig][off];
-			assert(std::get<0>(parent[std::get<0>(found)][std::get<1>(found)]) == std::get<0>(found));
-			assert(std::get<1>(parent[std::get<0>(found)][std::get<1>(found)]) == std::get<1>(found));
+			auto found = getParent(unitig, off);
+			assert(std::get<0>(getParent(std::get<0>(found), std::get<1>(found))) == std::get<0>(found));
+			assert(std::get<1>(getParent(std::get<0>(found), std::get<1>(found))) == std::get<1>(found));
 			size_t realUnitig = std::get<0>(found);
 			size_t realOff = std::get<1>(found);
 			if (!std::get<2>(found))
@@ -89,8 +89,12 @@ public:
 			}
 		}
 	}
+	void prepareEdgeOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, size_t overlap);
+	void allocateParent();
 	void addEdgeOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, size_t overlap);
 private:
+	size_t unitigLength(size_t unitig) const;
+	std::tuple<size_t, size_t, bool> getParent(size_t unitig, size_t index) const;
 	std::tuple<size_t, size_t, bool> find(size_t unitig, size_t index);
 	void merge(size_t leftUnitig, size_t leftIndex, size_t rightUnitig, size_t rightIndex, bool fw);
 	StringIndex stringIndex;
@@ -102,6 +106,8 @@ private:
 	std::vector<TwobitLittleBigVector<uint16_t>> compressedSequences;
 	std::vector<std::pair<size_t, size_t>> needsComplementVerification;
 	mutable std::vector<std::vector<std::tuple<size_t, size_t, bool>>> parent;
+	std::vector<size_t> longestLeftOverlap;
+	std::vector<size_t> longestRightOverlap;
 };
 
 #endif
