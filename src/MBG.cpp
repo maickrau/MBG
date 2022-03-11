@@ -28,6 +28,7 @@
 #include "RankBitvector.h"
 #include "UnitigResolver.h"
 #include "UnitigHelper.h"
+#include "DumbSelect.h"
 
 struct AssemblyStats
 {
@@ -72,38 +73,38 @@ void loadReadsAsHashesMultithread(HashList& result, const size_t kmerSize, const
 	std::cerr << result.size() << " distinct selected k-mers in reads" << std::endl;
 }
 
-void updatePathRemaining(size_t& rleRemaining, size_t& expanded, bool fw, const std::vector<size_t>& expandedPoses, size_t overlap)
+void updatePathRemaining(size_t& rleRemaining, size_t& expanded, bool fw, const DumbSelect& expandedPoses, size_t overlap)
 {
 	if (rleRemaining == std::numeric_limits<size_t>::max()) return;
 	size_t zeroIndex = overlap;
-	if (!fw) zeroIndex = expandedPoses.size() - 1 - overlap;
-	if (rleRemaining < expandedPoses.size() - overlap)
+	if (!fw) zeroIndex = expandedPoses.countOnes() - 1 - overlap;
+	if (rleRemaining < expandedPoses.countOnes() - overlap)
 	{
 		size_t checkIndex = overlap + rleRemaining;
 		if (fw)
 		{
 			assert(checkIndex >= zeroIndex);
-			expanded += expandedPoses[checkIndex] - expandedPoses[zeroIndex];
+			expanded += expandedPoses.selectOne(checkIndex) - expandedPoses.selectOne(zeroIndex);
 		}
 		else
 		{
-			checkIndex = expandedPoses.size() - 1 - checkIndex;
+			checkIndex = expandedPoses.countOnes() - 1 - checkIndex;
 			assert(checkIndex <= zeroIndex);
-			expanded += expandedPoses[zeroIndex] - expandedPoses[checkIndex];
+			expanded += expandedPoses.selectOne(zeroIndex) - expandedPoses.selectOne(checkIndex);
 		}
 		rleRemaining = std::numeric_limits<size_t>::max();
 	}
 	else
 	{
-		assert(expandedPoses.size() >= overlap + 2);
-		rleRemaining -= expandedPoses.size() - 1 - overlap;
+		assert(expandedPoses.countOnes() >= overlap + 2);
+		rleRemaining -= expandedPoses.countOnes() - 1 - overlap;
 		if (fw)
 		{
-			expanded += expandedPoses.back() - expandedPoses[overlap];
+			expanded += expandedPoses.selectOne(expandedPoses.countOnes()-1) - expandedPoses.selectOne(overlap);
 		}
 		else
 		{
-			expanded += expandedPoses[expandedPoses.size()-1-overlap];
+			expanded += expandedPoses.selectOne(expandedPoses.countOnes()-1-overlap);
 		}
 		assert(rleRemaining > 0);
 	}
@@ -112,15 +113,24 @@ void updatePathRemaining(size_t& rleRemaining, size_t& expanded, bool fw, const 
 void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const std::vector<ReadPath>& readPaths, const size_t kmerSize, const std::string& outputSequencePaths, const std::string& nodeNamePrefix)
 {
 	std::ofstream outPaths { outputSequencePaths };
-	std::vector<std::vector<size_t>> unitigExpandedPoses;
-	unitigExpandedPoses.resize(unitigSequences.size());
-	for (size_t i = 0; i < unitigExpandedPoses.size(); ++i)
+	std::vector<DumbSelect> unitigExpandedPoses;
+	unitigExpandedPoses.reserve(unitigSequences.size());
+	for (size_t i = 0; i < unitigSequences.size(); ++i)
 	{
-		unitigExpandedPoses[i].push_back(0);
+		size_t sizeHere = 0;
 		for (size_t j = 0; j < unitigSequences[i].compressedSize(); j++)
 		{
-			unitigExpandedPoses[i].push_back(unitigExpandedPoses[i].back() + unitigSequences[i].getExpandedStr(j, stringIndex).size());
+			sizeHere += unitigSequences[i].getExpandedStr(j, stringIndex).size();
 		}
+		unitigExpandedPoses.emplace_back(sizeHere+1);
+		size_t posNow = 0;
+		for (size_t j = 0; j < unitigSequences[i].compressedSize(); j++)
+		{
+			posNow += unitigSequences[i].getExpandedStr(j, stringIndex).size();
+			unitigExpandedPoses.back().bitvector.set(posNow, true);
+		}
+		assert(posNow == sizeHere);
+		unitigExpandedPoses.back().build();
 	}
 	for (const auto& path : readPaths)
 	{

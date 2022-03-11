@@ -25,6 +25,7 @@ size_t RankBitvector::size() const
 void RankBitvector::set(size_t index, bool value)
 {
 	assert(!ranksBuilt);
+	assert(index < realSize);
 	size_t chunk = index / BitsPerChunk;
 	size_t offset = index % BitsPerChunk;
 	if (value)
