@@ -1139,13 +1139,13 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 				if (j > 0)
 				{
 					start = runningKmerStartPos;
-					assert(start == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j }));
+					// assert(start == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j }));
 					assert(start >= overlap);
 					start -= overlap;
 				}
 				nodePosStarts.push_back(start);
 				size_t end = runningKmerEndPos;
-				assert(end == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j + 1 }));
+				// assert(end == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j + 1 }));
 				nodePosEnds.push_back(end);
 				continue;
 			}
@@ -1163,7 +1163,7 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 			if (j > 0 && newEdgeNodes.count(std::make_pair(reverse(readPaths[i].path[j]), reverse(readPaths[i].path[j-1]))) == 1)
 			{
 				size_t start = runningKmerStartPos;
-				assert(start == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j }));
+				// assert(start == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j }));
 				if (!actuallyResolvables.get(readPaths[i].path[j-1].first))
 				{
 					assert(start >= overlap);
@@ -1176,7 +1176,7 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 				}
 				nodePosStarts.push_back(start);
 				size_t end = runningKmerEndPos;
-				assert(end == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j + 1 }));
+				// assert(end == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j + 1 }));
 				nodePosEnds.push_back(end);
 				newPath.path.emplace_back(newEdgeNodes.at(std::make_pair(reverse(readPaths[i].path[j]), reverse(readPaths[i].path[j-1]))), false);
 			}
@@ -1186,18 +1186,18 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 				if (j > 0)
 				{
 					start = runningKmerStartPos;
-					assert(start == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j }));
+					// assert(start == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j }));
 					assert(start >= overlap);
 					start -= overlap;
 				}
 				nodePosStarts.push_back(start);
 				size_t end = runningKmerEndPos;
-				assert(end == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j + 1 }));
+				// assert(end == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j + 1 }));
 				if (actuallyResolvables.get(readPaths[i].path[j+1].first))
 				{
 					end += resolvableGraph.unitigs[readPaths[i].path[j+1].first].size();
 					end -= resolvableGraph.overlaps.at(canon(readPaths[i].path[j], readPaths[i].path[j+1]));
-					assert(end == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j + 2 }));
+					// assert(end == getNumberOfHashes(resolvableGraph, 0, 0, std::vector<std::pair<size_t, bool>> { readPaths[i].path.begin(), readPaths[i].path.begin() + j + 2 }));
 				}
 				nodePosEnds.push_back(end);
 				newPath.path.emplace_back(newEdgeNodes.at(std::make_pair(readPaths[i].path[j], readPaths[i].path[j+1])), true);
