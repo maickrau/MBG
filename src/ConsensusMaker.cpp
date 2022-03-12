@@ -173,15 +173,35 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 		auto found = find(pair.first, pair.second);
 		assert(complement(compressedSequences[std::get<0>(found)].get(std::get<1>(found))) == compressedSequences[std::get<0>(found)].get(std::get<1>(found)));
 	}
+	for (size_t i = 0; i < simpleCounts.size(); i++)
+	{
+		for (size_t j = 0; j < simpleCounts[i].size(); j++)
+		{
+			auto found = find(i, j);
+			size_t realI = std::get<0>(found);
+			size_t realJ = std::get<1>(found);
+			if (realI != i || realJ != j)
+			{
+				compressedSequences[i].set(j, compressedSequences[realI].get(realJ));
+				if (!std::get<2>(found))
+				{
+					compressedSequences[i].set(j, complement(compressedSequences[i].get(j)));
+				}
+			}
+			else
+			{
+				assert(std::get<2>(found));
+			}
+		}
+	}
 	stringIndex.buildReverseIndex();
 	std::vector<CompressedSequenceType> result;
-	result.reserve(simpleCounts.size());
+	result.resize(simpleCounts.size());
 	for (size_t i = 0; i < simpleCounts.size(); i++)
 	{
 		std::vector<uint8_t> simpleExpanded;
 		simpleExpanded.resize(simpleCounts[i].size(), 0);
-		CompressedSequenceType compressedSequence;
-		compressedSequence.resize(simpleExpanded.size());
+		result[i].setCompressedAndClearInputVectorAndResizeExpanded(compressedSequences[i]);
 		for (size_t j = 0; j < simpleCounts[i].size(); j++)
 		{
 			auto found = find(i, j);
@@ -189,6 +209,7 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 			size_t realJ = std::get<1>(found);
 			size_t maxCount = simpleCounts[realI][realJ].second;
 			uint32_t maxIndex = simpleCounts[realI][realJ].first;
+			uint16_t compressed = result[i].getCompressed(j);
 			if (complexCounts.count(realI) == 1)
 			{
 				if (complexCounts.at(realI).count(realJ) == 1)
@@ -199,24 +220,21 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 						uint32_t count = pair.second;
 						if (index == simpleCounts[realI][realJ].first) count += (uint32_t)(simpleCounts[realI][realJ].second);
 						if (count < maxCount) continue;
-						if (count == maxCount && stringIndex.getString(compressedSequences[realI].get(realJ), index) < stringIndex.getString(compressedSequences[realI].get(realJ), maxIndex)) continue;
+						if (count == maxCount && stringIndex.getString(compressed, index) < stringIndex.getString(compressed, maxIndex)) continue;
 						maxIndex = index;
 						maxCount = count;
 					}
 				}
 			}
-			uint16_t compressed = compressedSequences[realI].get(realJ);
 			if (!std::get<2>(found))
 			{
 				maxIndex = stringIndex.getReverseIndex(compressed, maxIndex);
-				compressed = complement(compressed);
 			}
 			assert(maxCount > 0);
-			assert(stringIndex.getString(compressedSequences[realI].get(realJ), maxIndex) != "");
-			compressedSequence.setCompressed(j, compressed);
-			compressedSequence.setExpanded(j, maxIndex);
+			assert(stringIndex.getString(compressed, maxIndex) != "");
+			result[i].setCompressed(j, compressed);
+			result[i].setExpanded(j, maxIndex);
 		}
-		result.emplace_back(std::move(compressedSequence));
 	}
 	assert(result.size() == compressedSequences.size());
 	return std::make_pair(std::move(result), stringIndex);

@@ -144,3 +144,10 @@ std::vector<uint16_t> CompressedSequence::compressedSubstr(size_t start, size_t 
 	}
 	return result;
 }
+
+void CompressedSequence::setCompressedAndClearInputVectorAndResizeExpanded(TwobitLittleBigVector<uint16_t>& compressed)
+{
+	std::swap(compressed, this->compressed);
+	simpleExpanded.resize(this->compressed.size());
+	assert(this->compressed.size() == this->simpleExpanded.size());
+}

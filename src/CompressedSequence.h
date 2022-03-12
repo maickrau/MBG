@@ -14,6 +14,7 @@ public:
 	CompressedSequence() = default;
 	CompressedSequence(TwobitLittleBigVector<uint16_t>&& compressed, std::vector<uint8_t>&& simpleExpanded, std::vector<std::pair<uint32_t, uint32_t>>&& complexExpanded);
 	void setCompressed(size_t i, uint16_t c);
+	void setCompressedAndClearInputVectorAndResizeExpanded(TwobitLittleBigVector<uint16_t>& compressed); // try not to use this if possible
 	uint16_t getCompressed(size_t i) const;
 	uint32_t getExpanded(size_t i) const;
 	std::string getExpandedStr(size_t i, const StringIndex& index) const;
