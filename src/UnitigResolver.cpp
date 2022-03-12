@@ -15,7 +15,7 @@ public:
 	class Read
 	{
 	public:
-		std::string readName;
+		size_t readNameIndex;
 		std::vector<size_t> readPoses;
 		size_t expandedReadPosStart;
 		size_t expandedReadPosEnd;
@@ -104,6 +104,7 @@ public:
 		return precalcedUnitigLengths[i];
 	}
 	const HashList& hashlist;
+	std::vector<std::string> readNames;
 private:
 	const size_t kmerSize;
 };
@@ -461,7 +462,7 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolvableToUnitigs(const Resolvab
 		{
 			resultReads.emplace_back();
 			resultReads.back().path = fixPath;
-			resultReads.back().readName = read.readName;
+			resultReads.back().readName = resolvableGraph.readNames[read.readNameIndex];
 			resultReads.back().readPoses = read.readPoses;
 			resultReads.back().expandedReadPosStart = read.expandedReadPosStart;
 			resultReads.back().expandedReadPosEnd = read.expandedReadPosEnd;
@@ -1302,7 +1303,7 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 					path.reads.back().leftClip -= leftClipRemove;
 					assert(path.reads.back().rightClip >= rightClipRemove);
 					path.reads.back().rightClip -= rightClipRemove;
-					path.reads.back().readName = read.readName;
+					path.reads.back().readNameIndex = read.readNameIndex;
 					path.reads.back().readLength = read.readLength;
 					path.reads.back().readLengthHPC = read.readLengthHPC;
 				}
@@ -1350,7 +1351,7 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 			path.reads.back().leftClip -= leftClipRemove;
 			assert(path.reads.back().rightClip >= rightClipRemove);
 			path.reads.back().rightClip -= rightClipRemove;
-			path.reads.back().readName = read.readName;
+			path.reads.back().readNameIndex = read.readNameIndex;
 			path.reads.back().readLength = read.readLength;
 			path.reads.back().readLengthHPC = read.readLengthHPC;
 		}
@@ -1960,7 +1961,7 @@ void removeNode(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& 
 					path.reads.back().leftClip -= leftClipRemove;
 					assert(path.reads.back().rightClip >= rightClipRemove);
 					path.reads.back().rightClip -= rightClipRemove;
-					path.reads.back().readName = read.readName;
+					path.reads.back().readNameIndex = read.readNameIndex;
 					path.reads.back().readLength = read.readLength;
 					path.reads.back().readLengthHPC = read.readLengthHPC;
 				}
@@ -2012,7 +2013,7 @@ void removeNode(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& 
 				path.reads.back().leftClip -= leftClipRemove;
 				assert(path.reads.back().rightClip >= rightClipRemove);
 				path.reads.back().rightClip -= rightClipRemove;
-				path.reads.back().readName = read.readName;
+				path.reads.back().readNameIndex = read.readNameIndex;
 				path.reads.back().readLength = read.readLength;
 				path.reads.back().readLengthHPC = read.readLengthHPC;
 			}
@@ -2477,8 +2478,9 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 		assert(readPaths.size() > 0);
 		assert(readPaths.back().path.size() > 0);
 		assert(readPaths.back().path == rawReadPaths[i].path);
+		resolvableGraph.readNames.emplace_back(rawReadPaths[i].readName);
 		readPaths.back().reads.emplace_back();
-		readPaths.back().reads.back().readName = rawReadPaths[i].readName;
+		readPaths.back().reads.back().readNameIndex = resolvableGraph.readNames.size()-1;
 		readPaths.back().reads.back().readPoses = rawReadPaths[i].readPoses;
 		readPaths.back().reads.back().expandedReadPosStart = rawReadPaths[i].expandedReadPosStart;
 		readPaths.back().reads.back().expandedReadPosEnd = rawReadPaths[i].expandedReadPosEnd;
