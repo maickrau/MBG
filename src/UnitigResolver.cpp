@@ -523,10 +523,9 @@ void addPath(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& rea
 {
 	assert(newPath.path.size() > 0);
 	assert(newPath.reads.size() > 0);
-	size_t pathHashCount = getNumberOfHashes(resolvableGraph, 0, 0, newPath.path);
 	for (const auto& read : newPath.reads)
 	{
-		assert(read.leftClip + read.rightClip + read.readPoses.size() == pathHashCount);
+		// assert(read.leftClip + read.rightClip + read.readPoses.size() == getNumberOfHashes(resolvableGraph, 0, 0, newPath.path));
 		if (newPath.path.size() == 1)
 		{
 			assert(resolvableGraph.unitigs[newPath.path[0].first].size() > read.leftClip + read.rightClip);
