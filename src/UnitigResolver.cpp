@@ -43,7 +43,7 @@ public:
 	VectorWithDirection<phmap::flat_hash_set<std::pair<size_t, bool>>> edges;
 	phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t> overlaps;
 	std::vector<bool> unitigRemoved;
-	std::vector<phmap::flat_hash_set<size_t>> readsCrossingNode;
+	std::vector<phmap::flat_hash_set<uint32_t>> readsCrossingNode;
 	std::vector<size_t> everTippable;
 	size_t lastTippableChecked;
 	mutable std::vector<size_t> precalcedUnitigLengths;
@@ -112,7 +112,7 @@ private:
 void compact(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& paths, std::vector<size_t>& queueNodes)
 {
 	{
-		std::vector<phmap::flat_hash_set<size_t>> tmp;
+		std::vector<phmap::flat_hash_set<uint32_t>> tmp;
 		std::swap(resolvableGraph.readsCrossingNode, tmp);
 	}
 	RankBitvector kept { resolvableGraph.unitigs.size() };
