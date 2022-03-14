@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cassert>
+#include <limits>
 #include "Serializer.h"
 
 namespace Serializer
