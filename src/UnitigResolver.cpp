@@ -897,7 +897,7 @@ std::vector<std::pair<std::vector<std::pair<size_t, bool>>, size_t>> unitigifySe
 	std::vector<std::pair<std::vector<std::pair<size_t, bool>>, size_t>> result;
 	for (auto node : unitigifiable)
 	{
-		assert(!resolvableGraph.unitigRemoved[node]);
+		if (resolvableGraph.unitigRemoved[node]) continue;
 		if (inUnitig.count(node) == 1) continue;
 		auto newUnitig = getUnitigPath(resolvableGraph, node);
 		if (newUnitig.size() >= 2)
