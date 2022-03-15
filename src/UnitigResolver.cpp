@@ -2465,6 +2465,9 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 			for (auto pair : maybeTrimmable)
 			{
 				assert(!resolvableGraph.unitigRemoved[pair.first.first]);
+			}
+			for (auto pair : maybeTrimmable)
+			{
 				maybeTrim(resolvableGraph, readPaths, kmerSize, pair.first, pair.second);
 			}
 		}
