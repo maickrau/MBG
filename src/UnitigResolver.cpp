@@ -9,6 +9,8 @@
 #include "ReadHelper.h"
 #include "BigVectorSet.h"
 
+#define assertPrintReads(expression, graph, paths, node) {if (!(expression)) {printReads(graph, paths, node);} assert(expression);}
+
 class PathGroup
 {
 public:
@@ -108,6 +110,48 @@ public:
 private:
 	const size_t kmerSize;
 };
+
+void printReads(const ResolvableUnitigGraph& graph, const std::vector<PathGroup>& paths, size_t node)
+{
+	std::unordered_set<size_t> closeReads;
+	std::unordered_set<size_t> semiCloseReads;
+	std::cerr << "around center node " << node << std::endl;
+	for (auto readi : graph.readsCrossingNode[node])
+	{
+		for (auto read : paths[readi].reads)
+		{
+			if (closeReads.count(read.readNameIndex) == 1) continue;
+			std::cerr << "Read close to assertion: " << graph.readNames[read.readNameIndex] << std::endl;
+			closeReads.insert(read.readNameIndex);
+		}
+	}
+	for (auto edge : graph.edges[std::make_pair(node, true)])
+	{
+		std::cerr << "around edge node " << edge.first << std::endl;
+		for (auto readi : graph.readsCrossingNode[edge.first])
+		{
+			for (auto read : paths[readi].reads)
+			{
+				if (closeReads.count(read.readNameIndex) == 1 || semiCloseReads.count(read.readNameIndex) == 1) continue;
+				std::cerr << "Read semi-close to assertion: " << graph.readNames[read.readNameIndex] << std::endl;
+				semiCloseReads.insert(read.readNameIndex);
+			}
+		}
+	}
+	for (auto edge : graph.edges[std::make_pair(node, false)])
+	{
+		std::cerr << "around edge node " << edge.first << std::endl;
+		for (auto readi : graph.readsCrossingNode[edge.first])
+		{
+			for (auto read : paths[readi].reads)
+			{
+				if (closeReads.count(read.readNameIndex) == 1 || semiCloseReads.count(read.readNameIndex) == 1) continue;
+				std::cerr << "Read semi-close to assertion: " << graph.readNames[read.readNameIndex] << std::endl;
+				semiCloseReads.insert(read.readNameIndex);
+			}
+		}
+	}
+}
 
 void compact(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& paths, std::vector<size_t>& queueNodes)
 {
@@ -334,6 +378,78 @@ size_t getNumberOfHashes(const ResolvableUnitigGraph& resolvableGraph, size_t le
 
 std::pair<UnitigGraph, std::vector<ReadPath>> resolvableToUnitigs(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths)
 {
+	{
+		std::vector<std::vector<size_t>> coverages;
+		coverages.resize(resolvableGraph.unitigs.size());
+		for (size_t i = 0; i < resolvableGraph.unitigs.size(); i++)
+		{
+			coverages[i].resize(resolvableGraph.unitigs[i].size(), 0);
+		}
+		for (const auto& path : readPaths)
+		{
+			if (path.path.size() == 0) continue;
+			for (size_t i = 0; i < path.path.size(); i++)
+			{
+				assert(path.path[i].first < resolvableGraph.unitigs.size());
+				assert(!resolvableGraph.unitigRemoved[path.path[i].first]);
+			}
+			for (size_t i = 1; i < path.path.size(); i++)
+			{
+				assert(resolvableGraph.edges[path.path[i-1]].count(path.path[i]) == 1);
+				assert(resolvableGraph.edges[reverse(path.path[i])].count(reverse(path.path[i-1])) == 1);
+			}
+			size_t pathHashCount = getNumberOfHashes(resolvableGraph, 0, 0, path.path);
+			if (path.path.size() == 1)
+			{
+				for (const auto& read : path.reads)
+				{
+					assert(read.leftClip + read.rightClip + read.readPoses.size() == pathHashCount);
+					assert(read.leftClip + read.rightClip < resolvableGraph.unitigs[path.path[0].first].size());
+					for (size_t i = read.leftClip; i < resolvableGraph.unitigs[path.path[0].first].size() - read.rightClip; i++)
+					{
+						size_t index = i;
+						if (!path.path[0].second) index = resolvableGraph.unitigs[path.path[0].first].size() - i - 1;
+						coverages[path.path[0].first][index] += 1;
+					}
+				}
+				continue;
+			}
+			assert(path.path.size() >= 2);
+			for (size_t i = 1; i < path.path.size()-1; i++)
+			{
+				for (size_t j = 0; j < resolvableGraph.unitigs[path.path[i].first].size(); j++)
+				{
+					coverages[path.path[i].first][j] += path.reads.size();
+				}
+			}
+			for (const auto& read : path.reads)
+			{
+				assert(read.leftClip + read.rightClip + read.readPoses.size() == pathHashCount);
+				assert(read.leftClip < resolvableGraph.unitigs[path.path[0].first].size());
+				for (size_t i = read.leftClip; i < resolvableGraph.unitigs[path.path[0].first].size(); i++)
+				{
+					size_t index = i;
+					if (!path.path[0].second) index = resolvableGraph.unitigs[path.path[0].first].size() - i - 1;
+					coverages[path.path[0].first][index] += 1;
+				}
+				assert(read.rightClip < resolvableGraph.unitigs[path.path.back().first].size());
+				for (size_t i = 0; i < resolvableGraph.unitigs[path.path.back().first].size() - read.rightClip; i++)
+				{
+					size_t index = i;
+					if (!path.path.back().second) index = resolvableGraph.unitigs[path.path.back().first].size() - i - 1;
+					coverages[path.path.back().first][index] += 1;
+				}
+			}
+		}
+		for (size_t i = 0; i < coverages.size(); i++)
+		{
+			if (resolvableGraph.unitigRemoved[i]) continue;
+			for (size_t j = 0; j < coverages[i].size(); j++)
+			{
+				assertPrintReads(coverages[i][j] > 0, resolvableGraph, readPaths, i);
+			}
+		}
+	}
 	for (const auto& path : readPaths)
 	{
 		if (path.path.size() == 0) continue;
@@ -1866,7 +1982,7 @@ void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<PathGro
 		if (graph.unitigRemoved[i]) continue;
 		for (size_t j = 0; j < coverages[i].size(); j++)
 		{
-			assert(coverages[i][j] > 0);
+			assertPrintReads(coverages[i][j] > 0, graph, readPaths, i);
 		}
 	}
 }
@@ -2191,7 +2307,7 @@ bool canTrimRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGr
 		{
 			// todo: this might actually be trimmable, but it's hard so don't try for now
 			if (overlap == resolvableGraph.unitigs[pos.first].size()) return false;
-			assert(overlap < resolvableGraph.unitigs[pos.first].size());
+			assertPrintReads(overlap < resolvableGraph.unitigs[pos.first].size(), resolvableGraph, readPaths, pos.first);
 			size_t trimThere = overlap - (resolvableGraph.unitigs[pos.first].size() - trimAmount) + 1;
 			assert(trimThere <= trimAmount);
 			assert(trimThere < resolvableGraph.unitigs[edge.first].size());
@@ -2300,8 +2416,9 @@ void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& r
 {
 	if (maxTrim == 0) return;
 	if (resolvableGraph.edges[pos].size() > 0) return;
+	assertPrintReads(!resolvableGraph.unitigRemoved[pos.first], resolvableGraph, readPaths, pos.first);
 	size_t maxReadTrim = resolvableGraph.unitigs[pos.first].size();
-	assert(resolvableGraph.readsCrossingNode[pos.first].size() > 0);
+	assertPrintReads(resolvableGraph.readsCrossingNode[pos.first].size() > 0, resolvableGraph, readPaths, pos.first);
 	for (const size_t i : resolvableGraph.readsCrossingNode[pos.first])
 	{
 		for (size_t j = 0; j < readPaths[i].path.size(); j++)
@@ -2329,18 +2446,23 @@ void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& r
 		if (maxReadTrim == 0) break;
 	}
 	if (maxReadTrim == 0) return;
-	assert(maxReadTrim <= maxTrim);
+	assertPrintReads(maxReadTrim <= maxTrim, resolvableGraph, readPaths, pos.first);
 	if (!canTrimRecursive(resolvableGraph, readPaths, pos, maxReadTrim))
 	{
 		std::cout << "removed trim problem node " << pos.first << std::endl;
 		std::vector<std::pair<std::pair<size_t, bool>, size_t>> alsoTrim;
 		for (auto edge : resolvableGraph.edges[reverse(pos)])
 		{
-			alsoTrim.emplace_back(reverse(edge), resolvableGraph.overlaps.at(canon(reverse(pos), edge)));
+			assertPrintReads(resolvableGraph.edges[reverse(edge)].count(pos) == 1, resolvableGraph, readPaths, pos.first);
+			assertPrintReads(resolvableGraph.readsCrossingNode[edge.first].size() > 0, resolvableGraph, readPaths, pos.first);
+			size_t overlap = resolvableGraph.overlaps.at(canon(reverse(pos), edge));
+			if (overlap == 0) continue;
+			alsoTrim.emplace_back(reverse(edge), overlap);
 		}
 		removeNode(resolvableGraph, readPaths, pos.first);
 		for (auto pair : alsoTrim)
 		{
+			if (resolvableGraph.unitigRemoved[pair.first.first]) continue;
 			maybeTrim(resolvableGraph, readPaths, kmerSize, pair.first, pair.second);
 		}
 		return;
@@ -2464,10 +2586,11 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 			});
 			for (auto pair : maybeTrimmable)
 			{
-				assert(!resolvableGraph.unitigRemoved[pair.first.first]);
+				assertPrintReads(!resolvableGraph.unitigRemoved[pair.first.first], resolvableGraph, readPaths, pair.first.first);
 			}
 			for (auto pair : maybeTrimmable)
 			{
+				if (resolvableGraph.unitigRemoved[pair.first.first]) continue;
 				maybeTrim(resolvableGraph, readPaths, kmerSize, pair.first, pair.second);
 			}
 		}
