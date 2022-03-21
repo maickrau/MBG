@@ -25,6 +25,7 @@ int main(int argc, char** argv)
 		("R,resolve-maxk-allowgaps", "Allow multiplex resolution to add gaps up to this k-mer size", cxxopts::value<size_t>())
 		("node-name-prefix", "Add a prefix to output node names", cxxopts::value<std::string>())
 		("sequence-cache-file", "Use a temporary sequence cache file to speed up graph construction", cxxopts::value<std::string>())
+		("keep-gaps", "Don't remove low coverage nodes if it would leave a gap in the graph")
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
@@ -83,12 +84,14 @@ int main(int argc, char** argv)
 	ErrorMasking errorMasking = ErrorMasking::Hpc;
 	bool blunt = false;
 	bool includeEndKmers = false;
+	bool keepGaps = false;
 	std::string errorMaskingStr = "hpc";
 	std::string nodeNamePrefix = "";
 	std::string sequenceCacheFile = "";
 	if (params.count("r") == 1) maxResolveLength = params["r"].as<size_t>();
 	if (params.count("R") == 1) maxUnconditionalResolveLength = params["R"].as<size_t>();
 	if (params.count("blunt") == 1) blunt = true;
+	if (params.count("keep-gaps") == 1) keepGaps = true;
 	if (params.count("error-masking") == 1)
 	{
 		errorMaskingStr = params["error-masking"].as<std::string>();
@@ -187,5 +190,5 @@ int main(int argc, char** argv)
 	std::cerr << "cache=" << (sequenceCacheFile.size() > 0 ? "yes" : "no");
 	std::cerr << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix, sequenceCacheFile);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix, sequenceCacheFile, keepGaps);
 }
