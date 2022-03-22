@@ -319,7 +319,7 @@ private:
 	const ResolvableUnitigGraph& resolvableGraph;
 };
 
-ResolvableUnitigGraph getUnitigs(const UnitigGraph& initial, size_t minCoverage, const HashList& hashlist, const size_t kmerSize)
+ResolvableUnitigGraph getUnitigs(const UnitigGraph& initial, size_t minCoverage, const HashList& hashlist, const size_t kmerSize, const bool keepGaps)
 {
 	ResolvableUnitigGraph result { hashlist, kmerSize };
 	result.unitigs.resize(initial.unitigs.size());
@@ -328,26 +328,59 @@ ResolvableUnitigGraph getUnitigs(const UnitigGraph& initial, size_t minCoverage,
 	result.unitigRemoved.resize(initial.unitigs.size(), false);
 	result.edges.resize(initial.unitigs.size());
 	result.readsCrossingNode.resize(initial.unitigs.size());
+	std::vector<std::pair<size_t, bool>> checkKeepTips;
 	for (size_t i = 0; i < initial.unitigs.size(); i++)
 	{
 		result.unitigs[i].insert(result.unitigs[i].end(), initial.unitigs[i].begin(), initial.unitigs[i].end());
 		std::pair<size_t, bool> fw { i, true };
+		bool keepCheck = false;
 		for (auto pair : initial.edgeCov[fw])
 		{
-			if (pair.second < minCoverage) continue;
+			if (pair.second < minCoverage)
+			{
+				keepCheck = true;
+				continue;
+			}
 			auto canonpair = canon(fw, pair.first);
 			result.overlaps[canonpair] = 0;
 			result.edges[fw].emplace(pair.first);
 			result.edges[reverse(pair.first)].emplace(reverse(fw));
 		}
+		if (keepCheck) checkKeepTips.push_back(fw);
 		std::pair<size_t, bool> bw { i, false };
+		keepCheck = false;
 		for (auto pair : initial.edgeCov[bw])
 		{
-			if (pair.second < minCoverage) continue;
+			if (pair.second < minCoverage)
+			{
+				keepCheck = true;
+				continue;
+			}
 			auto canonpair = canon(bw, pair.first);
 			result.overlaps[canonpair] = 0;
 			result.edges[bw].emplace(pair.first);
 			result.edges[reverse(pair.first)].emplace(reverse(bw));
+		}
+		if (keepCheck) checkKeepTips.push_back(bw);
+	}
+	if (keepGaps)
+	{
+		std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> addEdges;
+		for (auto tip : checkKeepTips)
+		{
+			if (result.edges[tip].size() != 0) continue;
+			for (auto pair : initial.edgeCov[tip])
+			{
+				if (result.edges[reverse(pair.first)].size() != 0) continue;
+				auto canonpair = canon(tip, pair.first);
+				addEdges.emplace_back(canonpair);
+			}
+		}
+		for (auto pair : addEdges)
+		{
+			result.overlaps[pair] = 0;
+			result.edges[pair.first].emplace(pair.second);
+			result.edges[reverse(pair.second)].emplace(reverse(pair.first));
 		}
 	}
 	return result;
@@ -2650,9 +2683,9 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 	}
 }
 
-std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength)
+std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps)
 {
-	auto resolvableGraph = getUnitigs(initial, minCoverage, hashlist, kmerSize);
+	auto resolvableGraph = getUnitigs(initial, minCoverage, hashlist, kmerSize, keepGaps);
 	std::cerr << rawReadPaths.size() << " raw read paths" << std::endl;
 	// todo maybe fix? or does it matter?
 	cutRemovedEdgesFromPaths(resolvableGraph, rawReadPaths);
