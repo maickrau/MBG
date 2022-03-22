@@ -513,7 +513,6 @@ void keepTipGaps(RankBitvector& kept, const SparseEdgeContainer& edges, const Ha
 			newlyTipped += 1;
 		}
 	}
-	std::cerr << newlyTipped << " tips created" << std::endl;
 	std::unordered_set<size_t> newlyKept;
 	size_t keptCheck = 0;
 	for (size_t i = 0; i < hashlist.size(); i++)
@@ -540,8 +539,6 @@ void keepTipGaps(RankBitvector& kept, const SparseEdgeContainer& edges, const Ha
 			}
 		}
 	}
-	std::cerr << keptCheck << " tips checked for keeping" << std::endl;
-	std::cerr << "re-inserted " << newlyKept.size() << " nodes to prevent gaps" << std::endl;
 	for (auto node : newlyKept)
 	{
 		assert(!kept.get(node));

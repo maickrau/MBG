@@ -1,7 +1,6 @@
 #include <unordered_set>
 #include <cassert>
 #include <phmap.h>
-#include <iostream>
 #include "MBGCommon.h"
 #include "UnitigGraph.h"
 
@@ -232,7 +231,6 @@ void UnitigGraph::keepTipGaps(RankBitvector& kept) const
 			newlyTipped += 1;
 		}
 	}
-	std::cerr << newlyTipped << " tips created" << std::endl;
 	std::unordered_set<size_t> newlyKept;
 	size_t keptCheck = 0;
 	for (size_t i = 0; i < unitigs.size(); i++)
@@ -259,8 +257,6 @@ void UnitigGraph::keepTipGaps(RankBitvector& kept) const
 			}
 		}
 	}
-	std::cerr << keptCheck << " tips checked for keeping" << std::endl;
-	std::cerr << "re-inserted " << newlyKept.size() << " nodes to prevent gaps" << std::endl;
 	for (auto node : newlyKept)
 	{
 		assert(!kept.get(node));
