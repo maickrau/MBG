@@ -75,10 +75,13 @@ void RankBitvector::buildRanks()
 
 size_t RankBitvector::getRank(size_t index) const
 {
+	assert(index < size());
 	assert(ranksBuilt);
 	size_t chunk = index / BitsPerChunk;
 	size_t offset = index % BitsPerChunk;
 	uint64_t mask = ((uint64_t)1 << (uint64_t)offset) - 1;
+	assert(chunk < bits.size());
+	assert(chunk < smallRanks.size());
 	size_t chunkSum = popcount(bits[chunk] & mask);
 	size_t bigChunk = chunk / SmallRanksPerBig;
 	return chunkSum + smallRanks[chunk] + bigRanks[bigChunk];

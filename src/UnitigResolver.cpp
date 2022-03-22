@@ -176,7 +176,14 @@ void compact(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& pat
 		}
 		resolvableGraph.everTippable[i] = kept.getRank(resolvableGraph.everTippable[i]);
 	}
-	resolvableGraph.lastTippableChecked = kept.getRank(resolvableGraph.lastTippableChecked);
+	if (resolvableGraph.lastTippableChecked < resolvableGraph.unitigs.size())
+	{
+		resolvableGraph.lastTippableChecked = kept.getRank(resolvableGraph.lastTippableChecked);
+	}
+	else
+	{
+		resolvableGraph.lastTippableChecked = newSize;
+	}
 	{
 		std::vector<size_t> newPrecalcedUnitigLengths;
 		newPrecalcedUnitigLengths.resize(newSize, 0);
