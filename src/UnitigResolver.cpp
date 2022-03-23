@@ -1762,8 +1762,35 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 		{
 			const std::pair<size_t, bool> before = triplet.first;
 			const std::pair<size_t, bool> after = triplet.second;
-			if (before.first == std::numeric_limits<size_t>::max()) continue;
-			if (after.first == std::numeric_limits<size_t>::max()) continue;
+			assert(before.first != std::numeric_limits<size_t>::max() || after.first != std::numeric_limits<size_t>::max());
+			if (before.first == std::numeric_limits<size_t>::max())
+			{
+				assert(after.first != std::numeric_limits<size_t>::max());
+				assert(newEdgeNodes.count(std::make_pair(pos, after)) == 1 || newEdgeNodes.count(std::make_pair(reverse(after), reverse(pos))) == 1);
+				if (newEdgeNodes.count(std::make_pair(pos, after)) == 1)
+				{
+					result.maybeTrimmable[std::make_pair(newEdgeNodes.at(std::make_pair(pos, after)), false)] = resolvableGraph.unitigs[node].size();
+				}
+				else
+				{
+					result.maybeTrimmable[std::make_pair(newEdgeNodes.at(std::make_pair(reverse(after), reverse(pos))), true)] = resolvableGraph.unitigs[node].size();
+				}
+				continue;
+			}
+			if (after.first == std::numeric_limits<size_t>::max())
+			{
+				assert(before.first != std::numeric_limits<size_t>::max());
+				assert(newEdgeNodes.count(std::make_pair(reverse(pos), reverse(before))) == 1 || newEdgeNodes.count(std::make_pair(before, pos)) == 1);
+				if (newEdgeNodes.count(std::make_pair(before, pos)) == 1)
+				{
+					result.maybeTrimmable[std::make_pair(newEdgeNodes.at(std::make_pair(before, pos)), true)] = resolvableGraph.unitigs[node].size();
+				}
+				else
+				{
+					result.maybeTrimmable[std::make_pair(newEdgeNodes.at(std::make_pair(reverse(pos), reverse(before))), false)] = resolvableGraph.unitigs[node].size();
+				}
+				continue;
+			}
 			std::pair<size_t, bool> leftNode = before;
 			std::pair<size_t, bool> rightNode = after;
 			size_t overlap = resolvableGraph.unitigs[node].size();
