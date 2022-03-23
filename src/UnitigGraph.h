@@ -30,8 +30,13 @@ public:
 	UnitigGraph filterNodes(const RankBitvector& kept) const;
 	size_t numNodes() const;
 	size_t numEdges() const;
-	UnitigGraph filterUnitigsByCoverage(const double filter);
+	UnitigGraph filterUnitigsByCoverage(const double filter, const bool keepGaps);
 	void sort(const std::vector<size_t>& kmerMapping);
+private:
+	bool isTipGap(const RankBitvector& kept, const std::pair<size_t, bool> start) const;
+	void keepReachableNewTips(const RankBitvector& kept, const VectorWithDirection<bool>& newlyTip, const std::pair<size_t, bool> start, const std::unordered_set<std::pair<size_t, bool>>& reachableTips, std::unordered_set<size_t>& newlyKept) const;
+	std::unordered_set<std::pair<size_t, bool>> findReachableNewTips(const RankBitvector& kept, const VectorWithDirection<bool>& newlyTip, const std::pair<size_t, bool> start) const;
+	void keepTipGaps(RankBitvector& kept) const;
 };
 
 #endif
