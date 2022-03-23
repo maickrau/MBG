@@ -1,4 +1,5 @@
 #include <limits>
+#include <unordered_map>
 #include "HPCConsensus.h"
 #include "MBGCommon.h"
 #include "VectorView.h"
