@@ -2282,6 +2282,7 @@ struct UntippingResult
 	phmap::flat_hash_set<size_t> maybeUnitigifiable;
 };
 
+//TODO lots of unused parameters, surprisingly including maxRemovableLength :)
 void tryRemoveTip(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const double maxRemovableCoverage, const double minSafeCoverage, const size_t maxRemovableLength, const size_t kmerSize, const size_t i, UntippingResult& result)
 {
 	assert(!resolvableGraph.unitigRemoved[i]);
@@ -2357,6 +2358,51 @@ UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, st
 		tryRemoveTip(resolvableGraph, readPaths, hashlist, maxRemovableCoverage, minSafeCoverage, maxRemovableLength, kmerSize, i, result);
 	}
 	return result;
+}
+
+bool checkRelativelyLowCovered(const ResolvableUnitigGraph& g, const std::vector<PathGroup>& readPaths,
+		const double covGap, const size_t maxRemovableLength, const size_t i)
+{
+	//if node is too long -- leave it alone
+	if (g.unitigLength(i) > maxRemovableLength)
+		return false;
+	//Checking if one of the outgoing neighbors has high coverage
+	auto check_neighbors = [&] (const std::pair<size_t, bool>& v) {
+		double base_cov = getCoverage(g, readPaths, v.first);
+		for (auto w : g.edges[v])
+		{
+			double w_cov = getCoverage(g, readPaths, w.first);
+			//Check that neighboring node has high coverage, and ...
+			if (w_cov < covGap * base_cov)
+				continue;
+			auto rc_w = reverse(w);
+			//check that one of the neighbor's edges has high coverage
+			for (auto rc_v2 : g.edges[rc_w])
+				if (getEdgeCoverage(g, readPaths, rc_w, rc_v2) >= covGap * base_cov)
+					return true;
+		}
+		return false;
+	};
+
+	//One of the sides is enough right now
+	//auto vertex = std::make_pair(i, true);
+	//auto rc_vertex = std::make_pair(i, false);
+	return check_neighbors(std::make_pair(i, true)) || check_neighbors(std::make_pair(i, false));
+}
+
+size_t purgeRelativelyLowCoverageNodes(ResolvableUnitigGraph& g, std::vector<PathGroup>& readPaths,
+		const double covGap, const size_t maxRemovableLength)
+{
+	size_t removed_cnt = 0;
+	for (size_t i = 0; i < g.unitigs.size(); i++)
+	{
+		if (checkRelativelyLowCovered(g, readPaths, covGap, maxRemovableLength, i)) {
+			removeNode(g, readPaths, i);
+			++removed_cnt;
+		}
+	}
+	if (removed_cnt > 0) unitigifyAll(g, readPaths);
+	return removed_cnt;
 }
 
 bool canTrimRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const std::pair<size_t, bool> pos, const size_t trimAmount)
@@ -2548,9 +2594,16 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 	}
 	size_t lastTopSize = 0;
 	size_t nodesRemoved = 0;
+	size_t relativePurgeThr = 3000;
+	size_t relativePurgeFlag = false;
+
 	while (queue.size() > 0)
 	{
 		size_t topSize = resolvableGraph.unitigLength(queue.top());
+		if (!relativePurgeFlag && topSize > relativePurgeThr) {
+			nodesRemoved += purgeRelativelyLowCoverageNodes(resolvableGraph, readPaths, 10., 30000);
+			relativePurgeFlag = true;
+		}
 		if (topSize >= maxResolveLength) break;
 		// assert(topSize >= lastTopSize);
 		lastTopSize = topSize;
