@@ -1471,7 +1471,7 @@ std::vector<double> getRawKmerCoverages(const UnitigGraph& unitigs, const std::v
 
 void sortPaths(std::vector<ReadPath>& readPaths)
 {
-	std::sort(readPaths.begin(), readPaths.end(), [](const ReadPath& left, const ReadPath& right)
+	std::stable_sort(readPaths.begin(), readPaths.end(), [](const ReadPath& left, const ReadPath& right)
 	{
 		if (left.readName < right.readName) return true;
 		if (left.readName > right.readName) return false;
