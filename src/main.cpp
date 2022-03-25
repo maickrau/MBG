@@ -187,6 +187,7 @@ int main(int argc, char** argv)
 	std::cerr << "errormasking=" << errorMaskingStr << ",";
 	std::cerr << "endkmers=" << (includeEndKmers ? "yes" : "no") << ",";
 	std::cerr << "blunt=" << (blunt ? "yes" : "no") << ",";
+	std::cerr << "keepgaps=" << (keepGaps ? "yes" : "no") << ",";
 	std::cerr << "cache=" << (sequenceCacheFile.size() > 0 ? "yes" : "no");
 	std::cerr << std::endl;
 
