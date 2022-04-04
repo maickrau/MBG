@@ -29,6 +29,19 @@ class PalindromicKmer : std::exception {};
 
 namespace std
 {
+	template <> struct hash<const std::vector<size_t>&>
+	{
+		size_t operator()(const std::vector<size_t>& x) const
+		{
+			size_t h = 0;
+			for (auto i : x)
+			{
+				h = h ^ std::hash(i);
+				h = (h << 3) + (h >> 61);
+			}
+			return h;
+		}
+	};
 	template <> struct hash<HashType>
 	{
 		size_t operator()(HashType x) const

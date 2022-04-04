@@ -298,3 +298,42 @@ void ConsensusMaker::findParentLinks()
 		}
 	}
 }
+
+std::vector<std::pair<size_t, std::vector<size_t>>> getHpcVariants(const size_t unitig, const size_t minCoverage)
+{
+	std::vector<std::pair<size_t, std::vector<size_t>>> result;
+	for (size_t j = 0; j < simpleCounts[unitig].size(); j++)
+	{
+		auto found = find(unitig, j);
+		size_t realI = std::get<0>(found);
+		size_t realJ = std::get<1>(found);
+		uint16_t compressed = result[unitig].getCompressed(j);
+		std::unordered_map<size_t, size_t> lengthCounts;
+		if (simpleCounts[realI][realJ].second > 0)
+		{
+			lengthCounts[stringIndex.getString(compressed, simpleCounts[realI][realJ].first]).size()] = simpleCounts[realI][realJ].second;
+		}
+		if (complexCounts.count(realI) == 1)
+		{
+			if (complexCounts.at(realI).count(realJ) == 1)
+			{
+				for (auto pair : complexCounts.at(realI).at(realJ))
+				{
+					uint32_t index = pair.first;
+					uint32_t count = pair.second;
+					lengthCounts[stringIndex.getString(compressed, index)] += count;
+				}
+			}
+		}
+		std::vector<size_t> hpcVariants;
+		for (auto pair : lengthCounts)
+		{
+			if (pair.second >= minCoverage) hpcVariants.push_back(pair.first);
+		}
+		if (hpcVariants.size() >= 2)
+		{
+			result.emplace_back(j, std::move(hpcVariants));
+		}
+	}
+	return result;
+}

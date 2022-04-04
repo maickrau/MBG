@@ -1344,7 +1344,7 @@ void sortPaths(std::vector<ReadPath>& readPaths)
 	});
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile, const double hpcVariantOnecopyCoverage)
 {
 	auto beforeReading = getTime();
 	// check that all files actually exist
@@ -1359,6 +1359,23 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	}
 	ReadpartIterator partIterator { kmerSize, windowSize, errorMasking, numThreads, inputReads, includeEndKmers, sequenceCacheFile };
 	HashList reads { kmerSize };
+	auto beforeVariants = getTime();
+	if (hpcVariantOnecopyCoverage != 0)
+	{
+		std::cerr << "Collecting hpc variant k-mers" << std::endl;
+		loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads);
+		auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage);
+		if (minUnitigCoverage > minCoverage)
+		{
+			unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage));
+		}
+		filterKmersToUnitigKmers(unitigs, reads, kmerSize);
+		sortKmersByHashes(unitigs, reads);
+		readPaths = getReadPaths(unitigs, reads, numThreads, partIterator, kmerSize);
+		getHpcVariants(reads, unitigs, readPaths, kmerSize, partIterator, numThreads, hpcVariantOnecopyCoverage * 1.5, hpcVariantOnecopyCoverage * 2.5, hpcVariantOnecopyCoverage * 0.5);
+		reads.clear();
+		partIterator.clearCache();
+	}
 	std::cerr << "Collecting selected k-mers" << std::endl;
 	loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads);
 	auto beforeUnitigs = getTime();
@@ -1416,6 +1433,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		writePaths(reads, unitigs, unitigSequences, stringIndex, readPaths, kmerSize, outputSequencePaths, nodeNamePrefix);
 	}
 	auto afterPaths = getTime();
+	if (hpcVariantOnecopyCoverage != 0) std::cerr << "selecting hpc variant k-mers took " << formatTime(beforeVariants, beforeReading) << std::endl;
 	std::cerr << "selecting k-mers and building graph topology took " << formatTime(beforeReading, beforeUnitigs) << std::endl;
 	std::cerr << "unitigifying took " << formatTime(beforeUnitigs, beforeFilter) << std::endl;
 	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforePaths) << std::endl;

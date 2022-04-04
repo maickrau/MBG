@@ -120,6 +120,8 @@ public:
 			iteratePartsFromFiles(callback);
 		}
 	}
+	void addHpcVariants(const HashType hash, const size_t offset, const std::vector<size_t>& variants);
+	void clearCache();
 private:
 	const size_t kmerSize;
 	const size_t windowSize;
@@ -128,6 +130,7 @@ private:
 	const size_t numThreads;
 	const std::vector<std::string> readFiles;
 	const std::string cacheFileName;
+	phmap::flat_hash_map<HashType, std::vector<std::pair<size_t, std::unordered_set<size_t>>>> hpcVariants;
 	mutable size_t cacheItems;
 	mutable bool cacheBuilt;
 	void collectEndSmers();
@@ -255,6 +258,108 @@ private:
 	}
 	template <typename F>
 	void iterateHashesFromFiles(F callback) const
+	{
+		if (hpcVariants.size() == 0)
+		{
+			iterateHashesFromFilesInternal(callback);
+		}
+		else
+		{
+			iterateHashesFromFilesInternal([this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, std::vector<HashType>& hashes)
+			{
+				size_t lastSolid = 0;
+				for (size_t i = 0; i < hashes.size(); i++)
+				{
+					HashType fwHash = hashes[i];
+					HashType bwHash = (fwHash << 64) + (fwHash >> 64);
+					if (hpcVariants.count(fwHash) == 0 && hpcVariants.count(bwHash) == 0) continue;
+					bool valid = true;
+					std::vector<size_t> firstVariantLengths;
+					std::vector<size_t> secondVariantLengths;
+					if (hpcVariants.count(fwHash) == 1)
+					{
+						assert(hpcVariants.count(bwHash) == 0);
+						for (const auto& pair : hpcVariants.at(fwHash))
+						{
+							size_t lengthHere = poses[positions[i] + pair.first + 1] - poses[positions[i] + pair.first];
+							if (pair.second.count(lengthHere) == 1)
+							{
+								if (pair.first <= kmerSize/2)
+								{
+									firstVariantLengths.push_back(lengthHere);
+								}
+								if (pair.first >= kmerSize/2)
+								{
+									secondVariantLengths.push_back(lengthHere);
+								}
+							}
+							else
+							{
+								valid = false;
+								break;
+							}
+						}
+						std::reverse(secondVariantLengths.begin(), secondVariantLengths.end());
+					}
+					else
+					{
+						assert(hpcVariants.count(fwHash) == 0);
+						for (const auto& pair : hpcVariants.at(bwHash))
+						{
+							size_t lengthHere = poses[positions[i] + kmerSize - pair.first] - poses[positions[i] + kmerSize - pair.first - 1];
+							if (pair.second.count(lengthHere) == 1)
+							{
+								if (pair.first <= kmerSize/2)
+								{
+									firstVariantLengths.push_back(lengthHere);
+								}
+								if (pair.first >= kmerSize/2)
+								{
+									secondVariantLengths.push_back(lengthHere);
+								}
+							}
+							else
+							{
+								valid = false;
+								break;
+							}
+						}
+						std::reverse(firstVariantLengths.begin(), firstVariantLengths.end());
+					}
+					if (!valid)
+					{
+						if (lastSolid < i)
+						{
+							SequenceCharType partSeq { seq.begin() + positions[lastSolid], seq.begin() + positions[i-1] + kmerSize };
+							SequenceLengthType partPoses { poses.begin() + positions[lastSolid], poses.begin() + positions[i-1] + kmerSize };
+							std::vector<size_t> partPositions { positions.begin() + lastSolid, positions.begin() + i-1 };
+							std::vector<HashType> partHashes { hashes.begin() + lastSolid, hashes.begin() + i-1 };
+							callback(partSeq, partPoses, rawSeq, partPositions, partHashes);
+						}
+						lastSolid = i+1;
+						continue;
+					}
+					uint64_t firstVariantHash = std::hash(firstVariantLengths);
+					uint64_t secondVariantHash = std::hash(secondVariantLengths);
+					hashes[i] = hashes[i] ^ (HashType)firstVariantHash ^ (((HashType)secondVariantHash) << 64);
+				}
+				if (lastSolid > 0 && lastSolid < hashes.size())
+				{
+					SequenceCharType partSeq { seq.begin() + positions[lastSolid], seq.end() };
+					SequenceLengthType partPoses { poses.begin() + positions[lastSolid], poses.end() };
+					std::vector<size_t> partPositions { positions.begin() + lastSolid, positions.end() };
+					std::vector<HashType> partHashes { hashes.begin() + lastSolid, hashes.end() };
+					callback(partSeq, partPoses, rawSeq, partPositions, partHashes);
+				}
+				else if (lastSolid == 0)
+				{
+					callback(seq, poses, positions, rawSeq, hashes);
+				}
+			});
+		}
+	}
+	template <typename F>
+	void iterateHashesFromFilesInternal(F callback) const
 	{
 		iteratePartsFromFiles([this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
 			if (seq.size() < kmerSize) return;

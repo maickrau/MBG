@@ -10,6 +10,7 @@ ReadpartIterator::ReadpartIterator(const size_t kmerSize, const size_t windowSiz
 	numThreads(numThreads),
 	readFiles(readFiles),
 	cacheFileName(cacheFileName),
+	hpcVariants(),
 	cacheItems(0),
 	cacheBuilt(false)
 {
@@ -28,10 +29,7 @@ ReadpartIterator::ReadpartIterator(const size_t kmerSize, const size_t windowSiz
 
 ReadpartIterator::~ReadpartIterator()
 {
-	if (cacheFileName.size() > 0)
-	{
-		remove(cacheFileName.c_str());
-	}
+	clearCache();
 }
 
 void ReadpartIterator::collectEndSmers()
@@ -57,4 +55,19 @@ void ReadpartIterator::collectEndSmers()
 		}
 	});
 	std::cerr << addedEndSmers << " end k-mers" << std::endl;
+}
+
+void ReadpartIterator::addHpcVariants(const HashType hash, const size_t offset, const std::vector<size_t>& variants)
+{
+	hpcVariants[hash].emplace_back()
+	hpcVariants[hash].back().first = offset;
+	hpcVariants[hash].back().second.insert(variants.begin(), variants.end());
+}
+
+void ReadpartIterator::clearCache()
+{
+	if (cacheFileName.size() > 0)
+	{
+		remove(cacheFileName.c_str());
+	}
 }

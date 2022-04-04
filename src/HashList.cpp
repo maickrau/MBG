@@ -320,3 +320,15 @@ std::vector<size_t> HashList::sortByHash()
 	}
 	return mapping;
 }
+
+void HashList::clear()
+{
+	decltype(hashToNode) tmp;
+	decltype(edgeCoverage) tmp2;
+	decltype(sequenceOverlap) tmp3;
+	decltype(coverage) tmp4;
+	std::swap(hashToNode, tmp);
+	std::swap(edgeCoverage, tmp2);
+	std::swap(sequenceOverlap, tmp3);
+	std::swap(coverage, tmp4);
+}
