@@ -1,6 +1,7 @@
 #ifndef BigVectorSet_h
 #define BigVectorSet_h
 #include <vector>
+#include <cstddef>
 
 class BigVectorSet
 {
