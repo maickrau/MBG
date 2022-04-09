@@ -408,7 +408,146 @@ SparseEdgeContainer getCoveredEdges(const HashList& hashlist, size_t minCoverage
 	return result;
 }
 
-UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const double minUnitigCoverage)
+
+std::unordered_set<std::pair<size_t, bool>> findReachableNewTips(const RankBitvector& kept, const SparseEdgeContainer& edges, const HashList& hashlist, const VectorWithDirection<bool>& newlyTip, const std::pair<size_t, bool> start)
+{
+	assert(kept.get(start.first));
+	std::vector<std::pair<size_t, bool>> stack;
+	stack.push_back(start);
+	std::unordered_set<std::pair<size_t, bool>> visited;
+	std::unordered_set<std::pair<size_t, bool>> result;
+	while (stack.size() > 0)
+	{
+		auto top = stack.back();
+		stack.pop_back();
+		if (visited.count(top) == 1) continue;
+		if (kept.get(top.first) && top != start)
+		{
+			if (newlyTip[reverse(top)])
+			{
+				result.insert(top);
+			}
+			continue;
+		}
+		visited.insert(top);
+		for (auto edge : edges[top])
+		{
+			stack.push_back(edge);
+		}
+	}
+	return result;
+}
+
+void keepReachableNewTips(const RankBitvector& kept, const SparseEdgeContainer& edges, const HashList& hashlist, const VectorWithDirection<bool>& newlyTip, const std::pair<size_t, bool> start, const std::unordered_set<std::pair<size_t, bool>>& reachableTips, std::unordered_set<size_t>& newlyKept)
+{
+	std::unordered_set<std::pair<size_t, bool>> reachableFw;
+	std::unordered_set<std::pair<size_t, bool>> reachableBw;
+	std::vector<std::pair<size_t, bool>> stack;
+	stack.push_back(start);
+	while (stack.size() > 0)
+	{
+		auto top = stack.back();
+		stack.pop_back();
+		if (reachableFw.count(top) == 1) continue;
+		if (kept.get(top.first) && top != start) continue;
+		reachableFw.insert(top);
+		for (auto edge : edges[top])
+		{
+			stack.push_back(edge);
+		}
+	}
+	for (auto node : reachableTips)
+	{
+		stack.push_back(reverse(node));
+	}
+	while (stack.size() > 0)
+	{
+		auto top = stack.back();
+		stack.pop_back();
+		if (reachableBw.count(top) == 1) continue;
+		if (kept.get(top.first) && reachableTips.count(reverse(top)) == 0) continue;
+		reachableBw.insert(top);
+		for (auto edge : edges[top])
+		{
+			stack.push_back(edge);
+		}
+	}
+	for (auto node : reachableFw)
+	{
+		if (reachableBw.count(reverse(node)) == 1)
+		{
+			newlyKept.insert(node.first);
+		}
+	}
+}
+
+bool isTipGap(const RankBitvector& kept, const SparseEdgeContainer& edges, const HashList& hashlist, const std::pair<size_t, bool> start)
+{
+	if (!kept.get(start.first)) return false;
+	if (edges[start].size() == 0) return false;
+	for (auto edge : edges[start])
+	{
+		if (kept.get(edge.first)) return false;
+	}
+	return true;
+}
+
+void keepTipGaps(RankBitvector& kept, const SparseEdgeContainer& edges, const HashList& hashlist)
+{
+	VectorWithDirection<bool> newlyTip;
+	newlyTip.resize(hashlist.size(), false);
+	size_t newlyTipped = 0;
+	for (size_t i = 0; i < hashlist.size(); i++)
+	{
+		if (!kept.get(i)) continue;
+		std::pair<size_t, bool> fw { i, true };
+		if (isTipGap(kept, edges, hashlist, fw))
+		{
+			newlyTip[fw] = true;
+			newlyTipped += 1;
+		}
+		std::pair<size_t, bool> bw { i, false };
+		if (isTipGap(kept, edges, hashlist, bw))
+		{
+			newlyTip[bw] = true;
+			newlyTipped += 1;
+		}
+	}
+	std::unordered_set<size_t> newlyKept;
+	size_t keptCheck = 0;
+	for (size_t i = 0; i < hashlist.size(); i++)
+	{
+		if (!kept.get(i)) continue;
+		std::pair<size_t, bool> fw { i, true };
+		if (edges[fw].size() > 0 && newlyTip[fw])
+		{
+			auto reachableTips = findReachableNewTips(kept, edges, hashlist, newlyTip, fw);
+			if (reachableTips.size() > 0)
+			{
+				keptCheck += 1;
+				keepReachableNewTips(kept, edges, hashlist, newlyTip, fw, reachableTips, newlyKept);
+			}
+		}
+		std::pair<size_t, bool> bw { i, false };
+		if (edges[bw].size() > 0 && newlyTip[bw])
+		{
+			auto reachableTips = findReachableNewTips(kept, edges, hashlist, newlyTip, bw);
+			if (reachableTips.size() > 0)
+			{
+				keptCheck += 1;
+				keepReachableNewTips(kept, edges, hashlist, newlyTip, bw, reachableTips, newlyKept);
+			}
+		}
+	}
+	for (auto node : newlyKept)
+	{
+		assert(!kept.get(node));
+		kept.set(node, true);
+	}
+
+}
+
+UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const double minUnitigCoverage, const bool keepGaps)
 {
 	{
 		auto edges = getCoveredEdges(hashlist, minCoverage);
@@ -459,6 +598,7 @@ UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const d
 			assert(bwEdges.size() == 1);
 			checkUnitigHashes(fw, edges, checked, hashlist, minUnitigCoverage, kept);
 		}
+		if (keepGaps) keepTipGaps(kept, edges, hashlist);
 		kept.buildRanks();
 		hashlist.filter(kept);
 	}
@@ -1331,7 +1471,7 @@ std::vector<double> getRawKmerCoverages(const UnitigGraph& unitigs, const std::v
 
 void sortPaths(std::vector<ReadPath>& readPaths)
 {
-	std::sort(readPaths.begin(), readPaths.end(), [](const ReadPath& left, const ReadPath& right)
+	std::stable_sort(readPaths.begin(), readPaths.end(), [](const ReadPath& left, const ReadPath& right)
 	{
 		if (left.readName < right.readName) return true;
 		if (left.readName > right.readName) return false;
@@ -1344,7 +1484,7 @@ void sortPaths(std::vector<ReadPath>& readPaths)
 	});
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile, const double hpcVariantOnecopyCoverage)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile, const bool keepGaps, const double hpcVariantOnecopyCoverage)
 {
 	auto beforeReading = getTime();
 	// check that all files actually exist
@@ -1364,14 +1504,14 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	{
 		std::cerr << "Collecting hpc variant k-mers" << std::endl;
 		loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads);
-		auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage);
+		auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage, keepGaps);
 		if (minUnitigCoverage > minCoverage)
 		{
-			unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage));
+			unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage, keepGaps));
 		}
 		filterKmersToUnitigKmers(unitigs, reads, kmerSize);
 		sortKmersByHashes(unitigs, reads);
-		readPaths = getReadPaths(unitigs, reads, numThreads, partIterator, kmerSize);
+		auto readPaths = getReadPaths(unitigs, reads, numThreads, partIterator, kmerSize);
 		getHpcVariants(reads, unitigs, readPaths, kmerSize, partIterator, numThreads, hpcVariantOnecopyCoverage * 1.5, hpcVariantOnecopyCoverage * 2.5, hpcVariantOnecopyCoverage * 0.5);
 		reads.clear();
 		partIterator.clearCache();
@@ -1380,12 +1520,12 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads);
 	auto beforeUnitigs = getTime();
 	std::cerr << "Unitigifying" << std::endl;
-	auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage);
+	auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage, keepGaps);
 	auto beforeFilter = getTime();
 	if (minUnitigCoverage > minCoverage)
 	{
 		std::cerr << "Filtering by unitig coverage" << std::endl;
-		unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage));
+		unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage, keepGaps));
 	}
 	filterKmersToUnitigKmers(unitigs, reads, kmerSize);
 	sortKmersByHashes(unitigs, reads);
@@ -1399,7 +1539,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	{
 		std::cerr << "Resolving unitigs" << std::endl;
 		std::cerr << unitigs.unitigs.size() << " unitigs before resolving" << std::endl;
-		std::tie(unitigs, readPaths) = resolveUnitigs(unitigs, reads, readPaths, partIterator, minUnitigCoverage, kmerSize, maxResolveLength, maxUnconditionalResolveLength);
+		std::tie(unitigs, readPaths) = resolveUnitigs(unitigs, reads, readPaths, partIterator, minUnitigCoverage, kmerSize, maxResolveLength, maxUnconditionalResolveLength, keepGaps);
 		std::cerr << unitigs.unitigs.size() << " unitigs after resolving" << std::endl;
 	}
 	auto beforeSequences = getTime();

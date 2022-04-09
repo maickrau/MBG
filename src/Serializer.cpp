@@ -46,8 +46,9 @@ namespace Serializer
 		stream.write((const char*)twobits.data(), twobits.size());
 	}
 
-	void writeMonotoneIncreasing(std::ostream& stream, const std::vector<uint64_t>& value)
+	void writeMonotoneIncreasing(std::ostream& stream, const std::vector<LengthType>& value)
 	{
+		static_assert(sizeof(LengthType) == 8, "Serialization is implemented only for 64-bit size_t");
 		size_t numBytes = 0;
 		for (size_t i = 0; i < value.size(); i++)
 		{
@@ -204,8 +205,9 @@ namespace Serializer
 		}
 	}
 
-	void readMonotoneIncreasing(std::istream& stream, std::vector<uint64_t>& value)
+	void readMonotoneIncreasing(std::istream& stream, std::vector<LengthType>& value)
 	{
+		static_assert(sizeof(LengthType) == 8, "Serialization is implemented only for 64-bit size_t");
 		size_t realSize;
 		size_t numBytes;
 		read(stream, realSize);

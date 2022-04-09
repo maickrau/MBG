@@ -8,6 +8,7 @@
 #include <thread>
 #include <iostream>
 #include <concurrentqueue.h> //https://github.com/cameron314/concurrentqueue
+#include <unordered_set>
 #include "fastqloader.h"
 #include "FastHasher.h"
 #include "ErrorMaskHelper.h"
@@ -44,7 +45,7 @@ void findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize, siz
 		size_t seqPos = smerSize+i-1;
 		fwkmerHasher.addChar(sequence[seqPos]);
 		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
-		size_t hash = fwkmerHasher.hash();
+		uint64_t hash = fwkmerHasher.hash();
 		if (endSmer(hash)) hash = 0;
 		while (smerOrder.size() > 0 && std::get<1>(smerOrder.back()) > hash) smerOrder.pop_back();
 		smerOrder.emplace_back(i, hash);
@@ -58,7 +59,7 @@ void findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize, siz
 		size_t seqPos = smerSize+i-1;
 		fwkmerHasher.addChar(sequence[seqPos]);
 		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
-		size_t hash = fwkmerHasher.hash();
+		uint64_t hash = fwkmerHasher.hash();
 		if (endSmer(hash)) hash = 0;
 		// even though pop_front is used it turns out std::vector is faster than std::deque ?!
 		// because pop_front is O(w), but it is only called in O(1/w) fraction of loops
@@ -334,13 +335,13 @@ private:
 							SequenceLengthType partPoses { poses.begin() + positions[lastSolid], poses.begin() + positions[i-1] + kmerSize };
 							std::vector<size_t> partPositions { positions.begin() + lastSolid, positions.begin() + i-1 };
 							std::vector<HashType> partHashes { hashes.begin() + lastSolid, hashes.begin() + i-1 };
-							callback(partSeq, partPoses, rawSeq, partPositions, partHashes);
+							callback(read, partSeq, partPoses, rawSeq, partPositions, partHashes);
 						}
 						lastSolid = i+1;
 						continue;
 					}
-					uint64_t firstVariantHash = std::hash(firstVariantLengths);
-					uint64_t secondVariantHash = std::hash(secondVariantLengths);
+					uint64_t firstVariantHash = std::hash<const std::vector<size_t>&>{}(firstVariantLengths);
+					uint64_t secondVariantHash = std::hash<const std::vector<size_t>&>{}(secondVariantLengths);
 					hashes[i] = hashes[i] ^ (HashType)firstVariantHash ^ (((HashType)secondVariantHash) << 64);
 				}
 				if (lastSolid > 0 && lastSolid < hashes.size())
@@ -349,11 +350,11 @@ private:
 					SequenceLengthType partPoses { poses.begin() + positions[lastSolid], poses.end() };
 					std::vector<size_t> partPositions { positions.begin() + lastSolid, positions.end() };
 					std::vector<HashType> partHashes { hashes.begin() + lastSolid, hashes.end() };
-					callback(partSeq, partPoses, rawSeq, partPositions, partHashes);
+					callback(read, partSeq, partPoses, rawSeq, partPositions, partHashes);
 				}
 				else if (lastSolid == 0)
 				{
-					callback(seq, poses, positions, rawSeq, hashes);
+					callback(read, seq, poses, rawSeq, positions, hashes);
 				}
 			});
 		}

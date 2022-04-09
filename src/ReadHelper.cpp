@@ -59,7 +59,7 @@ void ReadpartIterator::collectEndSmers()
 
 void ReadpartIterator::addHpcVariants(const HashType hash, const size_t offset, const std::vector<size_t>& variants)
 {
-	hpcVariants[hash].emplace_back()
+	hpcVariants[hash].emplace_back();
 	hpcVariants[hash].back().first = offset;
 	hpcVariants[hash].back().second.insert(variants.begin(), variants.end());
 }

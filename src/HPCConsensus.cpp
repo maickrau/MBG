@@ -1,4 +1,5 @@
 #include <limits>
+#include <unordered_map>
 #include "HPCConsensus.h"
 #include "MBGCommon.h"
 #include "VectorView.h"
@@ -46,7 +47,7 @@ void addCounts(ConsensusMaker& consensusMaker, const SequenceCharType& seq, cons
 	});
 }
 
-void initializeHelpers(ConsensusMaker& consensusMaker, std::unordered_map<std::string, std::vector<std::tuple<size_t, size_t, size_t, size_t, bool, size_t, size_t>>>& matchBlocks, std::vector<size_t>& unitigLengths, std::vector<std::vector<size_t>>& bpOffsets, const HashList& hashlist, const UnitigGraph& unitigs, std::vector<ReadPath>& readPaths, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
+void initializeHelpers(ConsensusMaker& consensusMaker, std::unordered_map<std::string, std::vector<std::tuple<size_t, size_t, size_t, size_t, bool, size_t, size_t>>>& matchBlocks, std::vector<size_t>& unitigLengths, std::vector<std::vector<size_t>>& bpOffsets, const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<ReadPath>& readPaths, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	bpOffsets.resize(unitigs.unitigs.size());
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
@@ -351,7 +352,7 @@ void getHpcVariants(const HashList& hashlist, const UnitigGraph& unitigs, const 
 		double coverage = sum / count;
 		if (coverage >= minUnitigCoverage && coverage <= maxUnitigCoverage) checkUnitig[i] = true;
 	}
-	partIterator.iterateParts([&consensusMaker, &matchBlocks](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq)
+	partIterator.iterateParts([&consensusMaker, &matchBlocks, &checkUnitig](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq)
 	{
 		if (matchBlocks.count(read.readName) == 0) return;
 		for (auto block : matchBlocks.at(read.readName))
@@ -396,11 +397,10 @@ void getHpcVariants(const HashList& hashlist, const UnitigGraph& unitigs, const 
 				assert(offset < kmerSize);
 				if (!fw) offset = kmerSize - 1 - offset;
 				assert(offset < kmerSize);
-				partIterator.addHpcVariants(nodeToHash[unitigs.unitigs[i][kmerIndex]], offset, hpcVariants[j].second);
+				partIterator.addHpcVariants(nodeToHash[unitigs.unitigs[i][kmerIndex].first], offset, hpcVariants[j].second);
 				kmerIndex += 1;
 			}
 		}
 	}
-	return consensusMaker.getSequences();
 }
 

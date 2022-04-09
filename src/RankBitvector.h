@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <limits>
 #include <vector>
+#include <cstddef>
 
 class RankBitvector
 {

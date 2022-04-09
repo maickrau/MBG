@@ -59,11 +59,15 @@ UnitigGraph UnitigGraph::filterNodes(const RankBitvector& kept) const
 	result.edges.resize(newSize);
 	result.edgeCov.resize(newSize);
 	result.edgeOvlp.resize(newSize);
+	result.leftClip.resize(newSize);
+	result.rightClip.resize(newSize);
 	for (size_t i = 0; i < unitigs.size(); i++)
 	{
 		if (!kept.get(i)) continue;
 		size_t newIndex = kept.getRank(i);
 		result.unitigs[newIndex] = unitigs[i];
+		result.leftClip[newIndex] = leftClip[i];
+		result.rightClip[newIndex] = rightClip[i];
 		result.unitigCoverage[newIndex] = unitigCoverage[i];
 		std::pair<size_t, bool> fw { i, true };
 		std::pair<size_t, bool> bw { i, false };
@@ -126,13 +130,147 @@ size_t UnitigGraph::numEdges() const
 	}
 	return result;
 }
-UnitigGraph UnitigGraph::filterUnitigsByCoverage(const double filter)
+std::unordered_set<std::pair<size_t, bool>> UnitigGraph::findReachableNewTips(const RankBitvector& kept, const VectorWithDirection<bool>& newlyTip, const std::pair<size_t, bool> start) const
+{
+	assert(kept.get(start.first));
+	std::vector<std::pair<size_t, bool>> stack;
+	stack.push_back(start);
+	std::unordered_set<std::pair<size_t, bool>> visited;
+	std::unordered_set<std::pair<size_t, bool>> result;
+	while (stack.size() > 0)
+	{
+		auto top = stack.back();
+		stack.pop_back();
+		if (visited.count(top) == 1) continue;
+		if (kept.get(top.first) && top != start)
+		{
+			if (newlyTip[reverse(top)])
+			{
+				result.insert(top);
+			}
+			continue;
+		}
+		visited.insert(top);
+		for (auto edge : edges[top])
+		{
+			stack.push_back(edge);
+		}
+	}
+	return result;
+}
+void UnitigGraph::keepReachableNewTips(const RankBitvector& kept, const VectorWithDirection<bool>& newlyTip, const std::pair<size_t, bool> start, const std::unordered_set<std::pair<size_t, bool>>& reachableTips, std::unordered_set<size_t>& newlyKept) const
+{
+	std::unordered_set<std::pair<size_t, bool>> reachableFw;
+	std::unordered_set<std::pair<size_t, bool>> reachableBw;
+	std::vector<std::pair<size_t, bool>> stack;
+	stack.push_back(start);
+	while (stack.size() > 0)
+	{
+		auto top = stack.back();
+		stack.pop_back();
+		if (reachableFw.count(top) == 1) continue;
+		if (kept.get(top.first) && top != start) continue;
+		reachableFw.insert(top);
+		for (auto edge : edges[top])
+		{
+			stack.push_back(edge);
+		}
+	}
+	for (auto node : reachableTips)
+	{
+		stack.push_back(reverse(node));
+	}
+	while (stack.size() > 0)
+	{
+		auto top = stack.back();
+		stack.pop_back();
+		if (reachableBw.count(top) == 1) continue;
+		if (kept.get(top.first) && reachableTips.count(reverse(top)) == 0) continue;
+		reachableBw.insert(top);
+		for (auto edge : edges[top])
+		{
+			stack.push_back(edge);
+		}
+	}
+	for (auto node : reachableFw)
+	{
+		if (reachableBw.count(reverse(node)) == 1)
+		{
+			newlyKept.insert(node.first);
+		}
+	}
+}
+bool UnitigGraph::isTipGap(const RankBitvector& kept, const std::pair<size_t, bool> start) const
+{
+	if (!kept.get(start.first)) return false;
+	if (edges[start].size() == 0) return false;
+	for (auto edge : edges[start])
+	{
+		if (kept.get(edge.first)) return false;
+	}
+	return true;
+}
+void UnitigGraph::keepTipGaps(RankBitvector& kept) const
+{
+	VectorWithDirection<bool> newlyTip;
+	newlyTip.resize(unitigs.size(), false);
+	size_t newlyTipped = 0;
+	for (size_t i = 0; i < unitigs.size(); i++)
+	{
+		if (!kept.get(i)) continue;
+		std::pair<size_t, bool> fw { i, true };
+		if (isTipGap(kept, fw))
+		{
+			newlyTip[fw] = true;
+			newlyTipped += 1;
+		}
+		std::pair<size_t, bool> bw { i, false };
+		if (isTipGap(kept, bw))
+		{
+			newlyTip[bw] = true;
+			newlyTipped += 1;
+		}
+	}
+	std::unordered_set<size_t> newlyKept;
+	size_t keptCheck = 0;
+	for (size_t i = 0; i < unitigs.size(); i++)
+	{
+		if (!kept.get(i)) continue;
+		std::pair<size_t, bool> fw { i, true };
+		if (edges[fw].size() > 0 && newlyTip[fw])
+		{
+			auto reachableTips = findReachableNewTips(kept, newlyTip, fw);
+			if (reachableTips.size() > 0)
+			{
+				keptCheck += 1;
+				keepReachableNewTips(kept, newlyTip, fw, reachableTips, newlyKept);
+			}
+		}
+		std::pair<size_t, bool> bw { i, false };
+		if (edges[bw].size() > 0 && newlyTip[bw])
+		{
+			auto reachableTips = findReachableNewTips(kept, newlyTip, bw);
+			if (reachableTips.size() > 0)
+			{
+				keptCheck += 1;
+				keepReachableNewTips(kept, newlyTip, bw, reachableTips, newlyKept);
+			}
+		}
+	}
+	for (auto node : newlyKept)
+	{
+		assert(!kept.get(node));
+		kept.set(node, true);
+	}
+}
+UnitigGraph UnitigGraph::filterUnitigsByCoverage(const double filter, const bool keepGaps)
 {
 	RankBitvector kept { unitigs.size() };
 	for (size_t i = 0; i < unitigs.size(); i++)
 	{
 		kept.set(i, averageCoverage(i) >= filter);
 	}
+	if (keepGaps) keepTipGaps(kept);
 	kept.buildRanks();
 	UnitigGraph filtered = filterNodes(kept);
 	return filtered;

@@ -36,12 +36,13 @@ namespace std
 			size_t h = 0;
 			for (auto i : x)
 			{
-				h = h ^ std::hash(i);
+				h = h ^ std::hash<size_t>{}(i);
 				h = (h << 3) + (h >> 61);
 			}
 			return h;
 		}
 	};
+#if !defined(__clang__)
 	template <> struct hash<HashType>
 	{
 		size_t operator()(HashType x) const
@@ -49,6 +50,7 @@ namespace std
 			return (size_t)x ^ (size_t)(x >> 64);
 		}
 	};
+#endif
 	template <> struct hash<std::pair<HashType, bool>>
 	{
 		size_t operator()(std::pair<HashType, bool> x) const
@@ -85,5 +87,4 @@ namespace std
 		}
 	};
 }
-
 #endif
