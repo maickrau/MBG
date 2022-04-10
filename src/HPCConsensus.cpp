@@ -332,7 +332,7 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 	return consensusMaker.getSequences();
 }
 
-void getHpcVariants(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<ReadPath>& readPaths, const size_t kmerSize, ReadpartIterator& partIterator, const size_t numThreads, const double minUnitigCoverage, const double maxUnitigCoverage, const size_t minVariantCoverage)
+void getHpcVariants(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<ReadPath>& readPaths, const size_t kmerSize, ReadpartIterator& partIterator, const size_t numThreads, const double minUnitigCoverage, const size_t minVariantCoverage)
 {
 	ConsensusMaker consensusMaker;
 	std::unordered_map<std::string, std::vector<std::tuple<size_t, size_t, size_t, size_t, bool, size_t, size_t>>> matchBlocks;
@@ -350,7 +350,7 @@ void getHpcVariants(const HashList& hashlist, const UnitigGraph& unitigs, const 
 		}
 		double count = unitigs.unitigCoverage[i].size();
 		double coverage = sum / count;
-		if (coverage >= minUnitigCoverage && coverage <= maxUnitigCoverage) checkUnitig[i] = true;
+		if (coverage >= minUnitigCoverage) checkUnitig[i] = true;
 	}
 	partIterator.iterateParts([&consensusMaker, &matchBlocks, &checkUnitig](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq)
 	{
