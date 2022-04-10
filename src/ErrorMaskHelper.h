@@ -10,5 +10,6 @@ std::vector<std::pair<SequenceCharType, SequenceLengthType>> multiRLECompress(co
 size_t maxCode();
 SequenceCharType revCompRLE(const SequenceCharType& str);
 CharType complement(const CharType original);
+size_t codeMotifLength(const uint16_t code);
 
 #endif

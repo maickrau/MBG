@@ -361,10 +361,16 @@ std::vector<std::pair<size_t, std::vector<size_t>>> ConsensusMaker::getHpcVarian
 		{
 			if (pair.second >= minCoverage) hpcVariants.push_back(pair.first);
 		}
+		std::sort(hpcVariants.begin(), hpcVariants.end());
 		if (hpcVariants.size() >= 2)
 		{
 			result.emplace_back(j, std::move(hpcVariants));
 		}
 	}
 	return result;
+}
+
+uint16_t ConsensusMaker::getCompressed(const size_t unitig, const size_t offset) const
+{
+	return compressedSequences[unitig].get(offset);
 }

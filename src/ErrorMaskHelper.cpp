@@ -29,6 +29,17 @@ uint16_t getNumBefore(uint16_t motifLength)
 	return numsBefore[motifLength];
 }
 
+size_t codeMotifLength(const uint16_t code)
+{
+	uint16_t motifLength = 1;
+	while (getNumBefore(motifLength+1) <= code)
+	{
+		motifLength += 1;
+		assert(motifLength <= MaxMotifLength);
+	}
+	return motifLength;
+}
+
 CharType getReverseComplement(CharType code)
 {
 	uint16_t motifLength = 1;

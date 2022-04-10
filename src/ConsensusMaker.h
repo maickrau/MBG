@@ -94,6 +94,7 @@ public:
 	void addEdgeOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, size_t overlap);
 	void prepareHpcVariants();
 	std::vector<std::pair<size_t, std::vector<size_t>>> getHpcVariants(const size_t unitig, const size_t minCoverage);
+	uint16_t getCompressed(const size_t unitig, const size_t offset) const;
 private:
 	size_t unitigLength(size_t unitig) const;
 	std::tuple<size_t, size_t, bool> getParent(size_t unitig, size_t index) const;
