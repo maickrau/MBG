@@ -375,6 +375,7 @@ void getHpcVariants(const HashList& hashlist, const UnitigGraph& unitigs, const 
 		nodeToHash[pair.second] = pair.first;
 		assert(nodeToHash[pair.second] != 0);
 	}
+	consensusMaker.prepareHpcVariants();
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
 		if (!checkUnitig[i]) continue;

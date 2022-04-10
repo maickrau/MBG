@@ -299,6 +299,37 @@ void ConsensusMaker::findParentLinks()
 	}
 }
 
+void ConsensusMaker::prepareHpcVariants()
+{
+	for (auto pair : needsComplementVerification)
+	{
+		auto found = find(pair.first, pair.second);
+		assert(complement(compressedSequences[std::get<0>(found)].get(std::get<1>(found))) == compressedSequences[std::get<0>(found)].get(std::get<1>(found)));
+	}
+	for (size_t i = 0; i < simpleCounts.size(); i++)
+	{
+		for (size_t j = 0; j < simpleCounts[i].size(); j++)
+		{
+			auto found = find(i, j);
+			size_t realI = std::get<0>(found);
+			size_t realJ = std::get<1>(found);
+			if (realI != i || realJ != j)
+			{
+				compressedSequences[i].set(j, compressedSequences[realI].get(realJ));
+				if (!std::get<2>(found))
+				{
+					compressedSequences[i].set(j, complement(compressedSequences[i].get(j)));
+				}
+			}
+			else
+			{
+				assert(std::get<2>(found));
+			}
+		}
+	}
+	stringIndex.buildReverseIndex();
+}
+
 std::vector<std::pair<size_t, std::vector<size_t>>> ConsensusMaker::getHpcVariants(const size_t unitig, const size_t minCoverage)
 {
 	std::vector<std::pair<size_t, std::vector<size_t>>> result;

@@ -55,8 +55,8 @@ void loadReadsAsHashesMultithread(HashList& result, const size_t kmerSize, const
 			assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
 			std::pair<size_t, bool> current = result.addNode(fwHash);
 			size_t overlap = lastMinimizerPosition + kmerSize - pos;
-			assert(pos+kmerSize < poses.size());
-			assert(pos - lastMinimizerPosition < kmerSize);
+			assert(pos+kmerSize <= poses.size());
+			assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition < kmerSize);
 			if (last.first != std::numeric_limits<size_t>::max())
 			{
 				assert(lastMinimizerPosition + kmerSize >= pos);

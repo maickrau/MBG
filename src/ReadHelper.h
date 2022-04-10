@@ -269,6 +269,7 @@ private:
 			iterateHashesFromFilesInternal([this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, std::vector<HashType>& hashes)
 			{
 				size_t lastSolid = 0;
+				bool variant = false;
 				for (size_t i = 0; i < hashes.size(); i++)
 				{
 					HashType fwHash = hashes[i];
@@ -329,28 +330,39 @@ private:
 					}
 					if (!valid)
 					{
-						if (lastSolid < i)
+						std::cout << "invalid variant read: " << read.readName << std::endl;
+						if (lastSolid == 0)
 						{
-							SequenceCharType partSeq { seq.begin() + positions[lastSolid], seq.begin() + positions[i-1] + kmerSize };
-							SequenceLengthType partPoses { poses.begin() + positions[lastSolid], poses.begin() + positions[i-1] + kmerSize };
-							std::vector<size_t> partPositions { positions.begin() + lastSolid, positions.begin() + i-1 };
-							std::vector<HashType> partHashes { hashes.begin() + lastSolid, hashes.begin() + i-1 };
-							callback(read, partSeq, partPoses, rawSeq, partPositions, partHashes);
+							// SequenceCharType partSeq { seq.begin(), seq.begin() + positions[i-1] + kmerSize };
+							// SequenceLengthType partPoses { poses.begin(), poses.begin() + positions[i-1] + kmerSize };
+							std::vector<size_t> partPositions { positions.begin(), positions.begin() + i };
+							std::vector<HashType> partHashes { hashes.begin(), hashes.begin() + i };
+							callback(read, seq, poses, rawSeq, partPositions, partHashes);
+						}
+						else if (lastSolid < i)
+						{
+							// SequenceCharType partSeq { seq.begin() + positions[lastSolid], seq.begin() + positions[i-1] + kmerSize };
+							// SequenceLengthType partPoses { poses.begin() + positions[lastSolid], poses.begin() + positions[i-1] + kmerSize };
+							std::vector<size_t> partPositions { positions.begin() + lastSolid, positions.begin() + i };
+							std::vector<HashType> partHashes { hashes.begin() + lastSolid, hashes.begin() + i };
+							callback(read, seq, poses, rawSeq, partPositions, partHashes);
 						}
 						lastSolid = i+1;
 						continue;
 					}
+					if (firstVariantLengths.size() > 0 || secondVariantLengths.size() > 0) variant = true;
 					uint64_t firstVariantHash = std::hash<const std::vector<size_t>&>{}(firstVariantLengths);
 					uint64_t secondVariantHash = std::hash<const std::vector<size_t>&>{}(secondVariantLengths);
 					hashes[i] = hashes[i] ^ (HashType)firstVariantHash ^ (((HashType)secondVariantHash) << 64);
 				}
+				if (variant) std::cout << "variant read: " << read.readName << std::endl;
 				if (lastSolid > 0 && lastSolid < hashes.size())
 				{
-					SequenceCharType partSeq { seq.begin() + positions[lastSolid], seq.end() };
-					SequenceLengthType partPoses { poses.begin() + positions[lastSolid], poses.end() };
+					// SequenceCharType partSeq { seq.begin() + positions[lastSolid], seq.end() };
+					// SequenceLengthType partPoses { poses.begin() + positions[lastSolid], poses.end() };
 					std::vector<size_t> partPositions { positions.begin() + lastSolid, positions.end() };
 					std::vector<HashType> partHashes { hashes.begin() + lastSolid, hashes.end() };
-					callback(read, partSeq, partPoses, rawSeq, partPositions, partHashes);
+					callback(read, seq, poses, rawSeq, partPositions, partHashes);
 				}
 				else if (lastSolid == 0)
 				{

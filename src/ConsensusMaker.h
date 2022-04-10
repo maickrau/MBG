@@ -92,6 +92,7 @@ public:
 	void prepareEdgeOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, size_t overlap);
 	void allocateParent();
 	void addEdgeOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, size_t overlap);
+	void prepareHpcVariants();
 	std::vector<std::pair<size_t, std::vector<size_t>>> getHpcVariants(const size_t unitig, const size_t minCoverage);
 private:
 	size_t unitigLength(size_t unitig) const;
