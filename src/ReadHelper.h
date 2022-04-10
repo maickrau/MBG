@@ -311,11 +311,11 @@ private:
 							size_t lengthHere = poses[positions[i] + kmerSize - pair.first] - poses[positions[i] + kmerSize - pair.first - 1];
 							if (pair.second.count(lengthHere) == 1)
 							{
-								if (pair.first <= kmerSize/2)
+								if (pair.first >= kmerSize/2)
 								{
 									firstVariantLengths.push_back(lengthHere);
 								}
-								if (pair.first >= kmerSize/2)
+								if (pair.first <= kmerSize/2)
 								{
 									secondVariantLengths.push_back(lengthHere);
 								}
@@ -333,16 +333,12 @@ private:
 						std::cout << "invalid variant read: " << read.readName << std::endl;
 						if (lastSolid == 0)
 						{
-							// SequenceCharType partSeq { seq.begin(), seq.begin() + positions[i-1] + kmerSize };
-							// SequenceLengthType partPoses { poses.begin(), poses.begin() + positions[i-1] + kmerSize };
 							std::vector<size_t> partPositions { positions.begin(), positions.begin() + i };
 							std::vector<HashType> partHashes { hashes.begin(), hashes.begin() + i };
 							callback(read, seq, poses, rawSeq, partPositions, partHashes);
 						}
 						else if (lastSolid < i)
 						{
-							// SequenceCharType partSeq { seq.begin() + positions[lastSolid], seq.begin() + positions[i-1] + kmerSize };
-							// SequenceLengthType partPoses { poses.begin() + positions[lastSolid], poses.begin() + positions[i-1] + kmerSize };
 							std::vector<size_t> partPositions { positions.begin() + lastSolid, positions.begin() + i };
 							std::vector<HashType> partHashes { hashes.begin() + lastSolid, hashes.begin() + i };
 							callback(read, seq, poses, rawSeq, partPositions, partHashes);
@@ -358,8 +354,6 @@ private:
 				if (variant) std::cout << "variant read: " << read.readName << std::endl;
 				if (lastSolid > 0 && lastSolid < hashes.size())
 				{
-					// SequenceCharType partSeq { seq.begin() + positions[lastSolid], seq.end() };
-					// SequenceLengthType partPoses { poses.begin() + positions[lastSolid], poses.end() };
 					std::vector<size_t> partPositions { positions.begin() + lastSolid, positions.end() };
 					std::vector<HashType> partHashes { hashes.begin() + lastSolid, hashes.end() };
 					callback(read, seq, poses, rawSeq, partPositions, partHashes);

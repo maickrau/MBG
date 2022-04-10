@@ -62,6 +62,7 @@ void ReadpartIterator::addHpcVariants(const HashType hash, const size_t offset, 
 	hpcVariants[hash].emplace_back();
 	hpcVariants[hash].back().first = offset;
 	hpcVariants[hash].back().second.insert(variants.begin(), variants.end());
+	std::sort(hpcVariants[hash].begin(), hpcVariants[hash].end(), [](const std::pair<size_t, std::unordered_set<size_t>>& left, const std::pair<size_t, std::unordered_set<size_t>>& right) { return left.first < right.first; });
 }
 
 void ReadpartIterator::clearCache()
