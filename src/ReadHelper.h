@@ -1,6 +1,7 @@
 #ifndef ReadHelper_h
 #define ReadHelper_h
 
+#include <algorithm>
 #include <vector>
 #include <string>
 #include <fstream>
@@ -131,7 +132,7 @@ private:
 	const size_t numThreads;
 	const std::vector<std::string> readFiles;
 	const std::string cacheFileName;
-	phmap::flat_hash_map<HashType, std::vector<std::pair<size_t, std::unordered_set<size_t>>>> hpcVariants;
+	phmap::flat_hash_map<HashType, std::vector<std::pair<size_t, std::vector<size_t>>>> hpcVariants;
 	mutable size_t cacheItems;
 	mutable bool cacheBuilt;
 	void collectEndSmers();
@@ -275,7 +276,6 @@ private:
 					HashType fwHash = hashes[i];
 					HashType bwHash = (fwHash << 64) + (fwHash >> 64);
 					if (hpcVariants.count(fwHash) == 0 && hpcVariants.count(bwHash) == 0) continue;
-					bool valid = true;
 					std::vector<size_t> firstVariantLengths;
 					std::vector<size_t> secondVariantLengths;
 					if (hpcVariants.count(fwHash) == 1)
@@ -284,21 +284,15 @@ private:
 						for (const auto& pair : hpcVariants.at(fwHash))
 						{
 							size_t lengthHere = poses[positions[i] + pair.first + 1] - poses[positions[i] + pair.first];
-							if (pair.second.count(lengthHere) == 1)
+							assert(lengthHere <= pair.second.back());
+							size_t lengthCluster = *std::lower_bound(pair.second.begin(), pair.second.end(), lengthHere);
+							if (pair.first <= kmerSize/2)
 							{
-								if (pair.first <= kmerSize/2)
-								{
-									firstVariantLengths.push_back(lengthHere);
-								}
-								if (pair.first >= kmerSize/2)
-								{
-									secondVariantLengths.push_back(lengthHere);
-								}
+								firstVariantLengths.push_back(lengthCluster);
 							}
-							else
+							if (pair.first >= kmerSize/2)
 							{
-								valid = false;
-								break;
+								secondVariantLengths.push_back(lengthCluster);
 							}
 						}
 						std::reverse(secondVariantLengths.begin(), secondVariantLengths.end());
@@ -309,59 +303,29 @@ private:
 						for (const auto& pair : hpcVariants.at(bwHash))
 						{
 							size_t lengthHere = poses[positions[i] + kmerSize - pair.first] - poses[positions[i] + kmerSize - pair.first - 1];
-							if (pair.second.count(lengthHere) == 1)
+							assert(lengthHere <= pair.second.back());
+							size_t lengthCluster = *std::lower_bound(pair.second.begin(), pair.second.end(), lengthHere);
+							if (pair.first >= kmerSize/2)
 							{
-								if (pair.first >= kmerSize/2)
-								{
-									firstVariantLengths.push_back(lengthHere);
-								}
-								if (pair.first <= kmerSize/2)
-								{
-									secondVariantLengths.push_back(lengthHere);
-								}
+								firstVariantLengths.push_back(lengthCluster);
 							}
-							else
+							if (pair.first <= kmerSize/2)
 							{
-								valid = false;
-								break;
+								secondVariantLengths.push_back(lengthCluster);
 							}
 						}
 						std::reverse(firstVariantLengths.begin(), firstVariantLengths.end());
 					}
-					if (!valid)
-					{
-						std::cout << "invalid variant read: " << read.readName << std::endl;
-						if (lastSolid == 0)
-						{
-							std::vector<size_t> partPositions { positions.begin(), positions.begin() + i };
-							std::vector<HashType> partHashes { hashes.begin(), hashes.begin() + i };
-							callback(read, seq, poses, rawSeq, partPositions, partHashes);
-						}
-						else if (lastSolid < i)
-						{
-							std::vector<size_t> partPositions { positions.begin() + lastSolid, positions.begin() + i };
-							std::vector<HashType> partHashes { hashes.begin() + lastSolid, hashes.begin() + i };
-							callback(read, seq, poses, rawSeq, partPositions, partHashes);
-						}
-						lastSolid = i+1;
-						continue;
-					}
 					if (firstVariantLengths.size() > 0 || secondVariantLengths.size() > 0) variant = true;
-					uint64_t firstVariantHash = std::hash<const std::vector<size_t>&>{}(firstVariantLengths);
-					uint64_t secondVariantHash = std::hash<const std::vector<size_t>&>{}(secondVariantLengths);
-					hashes[i] = hashes[i] ^ (HashType)firstVariantHash ^ (((HashType)secondVariantHash) << 64);
+					if (variant)
+					{
+						uint64_t firstVariantHash = std::hash<const std::vector<size_t>&>{}(firstVariantLengths);
+						uint64_t secondVariantHash = std::hash<const std::vector<size_t>&>{}(secondVariantLengths);
+						hashes[i] = hashes[i] ^ (HashType)firstVariantHash ^ (((HashType)secondVariantHash) << 64);
+					}
 				}
 				if (variant) std::cout << "variant read: " << read.readName << std::endl;
-				if (lastSolid > 0 && lastSolid < hashes.size())
-				{
-					std::vector<size_t> partPositions { positions.begin() + lastSolid, positions.end() };
-					std::vector<HashType> partHashes { hashes.begin() + lastSolid, hashes.end() };
-					callback(read, seq, poses, rawSeq, partPositions, partHashes);
-				}
-				else if (lastSolid == 0)
-				{
-					callback(read, seq, poses, rawSeq, positions, hashes);
-				}
+				callback(read, seq, poses, rawSeq, positions, hashes);
 			});
 		}
 	}

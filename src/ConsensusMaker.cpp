@@ -356,12 +356,29 @@ std::vector<std::pair<size_t, std::vector<size_t>>> ConsensusMaker::getHpcVarian
 				}
 			}
 		}
+		std::vector<std::pair<size_t, size_t>> lengthCountsVec { lengthCounts.begin(), lengthCounts.end() };
+		std::sort(lengthCountsVec.begin(), lengthCountsVec.end(), [](const std::pair<size_t, size_t>& left, const std::pair<size_t, size_t>& right) { return left.first < right.first; });
+		bool currentHasHighCount = false;
+		bool valid = true;
 		std::vector<size_t> hpcVariants;
-		for (auto pair : lengthCounts)
+		size_t motifLength = codeMotifLength(compressed);
+		for (size_t i = 0; i < lengthCountsVec.size(); i++)
 		{
-			if (pair.second >= minCoverage) hpcVariants.push_back(pair.first);
+			if (i > 0 && lengthCountsVec[i].first > lengthCountsVec[i-1].first + motifLength)
+			{
+				if (!currentHasHighCount)
+				{
+					valid = false;
+					break;
+				}
+				hpcVariants.push_back(lengthCountsVec[i-1].first);
+				currentHasHighCount = false;
+			}
+			if (lengthCountsVec[i].second >= minCoverage) currentHasHighCount = true;
 		}
-		std::sort(hpcVariants.begin(), hpcVariants.end());
+		if (!currentHasHighCount) valid = false;
+		if (!valid) continue;
+		hpcVariants.push_back(lengthCountsVec.back().first);
 		if (hpcVariants.size() >= 2)
 		{
 			result.emplace_back(j, std::move(hpcVariants));

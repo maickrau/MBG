@@ -390,16 +390,6 @@ void getHpcVariants(const HashList& hashlist, const UnitigGraph& unitigs, const 
 				kmerIndex += 1;
 				assert(kmerIndex < bpOffsets[i].size());
 			}
-			bool enoughSpaceBetween = true;
-			size_t lastLength = hpcVariants[j].second[0];
-			for (size_t k = 1; k < hpcVariants[j].second.size(); k++)
-			{
-				size_t lengthHere = hpcVariants[j].second[k];
-				assert(lengthHere > lastLength);
-				if (lengthHere < lastLength + 3 * motifLength) enoughSpaceBetween = false;
-				lastLength = lengthHere;
-			}
-			if (!enoughSpaceBetween) continue;
 			assert(kmerIndex < bpOffsets[i].size());
 			assert(bpOffsets[i][kmerIndex] <= variantPos);
 			while (kmerIndex < bpOffsets[i].size() && bpOffsets[i][kmerIndex] <= variantPos)
