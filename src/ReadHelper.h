@@ -324,7 +324,6 @@ private:
 						hashes[i] = hashes[i] ^ (HashType)firstVariantHash ^ (((HashType)secondVariantHash) << 64);
 					}
 				}
-				if (variant) std::cout << "variant read: " << read.readName << std::endl;
 				callback(read, seq, poses, rawSeq, positions, hashes);
 			});
 		}
