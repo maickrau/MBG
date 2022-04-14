@@ -139,6 +139,7 @@ private:
 	template <typename F>
 	void iteratePartsFromCache(F callback) const
 	{
+		std::cerr << "Reading sequences from cache" << std::endl;
 		iterateHashesFromCache([callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes) {
 			callback(read, seq, poses, rawSeq);
 		});
