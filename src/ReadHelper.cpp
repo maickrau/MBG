@@ -72,4 +72,5 @@ void ReadpartIterator::clearCache()
 	{
 		remove(cacheFileName.c_str());
 	}
+	cacheBuilt = false;
 }
