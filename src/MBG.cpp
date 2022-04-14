@@ -1484,7 +1484,7 @@ void sortPaths(std::vector<ReadPath>& readPaths)
 	});
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile, const bool keepGaps, const double hpcVariantOnecopyCoverage)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile, const bool keepGaps, const double hpcVariantOnecopyCoverage, const bool guesswork)
 {
 	auto beforeReading = getTime();
 	// check that all files actually exist
@@ -1539,7 +1539,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	{
 		std::cerr << "Resolving unitigs" << std::endl;
 		std::cerr << unitigs.unitigs.size() << " unitigs before resolving" << std::endl;
-		std::tie(unitigs, readPaths) = resolveUnitigs(unitigs, reads, readPaths, partIterator, minUnitigCoverage, kmerSize, maxResolveLength, maxUnconditionalResolveLength, keepGaps);
+		std::tie(unitigs, readPaths) = resolveUnitigs(unitigs, reads, readPaths, partIterator, minUnitigCoverage, kmerSize, maxResolveLength, maxUnconditionalResolveLength, keepGaps, guesswork);
 		std::cerr << unitigs.unitigs.size() << " unitigs after resolving" << std::endl;
 	}
 	auto beforeSequences = getTime();

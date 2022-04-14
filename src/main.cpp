@@ -27,6 +27,7 @@ int main(int argc, char** argv)
 		("sequence-cache-file", "Use a temporary sequence cache file to speed up graph construction", cxxopts::value<std::string>())
 		("keep-gaps", "Don't remove low coverage nodes if it would leave a gap in the graph")
 		("hpc-variant-onecopy-coverage", "Separate k-mers based on hpc variants, using arg as single copy coverage", cxxopts::value<double>())
+		("do-unsafe-guesswork-resolutions", "Use extra heuristics during multiplex resolution")
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
@@ -86,6 +87,7 @@ int main(int argc, char** argv)
 	bool blunt = false;
 	bool includeEndKmers = false;
 	bool keepGaps = false;
+	bool guesswork = false;
 	double hpcVariantOnecopyCoverage = 0;
 	std::string errorMaskingStr = "hpc";
 	std::string nodeNamePrefix = "";
@@ -94,6 +96,7 @@ int main(int argc, char** argv)
 	if (params.count("R") == 1) maxUnconditionalResolveLength = params["R"].as<size_t>();
 	if (params.count("blunt") == 1) blunt = true;
 	if (params.count("keep-gaps") == 1) keepGaps = true;
+	if (params.count("do-unsafe-guesswork-resolutions") == 1) guesswork = true;
 	if (params.count("error-masking") == 1)
 	{
 		errorMaskingStr = params["error-masking"].as<std::string>();
@@ -192,8 +195,9 @@ int main(int argc, char** argv)
 	std::cerr << "endkmers=" << (includeEndKmers ? "yes" : "no") << ",";
 	std::cerr << "blunt=" << (blunt ? "yes" : "no") << ",";
 	std::cerr << "keepgaps=" << (keepGaps ? "yes" : "no") << ",";
+	std::cerr << "guesswork=" << (guesswork ? "yes" : "no") << ",";
 	std::cerr << "cache=" << (sequenceCacheFile.size() > 0 ? "yes" : "no");
 	std::cerr << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix, sequenceCacheFile, keepGaps, hpcVariantOnecopyCoverage);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix, sequenceCacheFile, keepGaps, hpcVariantOnecopyCoverage, guesswork);
 }
