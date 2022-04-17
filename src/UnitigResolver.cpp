@@ -2010,28 +2010,40 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			if (before.first == std::numeric_limits<size_t>::max())
 			{
 				assert(after.first != std::numeric_limits<size_t>::max());
-				assert(newEdgeNodes.count(std::make_pair(pos, after)) == 1 || newEdgeNodes.count(std::make_pair(reverse(after), reverse(pos))) == 1);
+				assert(newEdgeNodes.count(std::make_pair(pos, after)) == 1 || newEdgeNodes.count(std::make_pair(reverse(after), reverse(pos))) == 1 || !actuallyResolvables.get(after.first));
 				if (newEdgeNodes.count(std::make_pair(pos, after)) == 1)
 				{
 					result.maybeTrimmable[std::make_pair(newEdgeNodes.at(std::make_pair(pos, after)), false)] = resolvableGraph.unitigs[node].size();
 				}
-				else
+				else if (newEdgeNodes.count(std::make_pair(reverse(after), reverse(pos))) == 1)
 				{
 					result.maybeTrimmable[std::make_pair(newEdgeNodes.at(std::make_pair(reverse(after), reverse(pos))), true)] = resolvableGraph.unitigs[node].size();
+				}
+				else
+				{
+					assert(!actuallyResolvables.get(after.first));
+					assert(!resolvableGraph.unitigRemoved[after.first]);
+					result.maybeTrimmable[reverse(after)] = resolvableGraph.unitigs[after.first].size();
 				}
 				continue;
 			}
 			if (after.first == std::numeric_limits<size_t>::max())
 			{
 				assert(before.first != std::numeric_limits<size_t>::max());
-				assert(newEdgeNodes.count(std::make_pair(reverse(pos), reverse(before))) == 1 || newEdgeNodes.count(std::make_pair(before, pos)) == 1);
+				assert(newEdgeNodes.count(std::make_pair(reverse(pos), reverse(before))) == 1 || newEdgeNodes.count(std::make_pair(before, pos)) == 1 || !actuallyResolvables.get(before.first));
 				if (newEdgeNodes.count(std::make_pair(before, pos)) == 1)
 				{
 					result.maybeTrimmable[std::make_pair(newEdgeNodes.at(std::make_pair(before, pos)), true)] = resolvableGraph.unitigs[node].size();
 				}
-				else
+				else if (newEdgeNodes.count(std::make_pair(before, pos)) == 1)
 				{
 					result.maybeTrimmable[std::make_pair(newEdgeNodes.at(std::make_pair(reverse(pos), reverse(before))), false)] = resolvableGraph.unitigs[node].size();
+				}
+				else
+				{
+					assert(!actuallyResolvables.get(before.first));
+					assert(!resolvableGraph.unitigRemoved[before.first]);
+					result.maybeTrimmable[before] = resolvableGraph.unitigs[before.first].size();
 				}
 				continue;
 			}
