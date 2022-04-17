@@ -2825,8 +2825,8 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 				if (left.first < right.first) return true;
 				if (left.first > right.first) return false;
 				assert(left.first == right.first);
-				if (left.second < right.second) return true;
-				if (left.second > right.second) return false;
+				if (left.second > right.second) return true;
+				if (left.second < right.second) return false;
 				assert(left.second == right.second);
 				return false;
 			});
