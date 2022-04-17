@@ -92,7 +92,7 @@ public:
 	void prepareEdgeOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, size_t overlap);
 	void allocateParent();
 	void addEdgeOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, size_t overlap);
-	void prepareHpcVariants();
+	void prepareHpcVariants(const std::vector<bool>& checkUnitig);
 	std::vector<std::pair<size_t, std::vector<size_t>>> getHpcVariants(const size_t unitig, const size_t minCoverage);
 	uint16_t getCompressed(const size_t unitig, const size_t offset) const;
 private:

@@ -299,11 +299,12 @@ void ConsensusMaker::findParentLinks()
 	}
 }
 
-void ConsensusMaker::prepareHpcVariants()
+void ConsensusMaker::prepareHpcVariants(const std::vector<bool>& checkUnitig)
 {
 	for (auto pair : needsComplementVerification)
 	{
 		auto found = find(pair.first, pair.second);
+		if (!checkUnitig[std::get<0>(found)]) continue;
 		assert(complement(compressedSequences[std::get<0>(found)].get(std::get<1>(found))) == compressedSequences[std::get<0>(found)].get(std::get<1>(found)));
 	}
 	for (size_t i = 0; i < simpleCounts.size(); i++)
