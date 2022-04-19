@@ -382,7 +382,6 @@ void getHpcVariants(const HashList& hashlist, const UnitigGraph& unitigs, const 
 		auto hpcVariants = consensusMaker.getHpcVariants(i, minVariantCoverage);
 		for (size_t j = 0; j < hpcVariants.size(); j++)
 		{
-			size_t motifLength = codeMotifLength(consensusMaker.getCompressed(i, j));
 			size_t variantPos = hpcVariants[j].first;
 			size_t kmerIndex = 0;
 			while (bpOffsets[i][kmerIndex] + kmerSize <= variantPos)

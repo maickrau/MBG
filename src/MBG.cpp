@@ -1195,8 +1195,6 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 			assert(readPos + kmerSize <= seq.size());
 			std::pair<size_t, bool> kmer = hashlist.getNodeOrNull(fwHash);
 			if (kmer.first == std::numeric_limits<size_t>::max()) continue;
-			size_t readPosExpandedStart = poses[readPos];
-			size_t readPosExpandedEnd = poses[readPos+kmerSize];
 			if (kmer.first >= kmerLocator.size() || std::get<0>(kmerLocator[kmer.first]) == std::numeric_limits<size_t>::max())
 			{
 				if (current.path.size() > 0)

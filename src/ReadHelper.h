@@ -270,7 +270,6 @@ private:
 		{
 			iterateHashesFromFilesInternal([this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, std::vector<HashType>& hashes)
 			{
-				size_t lastSolid = 0;
 				bool variant = false;
 				for (size_t i = 0; i < hashes.size(); i++)
 				{

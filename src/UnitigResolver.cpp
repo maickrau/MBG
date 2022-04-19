@@ -2765,7 +2765,6 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		checkValidity(resolvableGraph, readPaths, kmerSize);
 		std::cerr << "try resolve k=" << topSize;
 		auto resolutionResult = resolve(resolvableGraph, hashlist, kmerSize, readPaths, resolvables, minCoverage, topSize < maxUnconditionalResolveLength, guesswork);
-		size_t newSize = resolvableGraph.unitigs.size();
 		std::cerr << ", replaced " << resolutionResult.nodesResolved << " nodes with " << resolutionResult.nodesAdded << " nodes";
 		nodesRemoved += resolutionResult.nodesResolved;
 		if (resolutionResult.nodesResolved == 0)
