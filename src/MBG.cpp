@@ -1473,13 +1473,14 @@ void sortPaths(std::vector<ReadPath>& readPaths)
 {
 	std::stable_sort(readPaths.begin(), readPaths.end(), [](const ReadPath& left, const ReadPath& right)
 	{
+		if (&left == &right) return false;
 		if (left.readName < right.readName) return true;
 		if (left.readName > right.readName) return false;
 		assert(left.readName == right.readName);
-		assert(left.readPoses.size() > 0);
-		assert(right.readPoses.size() > 0);
-		if (left.readPoses[0] < right.readPoses[0]) return true;
-		if (left.readPoses[0] > right.readPoses[0]) return false;
+		assert(left.expandedReadPosStart < left.readLength);
+		assert(right.expandedReadPosStart < left.readLength);
+		if (left.expandedReadPosStart < right.expandedReadPosStart) return true;
+		if (left.expandedReadPosStart > right.expandedReadPosStart) return false;
 		assert(false);
 	});
 }
