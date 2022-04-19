@@ -2037,7 +2037,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 				{
 					result.maybeTrimmable[std::make_pair(newEdgeNodes.at(std::make_pair(before, pos)), true)] = resolvableGraph.unitigs[node].size();
 				}
-				else if (newEdgeNodes.count(std::make_pair(before, pos)) == 1)
+				else if (newEdgeNodes.count(std::make_pair(reverse(pos), reverse(before))) == 1)
 				{
 					result.maybeTrimmable[std::make_pair(newEdgeNodes.at(std::make_pair(reverse(pos), reverse(before))), false)] = resolvableGraph.unitigs[node].size();
 				}
