@@ -1471,7 +1471,7 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getGues
 	assert(coveredInNeighbors.size() <= resolvableGraph.edges[std::make_pair(node, false)].size());
 	assert(coveredOutNeighbors.size() <= resolvableGraph.edges[std::make_pair(node, true)].size());
 	// todo: this could be handled but it's hard to implement
-	if (resolvableGraph.edges[std::make_pair(node, false)].size() >= coveredInNeighbors.size() + 2 && resolvableGraph.edges[std::make_pair(node, true)].size() >= coveredOutNeighbors.size() + 2) return empty;
+	if (resolvableGraph.edges[std::make_pair(node, false)].size() >= coveredInNeighbors.size() + 2 || resolvableGraph.edges[std::make_pair(node, true)].size() >= coveredOutNeighbors.size() + 2) return empty;
 	size_t uncoveredOutCopycounts = 0;
 	size_t uncoveredInCopycounts = 0;
 	for (auto pair : outneighborCopyCounts)
