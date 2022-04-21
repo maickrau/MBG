@@ -1886,6 +1886,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 		for (auto node : check)
 		{
 			if (unresolvables.count(node) == 1) continue;
+			phmap::flat_hash_map<std::pair<size_t, bool>, size_t> fakeEdgeCount;
 			auto triplets = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork);
 			for (auto triplet : triplets)
 			{
@@ -1895,26 +1896,56 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 				{
 					if (resolvables.count(triplet.second.first) == 0 || unresolvables.count(triplet.second.first) == 1)
 					{
+						bool bwFake = false;
+						bool fwFake = false;
 						if (resolvableGraph.unitigLength(triplet.first.first) == resolvableGraph.getBpOverlap(std::make_pair(node, false), reverse(triplet.first))+1)
 						{
-							if (resolvableGraph.unitigLength(triplet.second.first) == resolvableGraph.getBpOverlap(std::make_pair(node, true), triplet.second)+1)
+							bwFake = true;
+						}
+						if (resolvableGraph.unitigLength(triplet.second.first) == resolvableGraph.getBpOverlap(std::make_pair(node, true), triplet.second)+1)
+						{
+							fwFake = true;
+						}
+						if (bwFake && fwFake)
+						{
+							assert(unresolvables.count(node) == 0);
+							unresolvables.insert(node);
+							removeThese.emplace_back(node);
+							for (auto edge : resolvableGraph.edges[std::make_pair(node, true)])
 							{
-								assert(unresolvables.count(node) == 0);
-								unresolvables.insert(node);
-								removeThese.emplace_back(node);
-								for (auto edge : resolvableGraph.edges[std::make_pair(node, true)])
-								{
-									if (resolvables.count(edge.first) == 1 && unresolvables.count(edge.first) == 0) newCheck.insert(edge.first);
-								}
-								for (auto edge : resolvableGraph.edges[std::make_pair(node, false)])
-								{
-									if (resolvables.count(edge.first) == 1 && unresolvables.count(edge.first) == 0) newCheck.insert(edge.first);
-								}
-								break;
+								if (resolvables.count(edge.first) == 1 && unresolvables.count(edge.first) == 0) newCheck.insert(edge.first);
 							}
+							for (auto edge : resolvableGraph.edges[std::make_pair(node, false)])
+							{
+								if (resolvables.count(edge.first) == 1 && unresolvables.count(edge.first) == 0) newCheck.insert(edge.first);
+							}
+							break;
+						}
+						else if (bwFake)
+						{
+							fakeEdgeCount[triplet.first] += 1;
+						}
+						else if (fwFake)
+						{
+							fakeEdgeCount[triplet.second] += 1;
 						}
 					}
 				}
+			}
+			for (auto pair : fakeEdgeCount)
+			{
+				if (pair.second < 2) continue;
+				unresolvables.insert(node);
+				removeThese.emplace_back(node);
+				for (auto edge : resolvableGraph.edges[std::make_pair(node, true)])
+				{
+					if (resolvables.count(edge.first) == 1 && unresolvables.count(edge.first) == 0) newCheck.insert(edge.first);
+				}
+				for (auto edge : resolvableGraph.edges[std::make_pair(node, false)])
+				{
+					if (resolvables.count(edge.first) == 1 && unresolvables.count(edge.first) == 0) newCheck.insert(edge.first);
+				}
+				break;
 			}
 		}
 		check.clear();
