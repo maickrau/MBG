@@ -1508,7 +1508,6 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		{
 			unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage, keepGaps));
 		}
-		filterKmersToUnitigKmers(unitigs, reads, kmerSize);
 		sortKmersByHashes(unitigs, reads);
 		auto readPaths = getReadPaths(unitigs, reads, numThreads, partIterator, kmerSize);
 		getHpcVariants(reads, unitigs, readPaths, kmerSize, partIterator, numThreads, hpcVariantOnecopyCoverage * 1.5, hpcVariantOnecopyCoverage * 0.5);
