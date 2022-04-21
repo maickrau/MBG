@@ -1154,6 +1154,41 @@ void unresolveRecursively(const ResolvableUnitigGraph& resolvableGraph, const ph
 	}
 }
 
+void createFakeEdgeNode(ResolvableUnitigGraph& resolvableGraph, const HashList& hashlist, const size_t kmerSize, phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t>& newEdgeNodes, const phmap::flat_hash_set<size_t>& resolvables, const phmap::flat_hash_set<size_t>& unresolvables, std::pair<size_t, bool> from, std::pair<size_t, bool> to)
+{
+	size_t newIndex = resolvableGraph.unitigs.size();
+	newEdgeNodes[std::make_pair(from, to)] = newIndex;
+	resolvableGraph.unitigs.emplace_back();
+	std::vector<std::pair<size_t, bool>> add = resolvableGraph.unitigs[from.first];
+	size_t leftClipBp = resolvableGraph.unitigLeftClipBp[from.first];
+	size_t rightClipBp = resolvableGraph.unitigRightClipBp[from.first];
+	if (!from.second)
+	{
+		add = revCompPath(add);
+		std::swap(leftClipBp, rightClipBp);
+	}
+	resolvableGraph.unitigs.back().insert(resolvableGraph.unitigs.back().end(), add.begin(), add.end());
+	resolvableGraph.unitigRightClipBp.push_back(rightClipBp);
+	resolvableGraph.unitigLeftClipBp.push_back(leftClipBp);
+	resolvableGraph.edges.emplace_back();
+	resolvableGraph.unitigRemoved.emplace_back(false);
+	resolvableGraph.readsCrossingNode.emplace_back();
+	assert(resolvables.count(to.first) == 0 || unresolvables.count(to.first) == 1);
+	resolvableGraph.edges[std::make_pair(newIndex, true)].emplace(to);
+	resolvableGraph.edges[reverse(to)].emplace(std::make_pair(newIndex, false));
+	size_t overlap = resolvableGraph.overlaps.at(canon(from, to));
+	assert(resolvableGraph.unitigs[newIndex].size() >= overlap);
+	assert(resolvableGraph.unitigs[to.first].size() >= overlap);
+	resolvableGraph.overlaps[canon(std::make_pair(newIndex, true), to)] = overlap;
+	assert(resolvableGraph.getBpOverlap(std::make_pair(newIndex, true), to) < resolvableGraph.unitigLength(to.first));
+	assert(resolvableGraph.unitigLength(newIndex) == resolvableGraph.unitigLength(from.first));
+	if (resolvableGraph.unitigs[newIndex].size() >= 2)
+	{
+		assert(resolvableGraph.unitigLeftClipBp[newIndex] < kmerSize - resolvableGraph.hashlist.getOverlap(resolvableGraph.unitigs[newIndex][0], resolvableGraph.unitigs[newIndex][1]));
+		assert(resolvableGraph.unitigRightClipBp[newIndex] < kmerSize - resolvableGraph.hashlist.getOverlap(resolvableGraph.unitigs[newIndex][resolvableGraph.unitigs[newIndex].size()-2], resolvableGraph.unitigs[newIndex][resolvableGraph.unitigs[newIndex].size()-1]));
+	}
+}
+
 void createEdgeNode(ResolvableUnitigGraph& resolvableGraph, const HashList& hashlist, const size_t kmerSize, phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t>& newEdgeNodes, const phmap::flat_hash_set<size_t>& resolvables, const phmap::flat_hash_set<size_t>& unresolvables, std::pair<size_t, bool> from, std::pair<size_t, bool> to)
 {
 	size_t newIndex = resolvableGraph.unitigs.size();
@@ -1413,7 +1448,7 @@ size_t getAnchorSize(const ResolvableUnitigGraph& resolvableGraph, const std::ve
 			}
 			if (readPaths[readi].path[i-1] == reverse(to) && readPaths[readi].path[i] == reverse(from))
 			{
-				if (i > 0)
+				if (i > 1)
 				{
 					return resolvableGraph.unitigs[to.first].size();
 				}
@@ -1496,7 +1531,7 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getGues
 	}
 	for (auto pair : inneighborCopyCounts)
 	{
-		if (coveredOutNeighbors.count(pair.first) == 1) continue;
+		if (coveredInNeighbors.count(pair.first) == 1) continue;
 		if (pair.second == 0) continue;
 		size_t anchorSize = getAnchorSize(resolvableGraph, readPaths, reverse(pair.first), std::make_pair(node, true));
 		shortestInAnchor = std::min(shortestInAnchor, anchorSize);
@@ -1919,11 +1954,16 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 				result.maybeTrimmable[reverse(edge)] = std::max(resolvableGraph.overlaps.at(canon(pos, edge)), result.maybeTrimmable[reverse(edge)]);
 				continue;
 			}
-			if ((resolvables.count(edge.first) == 0 || unresolvables.count(edge.first) == 1) && resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(pos, edge) + 1) continue;
-			assert(actuallyResolvables.get(edge.first) || resolvableGraph.unitigLength(edge.first) > resolvableGraph.getBpOverlap(pos, edge) + 1);
-			// assert(unresolvables.count(edge.first) == 0);
 			if (newEdgeNodes.count(std::make_pair(reverse(edge), reverse(pos))) == 1) continue;
-			createEdgeNode(resolvableGraph, hashlist, kmerSize, newEdgeNodes, resolvables, unresolvables, pos, edge);
+			if ((resolvables.count(edge.first) == 0 || unresolvables.count(edge.first) == 1) && resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(pos, edge) + 1)
+			{
+				createFakeEdgeNode(resolvableGraph, hashlist, kmerSize, newEdgeNodes, resolvables, unresolvables, pos, edge);
+			}
+			else
+			{
+				assert(actuallyResolvables.get(edge.first) || resolvableGraph.unitigLength(edge.first) > resolvableGraph.getBpOverlap(pos, edge) + 1);
+				createEdgeNode(resolvableGraph, hashlist, kmerSize, newEdgeNodes, resolvables, unresolvables, pos, edge);
+			}
 			assert(newEdgeNodes.count(std::make_pair(pos, edge)) == 1);
 			if (bwEdges.size() == 0)
 			{
@@ -1941,11 +1981,16 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 				result.maybeTrimmable[reverse(edge)] = std::max(resolvableGraph.overlaps.at(canon(pos, edge)), result.maybeTrimmable[reverse(edge)]);
 				continue;
 			}
-			if ((resolvables.count(edge.first) == 0 || unresolvables.count(edge.first) == 1) && resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(pos, edge) + 1) continue;
-			assert(actuallyResolvables.get(edge.first) || resolvableGraph.unitigLength(edge.first) > resolvableGraph.getBpOverlap(pos, edge) + 1);
-			// assert(unresolvables.count(edge.first) == 0);
 			if (newEdgeNodes.count(std::make_pair(reverse(edge), reverse(pos))) == 1) continue;
-			createEdgeNode(resolvableGraph, hashlist, kmerSize, newEdgeNodes, resolvables, unresolvables, pos, edge);
+			if ((resolvables.count(edge.first) == 0 || unresolvables.count(edge.first) == 1) && resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(pos, edge) + 1)
+			{
+				createFakeEdgeNode(resolvableGraph, hashlist, kmerSize, newEdgeNodes, resolvables, unresolvables, pos, edge);
+			}
+			else
+			{
+				assert(actuallyResolvables.get(edge.first) || resolvableGraph.unitigLength(edge.first) > resolvableGraph.getBpOverlap(pos, edge) + 1);
+				createEdgeNode(resolvableGraph, hashlist, kmerSize, newEdgeNodes, resolvables, unresolvables, pos, edge);
+			}
 			assert(newEdgeNodes.count(std::make_pair(pos, edge)) == 1);
 			if (fwEdges.size() == 0)
 			{
@@ -2052,49 +2097,30 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			std::pair<size_t, bool> leftNode = before;
 			std::pair<size_t, bool> rightNode = after;
 			size_t overlap = resolvableGraph.unitigs[node].size();
-			bool foundLeft = false;
-			bool foundRight = false;
 			assert(newEdgeNodes.count(std::make_pair(reverse(pos), reverse(before))) == 0 || newEdgeNodes.count(std::make_pair(before, pos)) == 0);
 			assert(newEdgeNodes.count(std::make_pair(pos, after)) == 0 || newEdgeNodes.count(std::make_pair(reverse(after), reverse(pos))) == 0);
 			if (newEdgeNodes.count(std::make_pair(reverse(pos), reverse(before))) == 1)
 			{
 				assert(newEdgeNodes.count(std::make_pair(before, pos)) == 0);
 				leftNode = std::make_pair(newEdgeNodes.at(std::make_pair(reverse(pos), reverse(before))), false);
-				foundLeft = true;
-			}
-			else if (newEdgeNodes.count(std::make_pair(before, pos)) == 1)
-			{
-				leftNode = std::make_pair(newEdgeNodes.at(std::make_pair(before, pos)), true);
-				foundLeft = true;
 			}
 			else
 			{
-				assert(resolvables.count(before.first) == 0 || unresolvables.count(before.first) == 1);
-				assert(newEdgeNodes.count(std::make_pair(pos, after)) == 1 || newEdgeNodes.count(std::make_pair(reverse(after), reverse(pos))) == 1);
-				assert(resolvableGraph.unitigLength(before.first) == resolvableGraph.getBpOverlap(before, pos)+1);
-				overlap = resolvableGraph.overlaps.at(canon(before, pos));
+				assert(newEdgeNodes.count(std::make_pair(before, pos)) == 1);
+				leftNode = std::make_pair(newEdgeNodes.at(std::make_pair(before, pos)), true);
 			}
 			if (newEdgeNodes.count(std::make_pair(pos, after)) == 1)
 			{
 				assert(newEdgeNodes.count(std::make_pair(reverse(after), reverse(pos))) == 0);
 				rightNode = std::make_pair(newEdgeNodes.at(std::make_pair(pos, after)), true);
-				foundRight = true;
-			}
-			else if (newEdgeNodes.count(std::make_pair(reverse(after), reverse(pos))) == 1)
-			{
-				rightNode = std::make_pair(newEdgeNodes.at(std::make_pair(reverse(after), reverse(pos))), false);
-				foundRight = true;
 			}
 			else
 			{
-				assert(resolvables.count(after.first) == 0 || unresolvables.count(after.first) == 1);
-				assert(newEdgeNodes.count(std::make_pair(reverse(pos), reverse(before))) == 1 || newEdgeNodes.count(std::make_pair(before, pos)) == 1);
-				assert(resolvableGraph.unitigLength(after.first) == resolvableGraph.getBpOverlap(pos, after)+1);
-				overlap = resolvableGraph.overlaps.at(canon(pos, after));
+				assert(newEdgeNodes.count(std::make_pair(reverse(after), reverse(pos))) == 1);
+				rightNode = std::make_pair(newEdgeNodes.at(std::make_pair(reverse(after), reverse(pos))), false);
 			}
 			result.maybeUnitigifiable.insert(leftNode.first);
 			result.maybeUnitigifiable.insert(rightNode.first);
-			assert(foundLeft || foundRight);
 			assert(!resolvableGraph.unitigRemoved[leftNode.first]);
 			assert(!resolvableGraph.unitigRemoved[rightNode.first]);
 			assert(resolvables.count(leftNode.first) == 0 || unresolvables.count(leftNode.first) == 1);
@@ -2116,8 +2142,8 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			}
 			assert(resolvableGraph.edges[leftNode].count(rightNode) == 1);
 			assert(resolvableGraph.edges[reverse(rightNode)].count(reverse(leftNode)) == 1);
-			assert(resolvableGraph.getBpOverlap(leftNode, rightNode) < resolvableGraph.unitigLength(leftNode.first));
-			assert(resolvableGraph.getBpOverlap(leftNode, rightNode) < resolvableGraph.unitigLength(rightNode.first));
+			assert(((resolvables.count(before.first) == 0 || unresolvables.count(before.first) == 1) && resolvableGraph.unitigLength(before.first) == resolvableGraph.getBpOverlap(reverse(pos), reverse(before)) + 1) || resolvableGraph.getBpOverlap(leftNode, rightNode) < resolvableGraph.unitigLength(leftNode.first));
+			assert(((resolvables.count(after.first) == 0 || unresolvables.count(after.first) == 1) && resolvableGraph.unitigLength(after.first) == resolvableGraph.getBpOverlap(pos, after) + 1) || resolvableGraph.getBpOverlap(leftNode, rightNode) < resolvableGraph.unitigLength(rightNode.first));
 		}
 	}
 	for (auto node : actuallyResolvables)
