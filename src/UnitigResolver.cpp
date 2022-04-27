@@ -762,7 +762,7 @@ void replacePathNodes(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGr
 		leftClip[i].resize(newUnitigs[i].first.size());
 		rightClip[i].resize(newUnitigs[i].first.size());
 		assert(resolvableGraph.unitigs[newUnitigs[i].first[0].first].size() <= resolvableGraph.unitigs[newUnitigs[i].second].size());
-		assert(resolvableGraph.unitigLength(newUnitigs[i].first[0].first) < resolvableGraph.unitigLength(newUnitigs[i].second));
+		assert((resolvableGraph.unitigLength(newUnitigs[i].first[0].first) < resolvableGraph.unitigLength(newUnitigs[i].second)) || (resolvableGraph.unitigLength(newUnitigs[i].first.back().first) < resolvableGraph.unitigLength(newUnitigs[i].second)));
 		size_t leftClipSum = 0;
 		size_t rightClipSum = resolvableGraph.unitigs[newUnitigs[i].second].size() - resolvableGraph.unitigs[newUnitigs[i].first[0].first].size();
 		leftClip[i][0] = leftClipSum;
