@@ -1888,6 +1888,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			if (unresolvables.count(node) == 1) continue;
 			phmap::flat_hash_map<std::pair<size_t, bool>, size_t> fakeEdgeCount;
 			auto triplets = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork);
+			bool unresolve = false;
 			for (auto triplet : triplets)
 			{
 				if (triplet.first.first == std::numeric_limits<size_t>::max()) continue;
@@ -1908,33 +1909,22 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 						}
 						if (bwFake && fwFake)
 						{
-							assert(unresolvables.count(node) == 0);
-							unresolvables.insert(node);
-							removeThese.emplace_back(node);
-							for (auto edge : resolvableGraph.edges[std::make_pair(node, true)])
-							{
-								if (resolvables.count(edge.first) == 1 && unresolvables.count(edge.first) == 0) newCheck.insert(edge.first);
-							}
-							for (auto edge : resolvableGraph.edges[std::make_pair(node, false)])
-							{
-								if (resolvables.count(edge.first) == 1 && unresolvables.count(edge.first) == 0) newCheck.insert(edge.first);
-							}
-							break;
+							unresolve = true;
 						}
 						else if (bwFake)
 						{
-							fakeEdgeCount[triplet.first] += 1;
+							if (resolvableGraph.edges[triplet.first].size() >= 2) unresolve = true;
 						}
 						else if (fwFake)
 						{
-							fakeEdgeCount[triplet.second] += 1;
+							if (resolvableGraph.edges[reverse(triplet.second)].size() >= 2) unresolve = true;
 						}
 					}
 				}
 			}
-			for (auto pair : fakeEdgeCount)
+			if (unresolve)
 			{
-				if (pair.second < 2) continue;
+				assert(unresolvables.count(node) == 0);
 				unresolvables.insert(node);
 				removeThese.emplace_back(node);
 				for (auto edge : resolvableGraph.edges[std::make_pair(node, true)])
@@ -1945,7 +1935,6 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 				{
 					if (resolvables.count(edge.first) == 1 && unresolvables.count(edge.first) == 0) newCheck.insert(edge.first);
 				}
-				break;
 			}
 		}
 		check.clear();
