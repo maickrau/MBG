@@ -1891,36 +1891,31 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			bool unresolve = false;
 			for (auto triplet : triplets)
 			{
-				if (triplet.first.first == std::numeric_limits<size_t>::max()) continue;
-				if (triplet.second.first == std::numeric_limits<size_t>::max()) continue;
-				if (resolvables.count(triplet.first.first) == 0 || unresolvables.count(triplet.first.first) == 1)
+				bool bwFake = false;
+				bool fwFake = false;
+				if (triplet.first.first != std::numeric_limits<size_t>::max())
 				{
-					if (resolvables.count(triplet.second.first) == 0 || unresolvables.count(triplet.second.first) == 1)
+					if (resolvableGraph.unitigLength(triplet.first.first) == resolvableGraph.getBpOverlap(std::make_pair(node, false), reverse(triplet.first))+1)
 					{
-						bool bwFake = false;
-						bool fwFake = false;
-						if (resolvableGraph.unitigLength(triplet.first.first) == resolvableGraph.getBpOverlap(std::make_pair(node, false), reverse(triplet.first))+1)
-						{
-							bwFake = true;
-						}
-						if (resolvableGraph.unitigLength(triplet.second.first) == resolvableGraph.getBpOverlap(std::make_pair(node, true), triplet.second)+1)
-						{
-							fwFake = true;
-						}
-						if (bwFake && fwFake)
-						{
-							unresolve = true;
-						}
-						else if (bwFake)
-						{
-							if (resolvableGraph.edges[triplet.first].size() >= 2) unresolve = true;
-						}
-						else if (fwFake)
-						{
-							if (resolvableGraph.edges[reverse(triplet.second)].size() >= 2) unresolve = true;
-						}
+						bwFake = true;
 					}
 				}
+				if (triplet.second.first != std::numeric_limits<size_t>::max())
+				{
+					if (resolvableGraph.unitigLength(triplet.second.first) == resolvableGraph.getBpOverlap(std::make_pair(node, true), triplet.second)+1)
+					{
+						fwFake = true;
+					}
+				}
+				if (bwFake)
+				{
+					if (resolvableGraph.edges[triplet.first].size() >= 2) unresolve = true;
+				}
+				if (fwFake)
+				{
+					if (resolvableGraph.edges[reverse(triplet.second)].size() >= 2) unresolve = true;
+				}
+				if (bwFake && fwFake) unresolve = true;
 			}
 			if (unresolve)
 			{
