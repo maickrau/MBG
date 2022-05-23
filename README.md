@@ -33,11 +33,14 @@ Multiple read files can be inputted with "-i file1.fa -i file2.fa" etc. Input re
 
 Other options:
 - `-r`: assemble using a multiplex DBG and increase k-mer size up to `r`. See [Bankevich et al. 2020](https://www.biorxiv.org/content/10.1101/2020.12.10.420448v2) for a description of the multiplex DBG algorithm.
+- `-R`: allow the multiplex DBG resolution to remove nodes and edges when `k<R`. Often nodes with low `k` are sequencing errors instead of genuine gaps so a low `R` (around 1000-4000) can improve the assembly by removing sequencing errors.
 - `-h`: print help
 - `-v`: print version
 - `--blunt`: output a graph without edge overlaps. Cannot be combined with `-r` or `--output-sequence-paths`
 - `--error-masking`: mask errors in the input reads. Options are `hpc` (default) to mask homopolymer errors and call consensus on homopolymer run lengths, `no` to disable error masking, `collapse` to collapse homopolymer runs to one base pair (not recommended outside testing), `collapse-dinuc` to collapse homopolymer runs and call consensus on dinucleotide runs, `collapse-msat` to collapse homopolymer runs and call consensus on microsatellite where the repeat motif is up to 6bp long, `dinuc` to call consensus on dinucleotide runs, `msat` to call consensus on microsatellites where the repeat motif is up to 6bp long.
 - `--include-end-kmers`: force k-mers at the ends of input sequences to be picked. Recommended if building from a reference of a linear genome, not recommended when building from reads or from a reference of a circular genome. Uses significantly more time and memory but prevents the last up to `w` base pairs at chromosome ends from being clipped.
 - `--output-sequence-paths`: output the paths of the input sequences as alignments in [GAF format](https://github.com/lh3/gfatools/blob/master/doc/rGFA.md#the-graph-alignment-format-gaf) to the given file. The alignments are exact in homopolymer compressed space but might differ in homopolymer run lengths.
+- `--do-unsafe-guesswork-resolutions`: use extra heuristics during multiplex DBG resolution. Typically leads to slightly more resolved assemblies but might introduce misassemblies.
+- `--hpc-variant-onecopy-coverage`: separate k-mers based on their homopolymer (with `--error-masking=hpc`) or microsatellite (with `--error-masking=msat` or `collapse-msat`) variation.
 
 k and w can be arbitrarily large but at some point the error rate and limited read length will cause the graph to be fragmented. Runtime stays approximately the same if the ratio k/w is kept constant. All repeats shorter than k are separated, all repeats longer than k+w are collapsed, and repeats in between may be separated or collapsed depending on if a k-mer was selected from within the repeat. When using `--blunt`, you should clean the graph afterwards with [vg](https://github.com/vgteam/vg). `--blunt` uses an extension of an algorithm invented by Hassan Nikaein (personal communication).
