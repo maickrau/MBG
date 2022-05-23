@@ -33,7 +33,7 @@ Multiple read files can be inputted with "-i file1.fa -i file2.fa" etc. Input re
 
 Other options:
 - `-r`: assemble using a multiplex DBG and increase k-mer size up to `r`. See [Bankevich et al. 2020](https://www.biorxiv.org/content/10.1101/2020.12.10.420448v2) for a description of the multiplex DBG algorithm.
-- `-R`: allow the multiplex DBG resolution to remove nodes and edges when `k<R`. Often nodes with low `k` are sequencing errors instead of genuine gaps so a low `R` (around 1000-4000) can improve the assembly by removing sequencing errors.
+- `-R`: allow the multiplex DBG resolution to remove low coverage k-mers when `k<R`. Often low coverage short k-mers are sequencing errors so a low `R` (around 1000-4000) can improve the assembly by removing sequencing errors.
 - `-h`: print help
 - `-v`: print version
 - `--blunt`: output a graph without edge overlaps. Cannot be combined with `-r` or `--output-sequence-paths`
