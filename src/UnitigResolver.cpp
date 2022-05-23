@@ -1546,6 +1546,7 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getGues
 		{
 			if (outpair.second == 0) continue;
 			if (coveredOutNeighbors.count(outpair.first) == 1) continue;
+			if (inpair.first.first == outpair.first.first) return empty;
 			coveredTriplets.emplace_back(reverse(inpair.first), outpair.first);
 			addedGuesses += 1;
 		}
