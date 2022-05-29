@@ -1354,6 +1354,7 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getRawT
 			assert(resolvableGraph.edges[std::make_pair(node, true)].count(right) == 1);
 		}
 	}
+	phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t> partTripletCoverage = tripletCoverage;
 	if (partTriplets && resolvableGraph.edges[std::make_pair(node, true)].size() >= 1 && resolvableGraph.edges[std::make_pair(node, false)].size() >= 1)
 	{
 		std::unordered_map<size_t, std::pair<size_t, size_t>> fwReads;
@@ -1436,11 +1437,11 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getRawT
 			{
 				if (readPaths[pair.first].path.back().second)
 				{
-					tripletCoverage[std::make_pair(readPaths[pair.first].path[readPaths[pair.first].path.size()-2], readPaths[pair.second].path[1])] += coverage;
+					partTripletCoverage[std::make_pair(readPaths[pair.first].path[readPaths[pair.first].path.size()-2], readPaths[pair.second].path[1])] += coverage;
 				}
 				else
 				{
-					tripletCoverage[std::make_pair(reverse(readPaths[pair.second].path[1]), reverse(readPaths[pair.first].path[readPaths[pair.first].path.size()-2]))] += coverage;
+					partTripletCoverage[std::make_pair(reverse(readPaths[pair.second].path[1]), reverse(readPaths[pair.first].path[readPaths[pair.first].path.size()-2]))] += coverage;
 				}
 			}
 		}
@@ -1450,6 +1451,47 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getRawT
 	{
 		if (pair.second < minCoverage) continue;
 		coveredTriplets.push_back(pair.first);
+	}
+	if (partTriplets && resolvableGraph.edges[std::make_pair(node, true)].size() >= 1 && resolvableGraph.edges[std::make_pair(node, false)].size() >= 1)
+	{
+		bool canAddPartTriplets = true;
+		std::unordered_set<std::pair<size_t, bool>> uniqueBwMatches;
+		std::unordered_set<std::pair<size_t, bool>> uniqueFwMatches;
+		for (auto pair : partTripletCoverage)
+		{
+			if (pair.second < minCoverage) continue;
+			if (uniqueBwMatches.count(pair.first.first) == 1)
+			{
+				canAddPartTriplets = false;
+				break;
+			}
+			if (uniqueFwMatches.count(pair.first.second) == 1)
+			{
+				canAddPartTriplets = false;
+				break;
+			}
+			if (resolvableGraph.edges[pair.first.first].size() != 1)
+			{
+				canAddPartTriplets = false;
+				break;
+			}
+			if (resolvableGraph.edges[reverse(pair.first.second)].size() != 1)
+			{
+				canAddPartTriplets = false;
+				break;
+			}
+			uniqueBwMatches.insert(pair.first.first);
+			uniqueFwMatches.insert(pair.first.second);
+		}
+		if (canAddPartTriplets)
+		{
+			coveredTriplets.clear();
+			for (auto pair : partTripletCoverage)
+			{
+				if (pair.second < minCoverage) continue;
+				coveredTriplets.push_back(pair.first);
+			}
+		}
 	}
 	return coveredTriplets;
 }
@@ -1651,7 +1693,7 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getVali
 	auto triplets = getReadSupportedTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork);
 	if (triplets.size() == 0 && guesswork)
 	{
-		triplets = getGuessworkTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional);;
+		triplets = getGuessworkTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional);
 	}
 	std::sort(triplets.begin(), triplets.end(), [](std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> left, std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> right) {
 		auto leftComp = canon(left.first, left.second);
@@ -2035,14 +2077,19 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 		if (unresolvables.count(node) == 1) continue;
 		actuallyResolvables.set(node);
 	}
+	std::unordered_map<size_t, std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>>> tripletsPerNode;
+	for (auto node : actuallyResolvables)
+	{
+		tripletsPerNode[node] = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork);
+	}
 	assert(actuallyResolvables.activeSize() == resolvables.size() - unresolvables.size());
 	phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t> newEdgeNodes;
 	for (auto node : actuallyResolvables)
 	{
-		assert(getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork).size() > 0);
+		assert(tripletsPerNode[node].size() > 0);
 		std::unordered_set<std::pair<size_t, bool>> fwCovered;
 		std::unordered_set<std::pair<size_t, bool>> bwCovered;
-		for (auto pair : getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork))
+		for (auto pair : tripletsPerNode[node])
 		{
 			fwCovered.insert(pair.second);
 			bwCovered.insert(reverse(pair.first));
@@ -2115,7 +2162,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			if (!actuallyResolvables.get(fromnode.first) || !actuallyResolvables.get(tonode.first)) continue;
 			bool fromHasTo = false;
 			bool toHasFrom = false;
-			for (auto triplet : getValidTriplets(resolvableGraph, resolvables, readPaths, fromnode.first, minCoverage, unconditional, guesswork))
+			for (auto triplet : tripletsPerNode[fromnode.first])
 			{
 				if (fromnode.second && triplet.second == tonode)
 				{
@@ -2126,7 +2173,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 					fromHasTo = true;
 				}
 			}
-			for (auto triplet : getValidTriplets(resolvableGraph, resolvables, readPaths, tonode.first, minCoverage, unconditional, guesswork))
+			for (auto triplet : tripletsPerNode[tonode.first])
 			{
 				if (tonode.second && triplet.second == reverse(fromnode))
 				{
@@ -2153,7 +2200,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 	}
 	for (auto node : actuallyResolvables)
 	{
-		auto triplets = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork);
+		auto triplets = tripletsPerNode[node];
 		assert(triplets.size() > 0);
 		std::pair<size_t, bool> pos { node, true };
 		for (auto triplet : triplets)
