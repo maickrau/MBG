@@ -2792,31 +2792,31 @@ CleaningResult cleanComponent(ResolvableUnitigGraph& resolvableGraph, std::vecto
 	{
 		double coverage = getCoverage(resolvableGraph, readPaths, pair.first);
 		size_t estimatedCopyCount = (coverage + resolvableGraph.averageCoverage / 2) / resolvableGraph.averageCoverage;
-		// if (estimatedCopyCount <= 1 && coverage < resolvableGraph.averageCoverage * ((double)estimatedCopyCount - 0.25))
-		// {
-		// 	allValid = false;
-		// 	break;
-		// }
-		// if (estimatedCopyCount <= 1 && coverage > resolvableGraph.averageCoverage * ((double)estimatedCopyCount + 0.25))
-		// {
-		// 	allValid = false;
-		// 	break;
-		// }
+		if (estimatedCopyCount <= 1 && coverage < resolvableGraph.averageCoverage * ((double)estimatedCopyCount - 0.4))
+		{
+			allValid = false;
+			break;
+		}
+		if (estimatedCopyCount <= 1 && coverage > resolvableGraph.averageCoverage * ((double)estimatedCopyCount + 0.4))
+		{
+			allValid = false;
+			break;
+		}
 		size_t edgeCopyCountSum = 0;
 		for (auto edge : resolvableGraph.edges[pair])
 		{
 			int coverage = getEdgeCoverage(resolvableGraph, readPaths, pair, edge);
 			size_t edgeCopyCount = (coverage + resolvableGraph.averageCoverage / 2) / resolvableGraph.averageCoverage;
-			// if (estimatedCopyCount <= 1 && coverage < resolvableGraph.averageCoverage * ((double)edgeCopyCount - 0.25))
-			// {
-			// 	allValid = false;
-			// 	break;
-			// }
-			// if (estimatedCopyCount <= 1 && coverage > resolvableGraph.averageCoverage * ((double)edgeCopyCount + 0.25))
-			// {
-			// 	allValid = false;
-			// 	break;
-			// }
+			if (estimatedCopyCount <= 1 && coverage < resolvableGraph.averageCoverage * ((double)edgeCopyCount - 0.4))
+			{
+				allValid = false;
+				break;
+			}
+			if (estimatedCopyCount <= 1 && coverage > resolvableGraph.averageCoverage * ((double)edgeCopyCount + 0.4))
+			{
+				allValid = false;
+				break;
+			}
 			edgeCopyCountSum += edgeCopyCount;
 		}
 		if (!allValid) break;
@@ -2852,6 +2852,79 @@ CleaningResult cleanComponent(ResolvableUnitigGraph& resolvableGraph, std::vecto
 	result.nodesRemoved = removedNodes.size();
 	result.edgesRemoved = removedEdges.size();
 	removeEdgesAndNodes(resolvableGraph, readPaths, removedNodes, removedEdges);
+	return result;
+}
+
+CleaningResult cleanComponentsByCopynumber(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const size_t minLongLength, const size_t minUnresolvableLength, const size_t maxUnresolvableLength, const phmap::flat_hash_set<size_t>& checkThese, const size_t minNew)
+{
+	std::unordered_set<std::pair<size_t, bool>> checked;
+	CleaningResult result;
+	for (auto i : checkThese)
+	{
+		if (resolvableGraph.unitigRemoved[i]) continue;
+		if (checked.count(std::make_pair(i, true)) == 0)
+		{
+			auto part = cleanComponent(resolvableGraph, readPaths, minLongLength, minUnresolvableLength, maxUnresolvableLength, std::make_pair(i, true));
+			for (auto node : part.checked)
+			{
+				if (checkThese.count(node.first) == 1 || node.first >= minNew) checked.insert(node);
+			}
+			for (auto node : part.maybeUnitigifiable)
+			{
+				result.maybeUnitigifiable.insert(node);
+			}
+			result.nodesRemoved += part.nodesRemoved;
+			result.edgesRemoved += part.edgesRemoved;
+		}
+		if (checked.count(std::make_pair(i, false)) == 0)
+		{
+			assert(!resolvableGraph.unitigRemoved[i]);
+			auto part = cleanComponent(resolvableGraph, readPaths, minLongLength, minUnresolvableLength, maxUnresolvableLength, std::make_pair(i, false));
+			for (auto node : part.checked)
+			{
+				if (checkThese.count(node.first) == 1 || node.first >= minNew) checked.insert(node);
+			}
+			for (auto node : part.maybeUnitigifiable)
+			{
+				result.maybeUnitigifiable.insert(node);
+			}
+			result.nodesRemoved += part.nodesRemoved;
+			result.edgesRemoved += part.edgesRemoved;
+		}
+	}
+	for (size_t i = minNew; i < resolvableGraph.unitigs.size(); i++)
+	{
+		if (resolvableGraph.unitigRemoved[i]) continue;
+		if (checked.count(std::make_pair(i, true)) == 0)
+		{
+			auto part = cleanComponent(resolvableGraph, readPaths, minLongLength, minUnresolvableLength, maxUnresolvableLength, std::make_pair(i, true));
+			for (auto node : part.checked)
+			{
+				if (checkThese.count(node.first) == 1 || node.first >= minNew) checked.insert(node);
+			}
+			for (auto node : part.maybeUnitigifiable)
+			{
+				result.maybeUnitigifiable.insert(node);
+			}
+			result.nodesRemoved += part.nodesRemoved;
+			result.edgesRemoved += part.edgesRemoved;
+		}
+		if (checked.count(std::make_pair(i, false)) == 0)
+		{
+			assert(!resolvableGraph.unitigRemoved[i]);
+			auto part = cleanComponent(resolvableGraph, readPaths, minLongLength, minUnresolvableLength, maxUnresolvableLength, std::make_pair(i, false));
+			for (auto node : part.checked)
+			{
+				if (checkThese.count(node.first) == 1 || node.first >= minNew) checked.insert(node);
+			}
+			for (auto node : part.maybeUnitigifiable)
+			{
+				result.maybeUnitigifiable.insert(node);
+			}
+			result.nodesRemoved += part.nodesRemoved;
+			result.edgesRemoved += part.edgesRemoved;
+		}
+	}
 	return result;
 }
 
@@ -3096,6 +3169,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		// assert(topSize >= lastTopSize);
 		lastTopSize = topSize;
 		phmap::flat_hash_set<size_t> resolvables;
+		phmap::flat_hash_set<size_t> thisLengthNodes;
 		while (queue.size() > 0 && resolvableGraph.unitigLength(queue.top()) == topSize)
 		{
 			if (!resolvableGraph.unitigRemoved[queue.top()])
@@ -3117,6 +3191,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 					}
 				}
 			}
+			thisLengthNodes.insert(queue.top());
 			queue.pop();
 		}
 		if (resolvables.size() == 0) continue;
@@ -3203,7 +3278,9 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		}
 		if (guesswork)
 		{
-			auto removed = cleanComponentsByCopynumber(resolvableGraph, readPaths, 50000, topSize, maxResolveLength);
+			phmap::flat_hash_set<size_t> cleanables = thisLengthNodes;
+			cleanables.insert(resolutionResult.maybeUnitigifiable.begin(), resolutionResult.maybeUnitigifiable.end());
+			auto removed = cleanComponentsByCopynumber(resolvableGraph, readPaths, 50000, topSize, 0, cleanables, oldSize);
 			if (removed.nodesRemoved > 0 || removed.edgesRemoved > 0)
 			{
 				std::cerr << "removed " << removed.nodesRemoved << " nodes and " << removed.edgesRemoved << " edges" << std::endl;
@@ -3255,7 +3332,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 			if (resolvableGraph.unitigRemoved[i]) continue;
 			queue.emplace(i);
 		}
-		// if (nodesRemoved > resolvableGraph.unitigs.size() / 2 + 50)
+		if (nodesRemoved > resolvableGraph.unitigs.size() / 2 + 50)
 		{
 			std::vector<size_t> queueNodes;
 			while (queue.size() > 0)
