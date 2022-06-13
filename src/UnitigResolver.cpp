@@ -2784,7 +2784,9 @@ CleaningResult cleanComponent(ResolvableUnitigGraph& resolvableGraph, std::vecto
 		size_t length = resolvableGraph.unitigLength(top.first);
 		if (length > minUnresolvableLength && length < maxUnresolvableLength) allValid = false;
 		componentNodeSides.push_back(top);
-		if (resolvableGraph.unitigLength(top.first) < minLongLength) stack.push_back(reverse(top));
+		double coverage = getCoverage(resolvableGraph, readPaths, top.first);
+		size_t estimatedCopyCount = (coverage + resolvableGraph.averageCoverage / 2) / resolvableGraph.averageCoverage;
+		if (resolvableGraph.unitigLength(top.first) < minLongLength || estimatedCopyCount == 0) stack.push_back(reverse(top));
 		for (auto edge : resolvableGraph.edges[top]) stack.push_back(reverse(edge));
 	}
 	if (!allValid) return result;
