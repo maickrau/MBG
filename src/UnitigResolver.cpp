@@ -410,17 +410,18 @@ ResolvableUnitigGraph getUnitigs(const UnitigGraph& initial, size_t minCoverage,
 			longkmerDivisor += result.unitigs[i].size();
 		}
 	}
+	assert(longkmerDivisor > 0 || longkmerSum == 0);
 	if (longkmerDivisor > 0)
 	{
 		result.averageCoverage = longkmerSum / longkmerDivisor;
 	}
 	else
 	{
-		assert(longkmerDivisor > 0 || longkmerSum == 0);
+		assert(allkmerDivisor > 0 || allkmerSum == 0);
 		result.averageCoverage = 0;
-		if (longkmerDivisor > 0)
+		if (allkmerDivisor > 0)
 		{
-			result.averageCoverage = longkmerSum / longkmerDivisor;
+			result.averageCoverage = allkmerSum / allkmerDivisor;
 		}
 	}
 	std::cerr << "estimated average coverage " << result.averageCoverage << std::endl;
@@ -1630,6 +1631,11 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getGues
 	if (inneighborCopyCountSum != nodeCopyCount) return empty;
 	auto coveredTriplets = getRawTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, true);
 	if (coveredTriplets.size() == 0) return empty;
+	if (coveredTriplets.size() == 1 && minCoverage == 1)
+	{
+		auto test = getRawTriplets(resolvableGraph, resolvables, readPaths, node, 2, true);
+		if (test.size() == 0) return empty;
+	}
 	phmap::flat_hash_set<std::pair<size_t, bool>> coveredInNeighbors;
 	phmap::flat_hash_set<std::pair<size_t, bool>> coveredOutNeighbors;
 	for (auto pair : coveredTriplets)
