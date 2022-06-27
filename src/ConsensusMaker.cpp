@@ -1,3 +1,4 @@
+#include <unordered_map>
 #include "ConsensusMaker.h"
 #include "ErrorMaskHelper.h"
 
