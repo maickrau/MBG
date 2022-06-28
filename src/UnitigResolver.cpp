@@ -2731,7 +2731,9 @@ UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, st
 		if (coverage > 3) continue;
 		resolvableGraph.everTippable.push_back(i);
 	}
-	for (auto i : maybeUntippable)
+	std::vector<size_t> deterministicMaybeUntippable { maybeUntippable.begin(), maybeUntippable.end() };
+	std::sort(deterministicMaybeUntippable.begin(), deterministicMaybeUntippable.end());
+	for (auto i : deterministicMaybeUntippable)
 	{
 		if (i >= resolvableGraph.lastTippableChecked) continue;
 		if (resolvableGraph.edges[std::make_pair(i, true)].size() >= 2) continue;
