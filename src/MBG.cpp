@@ -1514,6 +1514,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		reads.clear();
 		partIterator.clearCache();
 	}
+	auto beforeKmers = getTime();
 	std::cerr << "Collecting selected k-mers" << std::endl;
 	loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads);
 	auto beforeUnitigs = getTime();
@@ -1571,8 +1572,8 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		writePaths(reads, unitigs, unitigSequences, stringIndex, readPaths, kmerSize, outputSequencePaths, nodeNamePrefix);
 	}
 	auto afterPaths = getTime();
-	if (hpcVariantOnecopyCoverage != 0) std::cerr << "selecting hpc variant k-mers took " << formatTime(beforeVariants, beforeReading) << std::endl;
-	std::cerr << "selecting k-mers and building graph topology took " << formatTime(beforeReading, beforeUnitigs) << std::endl;
+	if (hpcVariantOnecopyCoverage != 0) std::cerr << "selecting hpc variant k-mers took " << formatTime(beforeVariants, beforeKmers) << std::endl;
+	std::cerr << "selecting k-mers and building graph topology took " << formatTime(beforeKmers, beforeUnitigs) << std::endl;
 	std::cerr << "unitigifying took " << formatTime(beforeUnitigs, beforeFilter) << std::endl;
 	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforePaths) << std::endl;
 	std::cerr << "getting read paths took " << formatTime(beforePaths, beforeResolve) << std::endl;
