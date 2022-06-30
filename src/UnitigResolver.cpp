@@ -2533,7 +2533,9 @@ void removeEdgesAndNodes(ResolvableUnitigGraph& resolvableGraph, std::vector<Pat
 		resolvableGraph.edges[std::make_pair(node, false)].clear();
 		relevantReads.insert(resolvableGraph.readsCrossingNode[node].begin(), resolvableGraph.readsCrossingNode[node].end());
 	}
-	for (const size_t i : relevantReads)
+	std::vector<size_t> relevantReadsDeterministic { relevantReads.begin(), relevantReads.end() };
+	std::sort(relevantReadsDeterministic.begin(), relevantReadsDeterministic.end());
+	for (const size_t i : relevantReadsDeterministic)
 	{
 		assert(readPaths[i].path.size() != 0);
 		if (readPaths[i].reads.size() == 0) continue;
@@ -2869,7 +2871,9 @@ CleaningResult cleanComponentsByCopynumber(ResolvableUnitigGraph& resolvableGrap
 {
 	std::unordered_set<std::pair<size_t, bool>> checked;
 	CleaningResult result;
-	for (auto i : checkThese)
+	std::vector<size_t> checkTheseDeterministic { checkThese.begin(), checkThese.end() };
+	std::sort(checkTheseDeterministic.begin(), checkTheseDeterministic.end());
+	for (auto i : checkTheseDeterministic)
 	{
 		if (resolvableGraph.unitigRemoved[i]) continue;
 		if (checked.count(std::make_pair(i, true)) == 0)
@@ -3296,6 +3300,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 				std::cerr << "removed " << removed.nodesRemoved << " nodes and " << removed.edgesRemoved << " edges" << std::endl;
 				std::vector<size_t> maybeUnitigifiable;
 				maybeUnitigifiable.insert(maybeUnitigifiable.end(), removed.maybeUnitigifiable.begin(), removed.maybeUnitigifiable.end());
+				std::sort(maybeUnitigifiable.begin(), maybeUnitigifiable.end());
 				auto unitigifiedHere = unitigifySet(resolvableGraph, readPaths, maybeUnitigifiable);
 				for (size_t i = 0; i < unitigifiedHere.size(); i++)
 				{
@@ -3321,6 +3326,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 			std::cerr << "removed " << removed.nodesRemoved + removed2.nodesRemoved << " tips" << std::endl;
 			removed.maybeUnitigifiable.insert(removed2.maybeUnitigifiable.begin(), removed2.maybeUnitigifiable.end());
 			std::vector<size_t> maybeUnitigifiable2 { removed.maybeUnitigifiable.begin(), removed.maybeUnitigifiable.end() };
+			std::sort(maybeUnitigifiable2.begin(), maybeUnitigifiable2.end());
 			auto unitigifiedHere = unitigifySet(resolvableGraph, readPaths, maybeUnitigifiable2);
 			for (size_t i = 0; i < unitigifiedHere.size(); i++)
 			{
