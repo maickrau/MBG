@@ -12,7 +12,8 @@ ReadpartIterator::ReadpartIterator(const size_t kmerSize, const size_t windowSiz
 	cacheFileName(cacheFileName),
 	hpcVariants(),
 	cacheItems(0),
-	cacheBuilt(false)
+	cacheBuilt(false),
+	cache2Built(false)
 {
 	if (includeEndSmers)
 	{
@@ -71,6 +72,21 @@ void ReadpartIterator::clearCache()
 	if (cacheFileName.size() > 0)
 	{
 		remove(cacheFileName.c_str());
+		std::string cache2name = cacheFileName;
+		cache2name += '2';
+		remove(cache2name.c_str());
 	}
 	cacheBuilt = false;
+	cache2Built = false;
+}
+
+void ReadpartIterator::clearCacheHashes()
+{
+	if (cacheFileName.size() > 0)
+	{
+		std::string cache2name = cacheFileName;
+		cache2name += '2';
+		remove(cache2name.c_str());
+	}
+	cache2Built = false;
 }

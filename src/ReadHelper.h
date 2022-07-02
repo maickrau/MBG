@@ -124,6 +124,7 @@ public:
 	}
 	void addHpcVariants(const HashType hash, const size_t offset, const std::vector<size_t>& variants);
 	void clearCache();
+	void clearCacheHashes();
 private:
 	const size_t kmerSize;
 	const size_t windowSize;
@@ -135,6 +136,7 @@ private:
 	phmap::flat_hash_map<HashType, std::vector<std::pair<size_t, std::vector<size_t>>>> hpcVariants;
 	mutable size_t cacheItems;
 	mutable bool cacheBuilt;
+	mutable bool cache2Built;
 	void collectEndSmers();
 	template <typename F>
 	void iteratePartsFromCache(F callback) const
@@ -144,19 +146,112 @@ private:
 		});
 	}
 	template <typename F>
+	void buildSecondCacheAndIterateHashes(F callback) const
+	{
+		assert(cacheFileName.size() > 0);
+		std::atomic<bool> readDone;
+		readDone = false;
+		std::vector<std::thread> threads;
+		moodycamel::ConcurrentQueue<std::shared_ptr<ReadBundle>> sequenceQueue;
+		std::ofstream cachePart2 { cacheFileName + "2", std::ios::binary };
+		if (!cachePart2.good())
+		{
+			std::cerr << "Could not build cache. Try running without sequence cache." << std::endl;
+			std::abort();
+		}
+		for (size_t i = 0; i < numThreads; i++)
+		{
+			threads.emplace_back([this, &readDone, &sequenceQueue, &cachePart2, callback]()
+			{
+				while (true)
+				{
+					std::shared_ptr<ReadBundle> read;
+					if (!sequenceQueue.try_dequeue(read))
+					{
+						bool tryBreaking = readDone;
+						if (!sequenceQueue.try_dequeue(read))
+						{
+							if (tryBreaking) return;
+							std::this_thread::sleep_for(std::chrono::milliseconds(10));
+							continue;
+						}
+					}
+					assert(read != nullptr);
+					assert(read->positions.size() == 0);
+					assert(read->hashes.size() == 0);
+					iterateNonpalindromeHashes(read->readInfo, read->seq, read->poses, read->rawSeq, [&cachePart2, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, std::vector<HashType>& hashes)
+					{
+						Serializer::writeMonotoneIncreasing(cachePart2, positions);
+						Serializer::write(cachePart2, hashes);
+						callback(read, seq, poses, rawSeq, positions, hashes);
+					});
+				}
+			});
+		}
+		std::ifstream cache { cacheFileName, std::ios::binary };
+		if (!cache.good())
+		{
+			std::cerr << "Could not read cache. Try running without sequence cache." << std::endl;
+			std::abort();
+		}
+		size_t itemsRead = 0;
+		while (cache.good())
+		{
+			cache.peek();
+			if (!cache.good()) break;
+			std::shared_ptr<ReadBundle> readInfo { new ReadBundle };
+			Serializer::read(cache, readInfo->readInfo.readName);
+			Serializer::readMostlyTwobits(cache, readInfo->seq);
+			Serializer::readMonotoneIncreasing(cache, readInfo->poses);
+			Serializer::readTwobits(cache, readInfo->rawSeq);
+			assert(readInfo->poses.size() == 0 || readInfo->poses[0] == 0);
+			assert(readInfo->poses.size() == 0 || readInfo->poses.back() == readInfo->rawSeq.size());
+			itemsRead += 1;
+			bool queued = sequenceQueue.try_enqueue(readInfo);
+			if (queued) continue;
+			size_t triedSleeping = 0;
+			while (triedSleeping < 1000)
+			{
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+				queued = sequenceQueue.try_enqueue(readInfo);
+				if (queued) break;
+				triedSleeping += 1;
+			}
+			if (queued) continue;
+			sequenceQueue.enqueue(readInfo);
+		}
+		if (itemsRead != cacheItems)
+		{
+			std::cerr << "Sequence cache has been corrupted. Try re-running, or running without sequence cache." << std::endl;
+			std::abort();
+		}
+		readDone = true;
+		for (size_t i = 0; i < threads.size(); i++)
+		{
+			threads[i].join();
+		}
+		if (!cachePart2.good())
+		{
+			std::cerr << "Could not build cache. Try running without sequence cache." << std::endl;
+			std::abort();
+		}
+		cache2Built = true;
+	}
+	template <typename F>
 	void buildCacheAndIterateHashes(F callback) const
 	{
 		std::cerr << "Building sequence cache" << std::endl;
 		assert(cacheFileName.size() > 0);
 		std::ofstream cache { cacheFileName, std::ios::binary };
-		if (!cache.good())
+		std::ofstream cachePart2 { cacheFileName + "2", std::ios::binary };
+		if (!cache.good() || !cachePart2.good())
 		{
 			std::cerr << "Could not build cache. Try running without sequence cache." << std::endl;
 			std::abort();
 		}
 		std::mutex writeMutex;
 		cacheItems = 0;
-		iterateHashesFromFiles([this, &cache, &writeMutex, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
+		iterateHashesFromFiles([this, &cache, &cachePart2, &writeMutex, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
 		{
 			callback(read, seq, poses, rawSeq, positions, hashes);
 			std::lock_guard<std::mutex> lock { writeMutex };
@@ -164,19 +259,25 @@ private:
 			Serializer::writeMostlyTwobits(cache, seq);
 			Serializer::writeMonotoneIncreasing(cache, poses);
 			Serializer::writeTwobits(cache, rawSeq);
-			Serializer::writeMonotoneIncreasing(cache, positions);
-			Serializer::write(cache, hashes);
+			Serializer::writeMonotoneIncreasing(cachePart2, positions);
+			Serializer::write(cachePart2, hashes);
 			cacheItems += 1;
 		});
-		if (!cache.good())
+		if (!cache.good() || !cachePart2.good())
 		{
 			std::cerr << "Could not build cache. Try running without sequence cache." << std::endl;
 			cache.close();
+			cachePart2.close();
 			remove(cacheFileName.c_str());
+			std::string cache2name = cacheFileName;
+			cache2name += '2';
+			remove(cacheFileName.c_str());
+			remove(cache2name.c_str());
 			std::abort();
 		}
 		std::cerr << "Stored " << cacheItems << " sequences in the cache" << std::endl;
 		cacheBuilt = true;
+		cache2Built = true;
 	}
 	template <typename F>
 	void iterateHashesFromCache(F callback) const
@@ -185,6 +286,12 @@ private:
 		{
 			buildCacheAndIterateHashes(callback);
 			assert(cacheBuilt);
+			return;
+		}
+		if (cacheBuilt && !cache2Built)
+		{
+			buildSecondCacheAndIterateHashes(callback);
+			assert(cache2Built);
 			return;
 		}
 		std::cerr << "Reading sequences from cache" << std::endl;
@@ -215,7 +322,8 @@ private:
 			});
 		}
 		std::ifstream cache { cacheFileName, std::ios::binary };
-		if (!cache.good())
+		std::ifstream cachePart2 { cacheFileName + "2", std::ios::binary };
+		if (!cache.good() || !cachePart2.good())
 		{
 			std::cerr << "Could not read cache. Try running without sequence cache." << std::endl;
 			std::abort();
@@ -230,8 +338,8 @@ private:
 			Serializer::readMostlyTwobits(cache, readInfo->seq);
 			Serializer::readMonotoneIncreasing(cache, readInfo->poses);
 			Serializer::readTwobits(cache, readInfo->rawSeq);
-			Serializer::readMonotoneIncreasing(cache, readInfo->positions);
-			Serializer::read(cache, readInfo->hashes);
+			Serializer::readMonotoneIncreasing(cachePart2, readInfo->positions);
+			Serializer::read(cachePart2, readInfo->hashes);
 			assert(readInfo->poses.size() == 0 || readInfo->poses[0] == 0);
 			assert(readInfo->poses.size() == 0 || readInfo->poses.back() == readInfo->rawSeq.size());
 			itemsRead += 1;
@@ -329,58 +437,63 @@ private:
 		}
 	}
 	template <typename F>
+	void iterateNonpalindromeHashes(const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, F callback) const
+	{
+		iterateKmers(read, seq, rawSeq, poses, [this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positionsWithPalindromes) {
+			SequenceCharType revSeq = revCompRLE(seq);
+			std::vector<size_t> positions;
+			std::vector<HashType> hashes;
+			for (size_t i = 0; i < positionsWithPalindromes.size(); i++)
+			{
+				const auto pos = positionsWithPalindromes[i];
+				VectorView<CharType> minimizerSequence { seq, pos, pos + kmerSize };
+				size_t revPos = seq.size() - (pos + kmerSize);
+				VectorView<CharType> revMinimizerSequence { revSeq, revPos, revPos + kmerSize };
+				HashType fwHash = hash(minimizerSequence, revMinimizerSequence);
+				HashType bwHash = (fwHash << 64) + (fwHash >> 64);
+				if (fwHash == bwHash)
+				{
+					bool palindrome = true;
+					for (size_t j = 0; j < kmerSize/2; j++)
+					{
+						if (minimizerSequence[j] != complement(minimizerSequence[kmerSize-1-j]))
+						{
+							palindrome = false;
+							break;
+						}
+					}
+					if (palindrome)
+					{
+						if (i == 0 || i == positionsWithPalindromes.size()-1 || positionsWithPalindromes[i+1] - positionsWithPalindromes[i-1] < kmerSize)
+						{
+							// palindromic k-mer, but it can be safely dropped without creating gaps
+							continue;
+						}
+						else
+						{
+							std::cerr << "The genome has a palindromic k-mer. Cannot build a graph. Try running with a different -w" << std::endl;
+							std::cerr << "Example read around the palindromic k-mer: " << read.readName << std::endl;
+							std::abort();
+						}
+					}
+					else
+					{
+						std::cerr << "Unhashable k-mer around read: " << read.readName << std::endl;
+						std::abort();
+					}
+				}
+				positions.push_back(positionsWithPalindromes[i]);
+				hashes.push_back(fwHash);
+			}
+			callback(read, seq, poses, rawSeq, positions, hashes);
+		});
+	}
+	template <typename F>
 	void iterateHashesFromFilesInternal(F callback) const
 	{
 		iteratePartsFromFiles([this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq) {
 			if (seq.size() < kmerSize) return;
-			iterateKmers(read, seq, rawSeq, poses, [this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positionsWithPalindromes) {
-				SequenceCharType revSeq = revCompRLE(seq);
-				std::vector<size_t> positions;
-				std::vector<HashType> hashes;
-				for (size_t i = 0; i < positionsWithPalindromes.size(); i++)
-				{
-					const auto pos = positionsWithPalindromes[i];
-					VectorView<CharType> minimizerSequence { seq, pos, pos + kmerSize };
-					size_t revPos = seq.size() - (pos + kmerSize);
-					VectorView<CharType> revMinimizerSequence { revSeq, revPos, revPos + kmerSize };
-					HashType fwHash = hash(minimizerSequence, revMinimizerSequence);
-					HashType bwHash = (fwHash << 64) + (fwHash >> 64);
-					if (fwHash == bwHash)
-					{
-						bool palindrome = true;
-						for (size_t j = 0; j < kmerSize/2; j++)
-						{
-							if (minimizerSequence[j] != complement(minimizerSequence[kmerSize-1-j]))
-							{
-								palindrome = false;
-								break;
-							}
-						}
-						if (palindrome)
-						{
-							if (i == 0 || i == positionsWithPalindromes.size()-1 || positionsWithPalindromes[i+1] - positionsWithPalindromes[i-1] < kmerSize)
-							{
-								// palindromic k-mer, but it can be safely dropped without creating gaps
-								continue;
-							}
-							else
-							{
-								std::cerr << "The genome has a palindromic k-mer. Cannot build a graph. Try running with a different -w" << std::endl;
-								std::cerr << "Example read around the palindromic k-mer: " << read.readName << std::endl;
-								std::abort();
-							}
-						}
-						else
-						{
-							std::cerr << "Unhashable k-mer around read: " << read.readName << std::endl;
-							std::abort();
-						}
-					}
-					positions.push_back(positionsWithPalindromes[i]);
-					hashes.push_back(fwHash);
-				}
-				callback(read, seq, poses, rawSeq, positions, hashes);
-			});
+			iterateNonpalindromeHashes(read, seq, poses, rawSeq, callback);
 		});
 	}
 	template <typename F>

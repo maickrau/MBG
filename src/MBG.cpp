@@ -1512,7 +1512,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		auto readPaths = getReadPaths(unitigs, reads, numThreads, partIterator, kmerSize);
 		getHpcVariants(reads, unitigs, readPaths, kmerSize, partIterator, numThreads, hpcVariantOnecopyCoverage * 1.5, hpcVariantOnecopyCoverage * 0.5);
 		reads.clear();
-		partIterator.clearCache();
+		partIterator.clearCacheHashes();
 	}
 	auto beforeKmers = getTime();
 	std::cerr << "Collecting selected k-mers" << std::endl;
