@@ -1178,12 +1178,12 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 	}
 	std::vector<ReadPath> result;
 	std::mutex resultMutex;
-	partIterator.iterateHashes([&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
+	partIterator.iterateOnlyHashes([&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist](const ReadInfo& read, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
 	{
 		ReadPath current;
 		current.readName = read.readName;
-		current.readLength = rawSeq.size();
-		current.readLengthHPC = seq.size();
+		current.readLength = read.readLength;
+		current.readLengthHPC = read.readLengthHpc;
 		size_t lastReadPos = std::numeric_limits<size_t>::max();
 		std::pair<size_t, bool> lastKmer { std::numeric_limits<size_t>::max(), true };
 		std::tuple<size_t, size_t, bool> lastPos = std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true);
@@ -1192,7 +1192,7 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 		{
 			const size_t readPos = positions[i];
 			const HashType fwHash = hashes[i];
-			assert(readPos + kmerSize <= seq.size());
+			assert(readPos + kmerSize <= read.readLengthHpc);
 			std::pair<size_t, bool> kmer = hashlist.getNodeOrNull(fwHash);
 			if (kmer.first == std::numeric_limits<size_t>::max()) continue;
 			if (kmer.first >= kmerLocator.size() || std::get<0>(kmerLocator[kmer.first]) == std::numeric_limits<size_t>::max())
@@ -1206,8 +1206,8 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 				}
 				current.path.clear();
 				current.readName = read.readName;
-				current.readLength = rawSeq.size();
-				current.readLengthHPC = seq.size();
+				current.readLength = read.readLength;
+				current.readLengthHPC = read.readLengthHpc;
 				current.leftClip = 0;
 				current.rightClip = 0;
 				lastPos = std::make_tuple(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max(), true);
@@ -1254,8 +1254,8 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 					current.leftClip = std::get<1>(pos);
 					current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
 					current.readName = read.readName;
-					current.readLength = rawSeq.size();
-					current.readLengthHPC = seq.size();
+					current.readLength = read.readLength;
+					current.readLengthHPC = read.readLengthHpc;
 					assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
 					lastPos = pos;
 					lastReadPos = readPos;
@@ -1302,8 +1302,8 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 			current.leftClip = std::get<1>(pos);
 			current.rightClip = graph.unitigs[std::get<0>(pos)].size() - 1 - std::get<1>(pos);
 			current.readName = read.readName;
-			current.readLength = rawSeq.size();
-			current.readLengthHPC = seq.size();
+			current.readLength = read.readLength;
+			current.readLengthHPC = read.readLengthHpc;
 			assert(current.leftClip + current.rightClip + 1 == graph.unitigs[std::get<0>(pos)].size());
 			lastPos = pos;
 			lastReadPos = readPos;

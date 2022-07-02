@@ -79,12 +79,16 @@ void findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize, siz
 class ReadInfo
 {
 public:
+	ReadInfo() = default;
 	std::string readName;
+	size_t readLength;
+	size_t readLengthHpc;
 };
 
 class ReadBundle
 {
 public:
+	ReadBundle() = default;
 	ReadInfo readInfo;
 	SequenceCharType seq;
 	SequenceLengthType poses;
@@ -108,6 +112,18 @@ public:
 		else
 		{
 			iterateHashesFromFiles(callback);
+		}
+	}
+	template <typename F>
+	void iterateOnlyHashes(F callback) const
+	{
+		if (cacheFileName.size() > 0)
+		{
+			iterateOnlyHashesFromCache(callback);
+		}
+		else
+		{
+			iterateOnlyHashesFromFiles(callback);
 		}
 	}
 	template <typename F>
@@ -181,6 +197,9 @@ private:
 					assert(read->hashes.size() == 0);
 					iterateNonpalindromeHashes(read->readInfo, read->seq, read->poses, read->rawSeq, [&cachePart2, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, std::vector<HashType>& hashes)
 					{
+						Serializer::write(cachePart2, read.readName);
+						Serializer::write(cachePart2, rawSeq.size());
+						Serializer::write(cachePart2, seq.size());
 						Serializer::writeMonotoneIncreasing(cachePart2, positions);
 						Serializer::write(cachePart2, hashes);
 						callback(read, seq, poses, rawSeq, positions, hashes);
@@ -259,6 +278,9 @@ private:
 			Serializer::writeMostlyTwobits(cache, seq);
 			Serializer::writeMonotoneIncreasing(cache, poses);
 			Serializer::writeTwobits(cache, rawSeq);
+			Serializer::write(cachePart2, read.readName);
+			Serializer::write(cachePart2, rawSeq.size());
+			Serializer::write(cachePart2, seq.size());
 			Serializer::writeMonotoneIncreasing(cachePart2, positions);
 			Serializer::write(cachePart2, hashes);
 			cacheItems += 1;
@@ -271,13 +293,100 @@ private:
 			remove(cacheFileName.c_str());
 			std::string cache2name = cacheFileName;
 			cache2name += '2';
-			remove(cacheFileName.c_str());
 			remove(cache2name.c_str());
 			std::abort();
 		}
 		std::cerr << "Stored " << cacheItems << " sequences in the cache" << std::endl;
 		cacheBuilt = true;
 		cache2Built = true;
+	}
+	template <typename F>
+	void iterateOnlyHashesFromCache(F callback) const
+	{
+		if (!cacheBuilt)
+		{
+			buildCacheAndIterateHashes([callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes) {
+				callback(read, positions, hashes);
+			});
+			assert(cacheBuilt);
+			return;
+		}
+		if (cacheBuilt && !cache2Built)
+		{
+			buildSecondCacheAndIterateHashes([callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes) {
+				callback(read, positions, hashes);
+			});
+			assert(cache2Built);
+			return;
+		}
+		std::cerr << "Reading sequences from cache" << std::endl;
+		std::atomic<bool> readDone;
+		readDone = false;
+		std::vector<std::thread> threads;
+		moodycamel::ConcurrentQueue<std::shared_ptr<ReadBundle>> sequenceQueue;
+		for (size_t i = 0; i < numThreads; i++)
+		{
+			threads.emplace_back([&readDone, &sequenceQueue, callback]()
+			{
+				while (true)
+				{
+					std::shared_ptr<ReadBundle> read;
+					if (!sequenceQueue.try_dequeue(read))
+					{
+						bool tryBreaking = readDone;
+						if (!sequenceQueue.try_dequeue(read))
+						{
+							if (tryBreaking) return;
+							std::this_thread::sleep_for(std::chrono::milliseconds(10));
+							continue;
+						}
+					}
+					assert(read != nullptr);
+					callback(read->readInfo, read->positions, read->hashes);
+				}
+			});
+		}
+		std::ifstream cachePart2 { cacheFileName + "2", std::ios::binary };
+		if (!cachePart2.good())
+		{
+			std::cerr << "Could not read cache. Try running without sequence cache." << std::endl;
+			std::abort();
+		}
+		size_t itemsRead = 0;
+		while (cachePart2.good())
+		{
+			cachePart2.peek();
+			if (!cachePart2.good()) break;
+			std::shared_ptr<ReadBundle> readInfo { new ReadBundle };
+			Serializer::read(cachePart2, readInfo->readInfo.readName);
+			Serializer::read(cachePart2, readInfo->readInfo.readLength);
+			Serializer::read(cachePart2, readInfo->readInfo.readLengthHpc);
+			Serializer::readMonotoneIncreasing(cachePart2, readInfo->positions);
+			Serializer::read(cachePart2, readInfo->hashes);
+			itemsRead += 1;
+			bool queued = sequenceQueue.try_enqueue(readInfo);
+			if (queued) continue;
+			size_t triedSleeping = 0;
+			while (triedSleeping < 1000)
+			{
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+				queued = sequenceQueue.try_enqueue(readInfo);
+				if (queued) break;
+				triedSleeping += 1;
+			}
+			if (queued) continue;
+			sequenceQueue.enqueue(readInfo);
+		}
+		if (itemsRead != cacheItems)
+		{
+			std::cerr << "Sequence cache has been corrupted. Try re-running, or running without sequence cache." << std::endl;
+			std::abort();
+		}
+		readDone = true;
+		for (size_t i = 0; i < threads.size(); i++)
+		{
+			threads[i].join();
+		}
 	}
 	template <typename F>
 	void iterateHashesFromCache(F callback) const
@@ -338,6 +447,26 @@ private:
 			Serializer::readMostlyTwobits(cache, readInfo->seq);
 			Serializer::readMonotoneIncreasing(cache, readInfo->poses);
 			Serializer::readTwobits(cache, readInfo->rawSeq);
+			std::string tmp;
+			Serializer::read(cachePart2, tmp);
+			if (tmp != readInfo->readInfo.readName)
+			{
+				std::cerr << "Sequence cache has been corrupted. Try re-running, or running without sequence cache." << std::endl;
+				std::abort();
+			}
+			size_t tmp2;
+			Serializer::read(cachePart2, tmp2);
+			if (tmp2 != readInfo->rawSeq.size())
+			{
+				std::cerr << "Sequence cache has been corrupted. Try re-running, or running without sequence cache." << std::endl;
+				std::abort();
+			}
+			Serializer::read(cachePart2, tmp2);
+			if (tmp2 != readInfo->seq.size())
+			{
+				std::cerr << "Sequence cache has been corrupted. Try re-running, or running without sequence cache." << std::endl;
+				std::abort();
+			}
 			Serializer::readMonotoneIncreasing(cachePart2, readInfo->positions);
 			Serializer::read(cachePart2, readInfo->hashes);
 			assert(readInfo->poses.size() == 0 || readInfo->poses[0] == 0);
@@ -366,6 +495,13 @@ private:
 		{
 			threads[i].join();
 		}
+	}
+	template <typename F>
+	void iterateOnlyHashesFromFiles(F callback) const
+	{
+		iterateHashesFromFiles([callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes) {
+			callback(read, positions, hashes);
+		});
 	}
 	template <typename F>
 	void iterateHashesFromFiles(F callback) const
