@@ -193,17 +193,7 @@ private:
 						}
 					}
 					assert(read != nullptr);
-					assert(read->positions.size() == 0);
-					assert(read->hashes.size() == 0);
-					iterateNonpalindromeHashes(read->readInfo, read->seq, read->poses, read->rawSeq, [&cachePart2, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, std::vector<HashType>& hashes)
-					{
-						Serializer::write(cachePart2, read.readName);
-						Serializer::write(cachePart2, rawSeq.size());
-						Serializer::write(cachePart2, seq.size());
-						Serializer::writeMonotoneIncreasing(cachePart2, positions);
-						Serializer::write(cachePart2, hashes);
-						callback(read, seq, poses, rawSeq, positions, hashes);
-					});
+					callback(read->readInfo, read->seq, read->poses, read->rawSeq, read->positions, read->hashes);
 				}
 			});
 		}
@@ -225,6 +215,16 @@ private:
 			Serializer::readTwobits(cache, readInfo->rawSeq);
 			assert(readInfo->poses.size() == 0 || readInfo->poses[0] == 0);
 			assert(readInfo->poses.size() == 0 || readInfo->poses.back() == readInfo->rawSeq.size());
+			iterateNonpalindromeHashes(readInfo->readInfo, readInfo->seq, readInfo->poses, readInfo->rawSeq, [&readInfo](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, std::vector<HashType>& hashes)
+			{
+				readInfo->positions = positions;
+				readInfo->hashes = hashes;
+			});
+			Serializer::write(cachePart2, readInfo->readInfo.readName);
+			Serializer::write(cachePart2, readInfo->rawSeq.size());
+			Serializer::write(cachePart2, readInfo->seq.size());
+			Serializer::writeMonotoneIncreasing(cachePart2, readInfo->positions);
+			Serializer::write(cachePart2, readInfo->hashes);
 			itemsRead += 1;
 			bool queued = sequenceQueue.try_enqueue(readInfo);
 			if (queued) continue;
