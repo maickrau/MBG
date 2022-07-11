@@ -635,7 +635,7 @@ private:
 	template <typename F>
 	void iteratePartsFromFiles(F callback) const
 	{
-		iterateReadsMultithreaded(readFiles, numThreads, [this, callback](const ReadInfo& read, const std::string& rawSeq)
+		iterateReadsMultithreaded(readFiles, numThreads, [this, callback](ReadInfo& read, const std::string& rawSeq)
 		{
 			if (errorMasking == ErrorMasking::Hpc)
 			{
@@ -669,31 +669,33 @@ private:
 		});
 	}
 	template <typename F>
-	void iterateMicrosatellite(const ReadInfo& read, const std::string& seq, F callback) const
+	void iterateMicrosatellite(ReadInfo& read, const std::string& seq, F callback) const
 	{
-		iterateRLE(read, seq, [callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
+		iterateRLE(read, seq, [callback](ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
 			auto pieces = multiRLECompress(seq, poses, 6);
 			for (const auto& pair : pieces)
 			{
+				read.readLengthHpc = pair.first.size();
 				callback(read, pair.first, pair.second, raw);
 			}
 		});
 	}
 	template <typename F>
-	void iterateCollapseMicrosatellite(const ReadInfo& read, const std::string& seq, F callback) const
+	void iterateCollapseMicrosatellite(ReadInfo& read, const std::string& seq, F callback) const
 	{
-		iterateCollapse(read, seq, [callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
+		iterateCollapse(read, seq, [callback](ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
 			auto pieces = multiRLECompress(seq, poses, 6);
 			for (const auto& pair : pieces)
 			{
+				read.readLengthHpc = pair.first.size();
 				callback(read, pair.first, pair.second, raw);
 			}
 		});
 	}
 	template <typename F>
-	void iterateCollapse(const ReadInfo& read, const std::string& seq, F callback) const
+	void iterateCollapse(ReadInfo& read, const std::string& seq, F callback) const
 	{
 		if (seq.size() == 0) return;
 		std::string collapseSeq;
@@ -706,31 +708,33 @@ private:
 		iterateRLE(read, collapseSeq, callback);
 	}
 	template <typename F>
-	void iterateDinuc(const ReadInfo& read, const std::string& seq, F callback) const
+	void iterateDinuc(ReadInfo& read, const std::string& seq, F callback) const
 	{
-		iterateRLE(read, seq, [callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
+		iterateRLE(read, seq, [callback](ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
 			auto pieces = multiRLECompress(seq, poses, 2);
 			for (const auto& pair : pieces)
 			{
+				read.readLengthHpc = pair.first.size();
 				callback(read, pair.first, pair.second, raw);
 			}
 		});
 	}
 	template <typename F>
-	void iterateCollapseDinuc(const ReadInfo& read, const std::string& seq, F callback) const
+	void iterateCollapseDinuc(ReadInfo& read, const std::string& seq, F callback) const
 	{
-		iterateCollapse(read, seq, [callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
+		iterateCollapse(read, seq, [callback](ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
 			auto pieces = multiRLECompress(seq, poses, 2);
 			for (const auto& pair : pieces)
 			{
+				read.readLengthHpc = pair.first.size();
 				callback(read, pair.first, pair.second, raw);
 			}
 		});
 	}
 	template <typename F>
-	void iterateRLE(const ReadInfo& read, const std::string& seq, F callback) const
+	void iterateRLE(ReadInfo& read, const std::string& seq, F callback) const
 	{
 		SequenceCharType currentSeq;
 		SequenceLengthType currentPos;
@@ -805,6 +809,7 @@ private:
 					break;
 				default:
 					currentPos.push_back(i);
+					read.readLengthHpc = currentSeq.size();
 					callback(read, currentSeq, currentPos, seq);
 					currentSeq.clear();
 					currentPos.clear();
@@ -840,11 +845,12 @@ private:
 		if (currentSeq.size() > 0)
 		{
 			currentPos.push_back(seq.size());
+			read.readLengthHpc = currentSeq.size();
 			callback(read, currentSeq, currentPos, seq);
 		}
 	}
 	template <typename F>
-	void iterateNoRLE(const ReadInfo& read, const std::string& seq, F callback) const
+	void iterateNoRLE(ReadInfo& read, const std::string& seq, F callback) const
 	{
 		SequenceCharType currentSeq;
 		SequenceLengthType currentPos;
@@ -881,6 +887,7 @@ private:
 					if (currentSeq.size() > 0)
 					{
 						currentPos.push_back(i);
+						read.readLengthHpc = currentSeq.size();
 						callback(read, currentSeq, currentPos, seq);
 					}
 					currentSeq.clear();
@@ -890,6 +897,7 @@ private:
 		if (currentSeq.size() > 0)
 		{
 			currentPos.push_back(i);
+			read.readLengthHpc = currentSeq.size();
 			callback(read, currentSeq, currentPos, seq);
 		}
 	}
@@ -948,6 +956,7 @@ private:
 					assert(read != nullptr);
 					ReadInfo info;
 					info.readName = read->seq_id;
+					info.readLength = read->sequence.size();
 					readCallback(info, read->sequence);
 				}
 			});
