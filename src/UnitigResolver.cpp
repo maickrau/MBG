@@ -179,7 +179,7 @@ public:
 			}
 			precalcedUnitigCoverages[unitig] = result;
 		}
-		assert(precalcedUnitigCoverages[unitig] > 0);
+		// assert(precalcedUnitigCoverages[unitig] > 0);
 		return precalcedUnitigCoverages[unitig];
 	}
 	const HashList& hashlist;
@@ -1740,10 +1740,63 @@ std::vector<ResolveTriplet> getGuessworkTriplets(const ResolvableUnitigGraph& re
 	return coveredTriplets;
 }
 
+void filterCopyCountTriplets(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const size_t node, std::vector<ResolveTriplet>& originals)
+{
+	double coverage = resolvableGraph.getCoverage(readPaths, node);
+	double normalizedCoverage = coverage / resolvableGraph.averageCoverage;
+	size_t copyCount = normalizedCoverage + 0.5;
+	if (originals.size() <= copyCount) return;
+	std::sort(originals.begin(), originals.end(), [](ResolveTriplet left, ResolveTriplet right) {
+		return left.coverage > right.coverage;
+	});
+	phmap::flat_hash_set<std::pair<size_t, bool>> coveredInNeighbors;
+	phmap::flat_hash_set<std::pair<size_t, bool>> coveredOutNeighbors;
+	phmap::flat_hash_set<std::pair<size_t, bool>> inneighborNeedsCovering;
+	phmap::flat_hash_set<std::pair<size_t, bool>> outneighborNeedsCovering;
+	for (auto edge : resolvableGraph.edges[std::make_pair(node, true)])
+	{
+		if (resolvableGraph.getCoverage(readPaths, edge.first) > resolvableGraph.averageCoverage * 0.25)
+		{
+			outneighborNeedsCovering.insert(edge);
+		}
+	}
+	for (auto edge : resolvableGraph.edges[std::make_pair(node, false)])
+	{
+		if (resolvableGraph.getCoverage(readPaths, edge.first) > resolvableGraph.averageCoverage * 0.25)
+		{
+			inneighborNeedsCovering.insert(reverse(edge));
+		}
+	}
+	size_t threshold = 0;
+	for (size_t i = 0; i < copyCount; i++)
+	{
+		if (inneighborNeedsCovering.count(originals[i].left) == 1)
+		{
+			inneighborNeedsCovering.erase(originals[i].left);
+		}
+		if (outneighborNeedsCovering.count(originals[i].right) == 1)
+		{
+			outneighborNeedsCovering.erase(originals[i].right);
+		}
+		if (inneighborNeedsCovering.size() > 0) continue;
+		if (outneighborNeedsCovering.size() > 0) continue;
+		if (originals[i].coverage < originals[i+1].coverage * 4) continue;
+		if (originals[i+1].coverage >= resolvableGraph.averageCoverage * 0.25) continue;
+		threshold = i+1;
+	}
+	if (threshold == 0) return;
+	if (threshold == originals.size()) return;
+	originals.erase(originals.begin() + threshold, originals.end());
+}
+
 std::vector<ResolveTriplet> getValidTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool unconditional, bool guesswork)
 {
 	auto triplets = getReadSupportedTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork);
-	if (triplets.size() == 0 && guesswork)
+	if (triplets.size() > 0 && guesswork)
+	{
+		filterCopyCountTriplets(resolvableGraph, readPaths, node, triplets);
+	}
+	else if (triplets.size() == 0 && guesswork)
 	{
 		triplets = getGuessworkTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional);
 	}
