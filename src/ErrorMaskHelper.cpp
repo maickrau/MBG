@@ -186,6 +186,7 @@ void iterateRuns(const SequenceCharType& str, const SequenceLengthType& poses, c
 			assert(str[i+31] >= 0 && str[i+31] <= 3);
 			runChecker += ((uint64_t)str[i+31]) << 62LL;
 		}
+		if (i + 7 < lastRunEnd) continue;
 		std::tuple<size_t, size_t, uint8_t> currentBestRun = std::make_tuple(i, i+1, 1);
 		for (size_t motifLength = 2; motifLength <= maxMaskLength; motifLength++)
 		{
