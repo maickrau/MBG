@@ -170,13 +170,28 @@ template <typename F>
 void iterateRuns(const SequenceCharType& str, const SequenceLengthType& poses, const size_t maxMaskLength, F callback)
 {
 	size_t lastRunEnd = 0;
+	uint64_t runChecker = 0;
+	assert(str.size() >= 32);
+	for (size_t i = 0; i < 31; i++)
+	{
+		runChecker >>= 2;
+		assert(str[i] >= 0 && str[i] <= 3);
+		runChecker += ((uint64_t)str[i]) << 62LL;
+	}
 	for (size_t i = 0; i < str.size(); i++)
 	{
+		runChecker >>= 2;
+		if (i+31 < str.size())
+		{
+			assert(str[i+31] >= 0 && str[i+31] <= 3);
+			runChecker += ((uint64_t)str[i+31]) << 62LL;
+		}
 		std::tuple<size_t, size_t, uint8_t> currentBestRun = std::make_tuple(i, i+1, 1);
 		for (size_t motifLength = 2; motifLength <= maxMaskLength; motifLength++)
 		{
+			if (((runChecker ^ (runChecker >> (motifLength*2LL))) & ((1LL << (motifLength*2LL)) - 1LL)) != 0LL) continue;
 			if (i + motifLength * 2 > str.size()) break;
-			size_t runLength = 1;
+			size_t runLength = 2;
 			size_t overhang = 0;
 			while (i+motifLength*runLength+motifLength <= str.size())
 			{
@@ -200,7 +215,7 @@ void iterateRuns(const SequenceCharType& str, const SequenceLengthType& poses, c
 					break;
 				}
 			}
-			if (runLength == 1) continue;
+			assert(runLength >= 2);
 			if (i+motifLength*runLength+motifLength > str.size())
 			{
 				overhang = 0;
