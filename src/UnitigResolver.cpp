@@ -20,6 +20,20 @@ struct ReadPathInfo
 	size_t readLengthHPC;
 };
 
+struct ResolveTriplet
+{
+	ResolveTriplet() = default;
+	ResolveTriplet(std::pair<size_t, bool> left, std::pair<size_t, bool> right, size_t coverage) :
+		left(left),
+		right(right),
+		coverage(coverage)
+	{
+	}
+	std::pair<size_t, bool> left;
+	std::pair<size_t, bool> right;
+	size_t coverage;
+};
+
 class PathGroup
 {
 public:
@@ -1361,7 +1375,7 @@ void createEdgeNode(ResolvableUnitigGraph& resolvableGraph, const HashList& hash
 	}
 }
 
-std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getRawTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool partTriplets)
+std::vector<ResolveTriplet> getRawTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool partTriplets)
 {
 	phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t> tripletCoverage;
 	for (const size_t i : resolvableGraph.readsCrossingNode[node])
@@ -1523,11 +1537,11 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getRawT
 			}
 		}
 	}
-	std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> coveredTriplets;
+	std::vector<ResolveTriplet> coveredTriplets;
 	for (auto pair : tripletCoverage)
 	{
 		if (pair.second < minCoverage) continue;
-		coveredTriplets.push_back(pair.first);
+		coveredTriplets.emplace_back(pair.first.first, pair.first.second, pair.second);
 	}
 	if (partTriplets && resolvableGraph.edges[std::make_pair(node, true)].size() >= 1 && resolvableGraph.edges[std::make_pair(node, false)].size() >= 1)
 	{
@@ -1566,14 +1580,14 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getRawT
 			for (auto pair : partTripletCoverage)
 			{
 				if (pair.second < minCoverage) continue;
-				coveredTriplets.push_back(pair.first);
+				coveredTriplets.emplace_back(pair.first.first, pair.first.second, pair.second);
 			}
 		}
 	}
 	return coveredTriplets;
 }
 
-std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getReadSupportedTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool unconditional, bool guesswork)
+std::vector<ResolveTriplet> getReadSupportedTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool unconditional, bool guesswork)
 {
 	auto coveredTriplets = getRawTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, guesswork);
 	if (unconditional && coveredTriplets.size() >= 2) return coveredTriplets;
@@ -1581,12 +1595,12 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getRead
 	phmap::flat_hash_set<std::pair<size_t, bool>> coveredOutNeighbors;
 	for (auto pair : coveredTriplets)
 	{
-		if (pair.first.first != std::numeric_limits<size_t>::max()) coveredInNeighbors.emplace(reverse(pair.first));
-		if (pair.second.first != std::numeric_limits<size_t>::max()) coveredOutNeighbors.emplace(pair.second);
+		if (pair.left.first != std::numeric_limits<size_t>::max()) coveredInNeighbors.emplace(reverse(pair.left));
+		if (pair.right.first != std::numeric_limits<size_t>::max()) coveredOutNeighbors.emplace(pair.right);
 	}
 	assert(coveredInNeighbors.size() <= resolvableGraph.edges[std::make_pair(node, false)].size());
 	assert(coveredOutNeighbors.size() <= resolvableGraph.edges[std::make_pair(node, true)].size());
-	std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> empty;
+	std::vector<ResolveTriplet> empty;
 	if (coveredInNeighbors.size() < resolvableGraph.edges[std::make_pair(node, false)].size()) return empty;
 	if (coveredOutNeighbors.size() < resolvableGraph.edges[std::make_pair(node, true)].size()) return empty;
 	return coveredTriplets;
@@ -1629,11 +1643,11 @@ size_t getAnchorSize(const ResolvableUnitigGraph& resolvableGraph, const std::ve
 	return result;
 }
 
-std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getGuessworkTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool unconditional)
+std::vector<ResolveTriplet> getGuessworkTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool unconditional)
 {
 	size_t fwDegree = resolvableGraph.edges[std::make_pair(node, true)].size();
 	size_t bwDegree = resolvableGraph.edges[std::make_pair(node, false)].size();
-	std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> empty;
+	std::vector<ResolveTriplet> empty;
 	if (fwDegree == 1 || bwDegree == 1) return empty;
 	double nodeCoverage = resolvableGraph.getCoverage(readPaths, node);
 	size_t nodeCopyCount = (size_t)((nodeCoverage + resolvableGraph.averageCoverage / 2) / resolvableGraph.averageCoverage);
@@ -1671,8 +1685,8 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getGues
 	phmap::flat_hash_set<std::pair<size_t, bool>> coveredOutNeighbors;
 	for (auto pair : coveredTriplets)
 	{
-		if (pair.first.first != std::numeric_limits<size_t>::max()) coveredInNeighbors.emplace(reverse(pair.first));
-		if (pair.second.first != std::numeric_limits<size_t>::max()) coveredOutNeighbors.emplace(pair.second);
+		if (pair.left.first != std::numeric_limits<size_t>::max()) coveredInNeighbors.emplace(reverse(pair.left));
+		if (pair.right.first != std::numeric_limits<size_t>::max()) coveredOutNeighbors.emplace(pair.right);
 	}
 	assert(coveredInNeighbors.size() <= resolvableGraph.edges[std::make_pair(node, false)].size());
 	assert(coveredOutNeighbors.size() <= resolvableGraph.edges[std::make_pair(node, true)].size());
@@ -1718,7 +1732,7 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getGues
 			if (outpair.second == 0) continue;
 			if (coveredOutNeighbors.count(outpair.first) == 1) continue;
 			if (inpair.first.first == outpair.first.first) return empty;
-			coveredTriplets.emplace_back(reverse(inpair.first), outpair.first);
+			coveredTriplets.emplace_back(reverse(inpair.first), outpair.first, 0);
 			addedGuesses += 1;
 		}
 	}
@@ -1726,16 +1740,16 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getGues
 	return coveredTriplets;
 }
 
-std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getValidTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool unconditional, bool guesswork)
+std::vector<ResolveTriplet> getValidTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool unconditional, bool guesswork)
 {
 	auto triplets = getReadSupportedTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork);
 	if (triplets.size() == 0 && guesswork)
 	{
 		triplets = getGuessworkTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional);
 	}
-	std::sort(triplets.begin(), triplets.end(), [](std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> left, std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> right) {
-		auto leftComp = canon(left.first, left.second);
-		auto rightComp = canon(right.first, right.second);
+	std::sort(triplets.begin(), triplets.end(), [](ResolveTriplet left, ResolveTriplet right) {
+		auto leftComp = canon(left.left, left.right);
+		auto rightComp = canon(right.left, right.right);
 		assert(leftComp != rightComp);
 		if (leftComp.first.first < rightComp.first.first) return true;
 		if (leftComp.first.first > rightComp.first.first) return false;
@@ -2068,27 +2082,27 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			{
 				bool bwFake = false;
 				bool fwFake = false;
-				if (triplet.first.first != std::numeric_limits<size_t>::max())
+				if (triplet.left.first != std::numeric_limits<size_t>::max())
 				{
-					if (resolvableGraph.unitigLength(triplet.first.first) == resolvableGraph.getBpOverlap(std::make_pair(node, false), reverse(triplet.first))+1)
+					if (resolvableGraph.unitigLength(triplet.left.first) == resolvableGraph.getBpOverlap(std::make_pair(node, false), reverse(triplet.left))+1)
 					{
 						bwFake = true;
 					}
 				}
-				if (triplet.second.first != std::numeric_limits<size_t>::max())
+				if (triplet.right.first != std::numeric_limits<size_t>::max())
 				{
-					if (resolvableGraph.unitigLength(triplet.second.first) == resolvableGraph.getBpOverlap(std::make_pair(node, true), triplet.second)+1)
+					if (resolvableGraph.unitigLength(triplet.right.first) == resolvableGraph.getBpOverlap(std::make_pair(node, true), triplet.right)+1)
 					{
 						fwFake = true;
 					}
 				}
 				if (bwFake)
 				{
-					if (resolvableGraph.edges[triplet.first].size() >= 2) unresolve = true;
+					if (resolvableGraph.edges[triplet.left].size() >= 2) unresolve = true;
 				}
 				if (fwFake)
 				{
-					if (resolvableGraph.edges[reverse(triplet.second)].size() >= 2) unresolve = true;
+					if (resolvableGraph.edges[reverse(triplet.right)].size() >= 2) unresolve = true;
 				}
 				if (bwFake && fwFake) unresolve = true;
 			}
@@ -2118,7 +2132,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 		if (unresolvables.count(node) == 1) continue;
 		actuallyResolvables.set(node);
 	}
-	std::unordered_map<size_t, std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>>> tripletsPerNode;
+	std::unordered_map<size_t, std::vector<ResolveTriplet>> tripletsPerNode;
 	for (auto node : actuallyResolvables)
 	{
 		tripletsPerNode[node] = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork);
@@ -2130,10 +2144,10 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 		assert(tripletsPerNode[node].size() > 0);
 		std::unordered_set<std::pair<size_t, bool>> fwCovered;
 		std::unordered_set<std::pair<size_t, bool>> bwCovered;
-		for (auto pair : tripletsPerNode[node])
+		for (auto triplet : tripletsPerNode[node])
 		{
-			fwCovered.insert(pair.second);
-			bwCovered.insert(reverse(pair.first));
+			fwCovered.insert(triplet.right);
+			bwCovered.insert(reverse(triplet.left));
 		}
 		std::pair<size_t, bool> pos { node, true };
 		std::vector<std::pair<size_t, bool>> fwEdges { resolvableGraph.edges[pos].begin(), resolvableGraph.edges[pos].end() };
@@ -2205,22 +2219,22 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			bool toHasFrom = false;
 			for (auto triplet : tripletsPerNode[fromnode.first])
 			{
-				if (fromnode.second && triplet.second == tonode)
+				if (fromnode.second && triplet.right == tonode)
 				{
 					fromHasTo = true;
 				}
-				if (!fromnode.second && reverse(triplet.first) == tonode)
+				if (!fromnode.second && reverse(triplet.left) == tonode)
 				{
 					fromHasTo = true;
 				}
 			}
 			for (auto triplet : tripletsPerNode[tonode.first])
 			{
-				if (tonode.second && triplet.second == reverse(fromnode))
+				if (tonode.second && triplet.right == reverse(fromnode))
 				{
 					toHasFrom = true;
 				}
-				if (!tonode.second && reverse(triplet.first) == reverse(fromnode))
+				if (!tonode.second && reverse(triplet.left) == reverse(fromnode))
 				{
 					toHasFrom = true;
 				}
@@ -2246,8 +2260,8 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 		std::pair<size_t, bool> pos { node, true };
 		for (auto triplet : triplets)
 		{
-			const std::pair<size_t, bool> before = triplet.first;
-			const std::pair<size_t, bool> after = triplet.second;
+			const std::pair<size_t, bool> before = triplet.left;
+			const std::pair<size_t, bool> after = triplet.right;
 			assert(before.first != std::numeric_limits<size_t>::max() || after.first != std::numeric_limits<size_t>::max());
 			if (before.first == std::numeric_limits<size_t>::max())
 			{
