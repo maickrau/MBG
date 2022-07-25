@@ -343,12 +343,12 @@ std::vector<std::pair<SequenceCharType, SequenceLengthType>> multiRLECompress(co
 			case 3:
 				break;
 			default:
-				if (i > lastBreak+1) result.emplace_back(multiRLECompressOne(SequenceCharType { str.begin() + lastBreak, str.begin() + i }, poses, maxMaskLength));
+				if (lastBreak+32 < i) result.emplace_back(multiRLECompressOne(SequenceCharType { str.begin() + lastBreak, str.begin() + i }, poses, maxMaskLength));
 				lastBreak = i;
 				break;
 		}
 	}
-	if (lastBreak != str.size()-1) result.emplace_back(multiRLECompressOne(SequenceCharType { str.begin() + lastBreak, str.end() }, poses, maxMaskLength));
+	if (lastBreak+32 < str.size()) result.emplace_back(multiRLECompressOne(SequenceCharType { str.begin() + lastBreak, str.end() }, poses, maxMaskLength));
 	return result;
 }
 
