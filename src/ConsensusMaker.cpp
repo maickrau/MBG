@@ -221,7 +221,17 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 						uint32_t count = pair.second;
 						if (index == simpleCounts[realI][realJ].first) count += (uint32_t)(simpleCounts[realI][realJ].second);
 						if (count < maxCount) continue;
-						if (count == maxCount && stringIndex.getString(compressed, index) < stringIndex.getString(compressed, maxIndex)) continue;
+						if (count == maxCount)
+						{
+							if (std::get<2>(found))
+							{
+								if (stringIndex.getString(compressed, index) < stringIndex.getString(compressed, maxIndex)) continue;
+							}
+							else
+							{
+								if (stringIndex.getString(complement(compressed), stringIndex.getReverseIndex(compressed, index)) < stringIndex.getString(complement(compressed), stringIndex.getReverseIndex(compressed, maxIndex))) continue;
+							}
+						}
 						maxIndex = index;
 						maxCount = count;
 					}
@@ -229,7 +239,14 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 			}
 			if (!std::get<2>(found))
 			{
-				maxIndex = stringIndex.getReverseIndex(compressed, maxIndex);
+				if (compressed == complement(compressed))
+				{
+					maxIndex = stringIndex.getReverseIndex(compressed, maxIndex);
+				}
+				else
+				{
+					assert(maxIndex == stringIndex.getReverseIndex(compressed, maxIndex));
+				}
 			}
 			assert(maxCount > 0);
 			assert(stringIndex.getString(compressed, maxIndex) != "");
