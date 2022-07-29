@@ -227,6 +227,10 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 							{
 								if (stringIndex.getString(compressed, index) < stringIndex.getString(compressed, maxIndex)) continue;
 							}
+							else if (compressed == complement(compressed))
+							{
+								if (stringIndex.getString(compressed, index) < stringIndex.getString(compressed, maxIndex)) continue;
+							}
 							else
 							{
 								if (stringIndex.getString(complement(compressed), stringIndex.getReverseIndex(compressed, index)) < stringIndex.getString(complement(compressed), stringIndex.getReverseIndex(compressed, maxIndex))) continue;
