@@ -1782,7 +1782,9 @@ void filterCopyCountTriplets(const ResolvableUnitigGraph& resolvableGraph, const
 		if (outneighborNeedsCovering.size() > 0) continue;
 		if (originals[i].coverage < originals[i+1].coverage * 4) continue;
 		if (originals[i+1].coverage >= resolvableGraph.averageCoverage * 0.25) continue;
+		if (originals[i].coverage < resolvableGraph.averageCoverage * 0.5) break;
 		threshold = i+1;
+		break;
 	}
 	if (threshold == 0) return;
 	if (threshold == originals.size()) return;
@@ -1792,7 +1794,7 @@ void filterCopyCountTriplets(const ResolvableUnitigGraph& resolvableGraph, const
 std::vector<ResolveTriplet> getValidTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool unconditional, bool guesswork)
 {
 	auto triplets = getReadSupportedTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork);
-	if (triplets.size() > 0 && guesswork)
+	if (triplets.size() > 0 && guesswork && unconditional)
 	{
 		filterCopyCountTriplets(resolvableGraph, readPaths, node, triplets);
 	}
