@@ -179,7 +179,7 @@ public:
 			}
 			precalcedUnitigCoverages[unitig] = result;
 		}
-		// assert(precalcedUnitigCoverages[unitig] > 0);
+		assert(precalcedUnitigCoverages[unitig] > 0);
 		return precalcedUnitigCoverages[unitig];
 	}
 	const HashList& hashlist;
@@ -910,6 +910,8 @@ void addPathButFirstMaybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vecto
 			rightCompare += 1;
 		}
 	}
+	assert(leftCompare > 0);
+	assert(rightCompare > 0);
 	PathGroup leftTrimPath;
 	PathGroup rightTrimPath;
 	PathGroup doubleTrimPath;
@@ -1515,6 +1517,19 @@ void createEdgeNode(ResolvableUnitigGraph& resolvableGraph, const HashList& hash
 	}
 }
 
+size_t getTrimAmountToCheck(const ResolvableUnitigGraph& resolvableGraph, const std::pair<size_t, bool> from, const std::pair<size_t, bool> to)
+{
+	if (from.second && resolvableGraph.unitigRightClipBp[from.first] == 1)
+	{
+		return resolvableGraph.unitigs[to.first].size() - resolvableGraph.overlaps.at(canon(from, to));
+	}
+	if (!from.second && resolvableGraph.unitigLeftClipBp[from.first] == 1)
+	{
+		return resolvableGraph.unitigs[to.first].size() - resolvableGraph.overlaps.at(canon(from, to));
+	}
+	return 0;
+}
+
 std::vector<ResolveTriplet> getRawTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool partTriplets)
 {
 	phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t> tripletCoverage;
@@ -1525,37 +1540,71 @@ std::vector<ResolveTriplet> getRawTriplets(const ResolvableUnitigGraph& resolvab
 		if (readPaths[i].reads.size() == 0) continue;
 		if (readPaths[i].path[0].first == node && resolvableGraph.edges[reverse(readPaths[i].path[0])].size() == 0)
 		{
-			size_t coverageHere = readPaths[i].reads.size();
+			std::pair<size_t, bool> left { std::numeric_limits<size_t>::max(), true };
+			std::pair<size_t, bool> right { std::numeric_limits<size_t>::max(), true };
+			if (readPaths[i].path[0].second)
+			{
+				right = readPaths[i].path[1];
+			}
+			else
+			{
+				left = reverse(readPaths[i].path[1]);
+			}
+			size_t shouldCheckTrimAmount = 0;
+			if (readPaths[i].path.size() == 2)
+			{
+				shouldCheckTrimAmount = getTrimAmountToCheck(resolvableGraph, readPaths[i].path[0], readPaths[i].path[1]);
+			}
+			size_t coverageHere;
+			if (shouldCheckTrimAmount == 0)
+			{
+				coverageHere = readPaths[i].reads.size();
+			}
+			else
+			{
+				coverageHere = 0;
+				for (const auto& read : readPaths[i].reads)
+				{
+					if (read.rightClip < shouldCheckTrimAmount) coverageHere += 1;
+				}
+			}
 			if (coverageHere > 0)
 			{
-				std::pair<size_t, bool> left { std::numeric_limits<size_t>::max(), true };
-				std::pair<size_t, bool> right { std::numeric_limits<size_t>::max(), true };
-				if (readPaths[i].path[0].second)
-				{
-					right = readPaths[i].path[1];
-				}
-				else
-				{
-					left = reverse(readPaths[i].path[1]);
-				}
 				tripletCoverage[std::make_pair(left, right)] += coverageHere;
 			}
 		}
-		if (readPaths[i].path.back().first == node && resolvableGraph.edges[reverse(readPaths[i].path.back())].size() == 0)
+		if (readPaths[i].path.back().first == node && resolvableGraph.edges[readPaths[i].path.back()].size() == 0)
 		{
-			size_t coverageHere = readPaths[i].reads.size();
+			std::pair<size_t, bool> left { std::numeric_limits<size_t>::max(), true };
+			std::pair<size_t, bool> right { std::numeric_limits<size_t>::max(), true };
+			if (readPaths[i].path.back().second)
+			{
+				left = readPaths[i].path[readPaths[i].path.size()-2];
+			}
+			else
+			{
+				right = reverse(readPaths[i].path[readPaths[i].path.size()-2]);
+			}
+			size_t shouldCheckTrimAmount = 0;
+			if (readPaths[i].path.size() == 2)
+			{
+				shouldCheckTrimAmount = getTrimAmountToCheck(resolvableGraph, reverse(readPaths[i].path[1]), reverse(readPaths[i].path[0]));
+			}
+			size_t coverageHere;
+			if (shouldCheckTrimAmount == 0)
+			{
+				coverageHere = readPaths[i].reads.size();
+			}
+			else
+			{
+				coverageHere = 0;
+				for (const auto& read : readPaths[i].reads)
+				{
+					if (read.leftClip < shouldCheckTrimAmount) coverageHere += 1;
+				}
+			}
 			if (coverageHere > 0)
 			{
-				std::pair<size_t, bool> left { std::numeric_limits<size_t>::max(), true };
-				std::pair<size_t, bool> right { std::numeric_limits<size_t>::max(), true };
-				if (readPaths[i].path[0].second)
-				{
-					left = readPaths[i].path[readPaths[i].path.size()-2];
-				}
-				else
-				{
-					right = reverse(readPaths[i].path[readPaths[i].path.size()-2]);
-				}
 				tripletCoverage[std::make_pair(left, right)] += coverageHere;
 			}
 		}
@@ -1574,7 +1623,6 @@ std::vector<ResolveTriplet> getRawTriplets(const ResolvableUnitigGraph& resolvab
 				left = reverse(readPaths[i].path[j+1]);
 				right = reverse(readPaths[i].path[j-1]);
 			}
-			tripletCoverage[std::make_pair(left, right)] += readPaths[i].reads.size();
 			assert(!resolvableGraph.unitigRemoved[node]);
 			assert(!resolvableGraph.unitigRemoved[left.first]);
 			assert(!resolvableGraph.unitigRemoved[right.first]);
@@ -1582,6 +1630,33 @@ std::vector<ResolveTriplet> getRawTriplets(const ResolvableUnitigGraph& resolvab
 			assert(resolvableGraph.edges[std::make_pair(node, false)].count(reverse(left)) == 1);
 			assert(resolvableGraph.edges[reverse(right)].count(std::make_pair(node, false)) == 1);
 			assert(resolvableGraph.edges[std::make_pair(node, true)].count(right) == 1);
+			size_t shouldCheckLeftTrimAmount = 0;
+			size_t shouldCheckRightTrimAmount = 0;
+			if (j == 1)
+			{
+				shouldCheckLeftTrimAmount = getTrimAmountToCheck(resolvableGraph, reverse(readPaths[i].path[1]), reverse(readPaths[i].path[0]));
+			}
+			if (j == readPaths[i].path.size()-2)
+			{
+				shouldCheckRightTrimAmount = getTrimAmountToCheck(resolvableGraph, readPaths[i].path[j], readPaths[i].path[j+1]);
+			}
+			size_t coverageHere;
+			if (shouldCheckLeftTrimAmount == 0 && shouldCheckRightTrimAmount == 0)
+			{
+				coverageHere = readPaths[i].reads.size();
+			}
+			else
+			{
+				coverageHere = 0;
+				for (const auto& read : readPaths[i].reads)
+				{
+					if ((shouldCheckLeftTrimAmount == 0 || read.leftClip < shouldCheckLeftTrimAmount) && (shouldCheckRightTrimAmount == 0 || read.rightClip < shouldCheckRightTrimAmount)) coverageHere += 1;
+				}
+			}
+			if (coverageHere > 0)
+			{
+				tripletCoverage[std::make_pair(left, right)] += coverageHere;
+			}
 		}
 	}
 	phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t> partTripletCoverage = tripletCoverage;
@@ -2576,6 +2651,33 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 	return result;
 }
 
+size_t getEdgeCoverage(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const std::pair<size_t, bool> from, const std::pair<size_t, bool> to)
+{
+	std::vector<size_t> relevantReads;
+	for (auto read : resolvableGraph.readsCrossingNode[from.first])
+	{
+		if (resolvableGraph.readsCrossingNode[to.first].count(read) == 1) relevantReads.emplace_back(read);
+	}
+	size_t result = 0;
+	for (size_t i : relevantReads)
+	{
+		assert(readPaths[i].path.size() > 0);
+		assert(readPaths[i].reads.size() > 0);
+		for (size_t j = 1; j < readPaths[i].path.size(); j++)
+		{
+			if (readPaths[i].path[j-1] == from && readPaths[i].path[j] == to)
+			{
+				result += readPaths[i].reads.size();
+			}
+			else if (readPaths[i].path[j-1] == reverse(to) && readPaths[i].path[j] == reverse(from))
+			{
+				result += readPaths[i].reads.size();
+			}
+		}
+	}
+	return result;
+}
+
 void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<PathGroup>& readPaths, const size_t kmerSize)
 {
 	return;
@@ -2603,6 +2705,7 @@ void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<PathGro
 		std::pair<size_t, bool> bw { i, false };
 		for (auto edge : graph.edges[fw])
 		{
+			assert(getEdgeCoverage(graph, readPaths, fw, edge) > 0);
 			assert(!graph.unitigRemoved[edge.first]);
 			assert(graph.edges[reverse(edge)].count(reverse(fw)) == 1);
 			assert(graph.edges[fw].size() >= 2 || graph.edges[reverse(edge)].size() >= 2 || edge.first == i);
@@ -2611,6 +2714,7 @@ void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<PathGro
 		}
 		for (auto edge : graph.edges[bw])
 		{
+			assert(getEdgeCoverage(graph, readPaths, bw, edge) > 0);
 			assert(!graph.unitigRemoved[edge.first]);
 			assert(graph.edges[reverse(edge)].count(reverse(bw)) == 1);
 			assert(graph.edges[bw].size() >= 2 || graph.edges[reverse(edge)].size() >= 2 || edge.first == i);
@@ -2707,33 +2811,6 @@ void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<PathGro
 			assertPrintReads(coverages[i][j] > 0, graph, readPaths, i);
 		}
 	}
-}
-
-size_t getEdgeCoverage(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const std::pair<size_t, bool> from, const std::pair<size_t, bool> to)
-{
-	std::vector<size_t> relevantReads;
-	for (auto read : resolvableGraph.readsCrossingNode[from.first])
-	{
-		if (resolvableGraph.readsCrossingNode[to.first].count(read) == 1) relevantReads.emplace_back(read);
-	}
-	size_t result = 0;
-	for (size_t i : relevantReads)
-	{
-		assert(readPaths[i].path.size() > 0);
-		assert(readPaths[i].reads.size() > 0);
-		for (size_t j = 1; j < readPaths[i].path.size(); j++)
-		{
-			if (readPaths[i].path[j-1] == from && readPaths[i].path[j] == to)
-			{
-				result += readPaths[i].reads.size();
-			}
-			else if (readPaths[i].path[j-1] == reverse(to) && readPaths[i].path[j] == reverse(from))
-			{
-				result += readPaths[i].reads.size();
-			}
-		}
-	}
-	return result;
 }
 
 void removeEdgesAndNodes(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const std::unordered_set<size_t>& removeNodes, const std::unordered_set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>>& removeEdges)
