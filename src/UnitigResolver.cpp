@@ -3003,7 +3003,14 @@ void removeNode(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& 
 
 struct UntippingResult
 {
+	UntippingResult() :
+		nodesRemoved(0),
+		edgesRemoved(0),
+		maybeUnitigifiable()
+	{
+	}
 	size_t nodesRemoved;
+	size_t edgesRemoved;
 	phmap::flat_hash_set<size_t> maybeUnitigifiable;
 };
 
@@ -3042,6 +3049,87 @@ void tryRemoveTip(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 	result.nodesRemoved += 1;
 }
 
+UntippingResult tryRemoveCrosslinks(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const double maxRemovableCoverage, const double minSafeCoverage, const std::pair<size_t, bool> start)
+{
+	UntippingResult result;
+	assert(resolvableGraph.edges[start].size() >= 2);
+	bool possibleToRemove = false;
+	for (auto edge : resolvableGraph.edges[start])
+	{
+		if (resolvableGraph.edges[reverse(edge)].size() >= 2)
+		{
+			possibleToRemove = true;
+		}
+	}
+	if (!possibleToRemove) return result;
+	bool hasSafe = false;
+	std::vector<std::pair<size_t, bool>> checkThese;
+	for (auto edge : resolvableGraph.edges[start])
+	{
+		size_t coverage = getEdgeCoverage(resolvableGraph, readPaths, start, edge);
+		if (coverage >= minSafeCoverage)
+		{
+			hasSafe = true;
+		}
+		if (coverage <= maxRemovableCoverage && resolvableGraph.edges[reverse(edge)].size() >= 2)
+		{
+			checkThese.push_back(edge);
+		}
+	}
+	if (!hasSafe) return result;
+	std::vector<std::pair<size_t, bool>> removeThese;
+	for (auto edge : checkThese)
+	{
+		bool otherHasSafe = false;
+		assert(resolvableGraph.edges[reverse(edge)].size() >= 2);
+		for (auto edge2 : resolvableGraph.edges[reverse(edge)])
+		{
+			if (edge2 == reverse(start)) continue;
+			if (getEdgeCoverage(resolvableGraph, readPaths, reverse(edge), edge2) >= minSafeCoverage)
+			{
+				otherHasSafe = true;
+			}
+		}
+		if (otherHasSafe) removeThese.push_back(edge);
+	}
+	if (removeThese.size() == 0) return result;
+	std::unordered_set<size_t> removedNodes;
+	std::unordered_set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> removedEdges;
+	for (auto edge : removeThese)
+	{
+		removedEdges.emplace(start, edge);
+		result.maybeUnitigifiable.insert(edge.first);
+	}
+	result.maybeUnitigifiable.insert(start.first);
+	result.edgesRemoved = removeThese.size();
+	removeEdgesAndNodes(resolvableGraph, readPaths, removedNodes, removedEdges);
+	return result;
+}
+
+UntippingResult removeLowCoverageCrosslinks(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const double maxRemovableCoverage, const double minSafeCoverage)
+{
+	UntippingResult result;
+	for (size_t i = 0; i < resolvableGraph.unitigs.size(); i++)
+	{
+		if (resolvableGraph.unitigRemoved[i]) continue;
+		if (resolvableGraph.edges[std::make_pair(i, true)].size() >= 2)
+		{
+			auto partResult = tryRemoveCrosslinks(resolvableGraph, readPaths, maxRemovableCoverage, minSafeCoverage, std::make_pair(i, true));
+			result.nodesRemoved += partResult.nodesRemoved;
+			result.edgesRemoved += partResult.edgesRemoved;
+			result.maybeUnitigifiable.insert(partResult.maybeUnitigifiable.begin(), partResult.maybeUnitigifiable.end());
+		}
+		if (resolvableGraph.edges[std::make_pair(i, false)].size() >= 2)
+		{
+			auto partResult = tryRemoveCrosslinks(resolvableGraph, readPaths, maxRemovableCoverage, minSafeCoverage, std::make_pair(i, false));
+			result.nodesRemoved += partResult.nodesRemoved;
+			result.edgesRemoved += partResult.edgesRemoved;
+			result.maybeUnitigifiable.insert(partResult.maybeUnitigifiable.begin(), partResult.maybeUnitigifiable.end());
+		}
+	}
+	return result;
+}
+
 UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const double maxRemovableCoverage, const double minSafeCoverage, const size_t maxRemovableLength, const size_t kmerSize, const phmap::flat_hash_set<size_t>& maybeUntippable)
 {
 	for (size_t i = resolvableGraph.lastTippableChecked; i < resolvableGraph.unitigs.size(); i++)
@@ -3071,7 +3159,6 @@ UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, st
 	}
 	resolvableGraph.lastTippableChecked = resolvableGraph.unitigs.size();
 	UntippingResult result;
-	result.nodesRemoved = 0;
 	for (size_t index = resolvableGraph.everTippable.size()-1; index < resolvableGraph.everTippable.size(); index--)
 	{
 		size_t i = resolvableGraph.everTippable[index];
@@ -3642,12 +3729,16 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		auto removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, 10000, kmerSize, resolutionResult.maybeUnitigifiable);
 		resolutionResult.maybeUnitigifiable.insert(removed.maybeUnitigifiable.begin(), removed.maybeUnitigifiable.end());
 		auto removed2 = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 2, 5, 10000, kmerSize, resolutionResult.maybeUnitigifiable);
+		auto removed3 = removeLowCoverageCrosslinks(resolvableGraph, readPaths, 1, 5);
+		auto removed4 = removeLowCoverageCrosslinks(resolvableGraph, readPaths, 2, 10);
 		nodesRemoved += removed.nodesRemoved + removed2.nodesRemoved;
-		if (removed.nodesRemoved + removed2.nodesRemoved > 0)
+		if (removed.nodesRemoved + removed2.nodesRemoved > 0 || removed.edgesRemoved + removed2.edgesRemoved + removed3.edgesRemoved + removed4.edgesRemoved > 0)
 		{
-			std::cerr << "removed " << removed.nodesRemoved + removed2.nodesRemoved << " tips" << std::endl;
+			std::cerr << "removed " << removed.nodesRemoved + removed2.nodesRemoved << " tips and " << removed.edgesRemoved + removed2.edgesRemoved + removed3.edgesRemoved + removed4.edgesRemoved << " edges" << std::endl;
 			removed.maybeUnitigifiable.insert(removed2.maybeUnitigifiable.begin(), removed2.maybeUnitigifiable.end());
 			std::vector<size_t> maybeUnitigifiable2 { removed.maybeUnitigifiable.begin(), removed.maybeUnitigifiable.end() };
+			maybeUnitigifiable2.insert(maybeUnitigifiable2.end(), removed3.maybeUnitigifiable.begin(), removed3.maybeUnitigifiable.end());
+			maybeUnitigifiable2.insert(maybeUnitigifiable2.end(), removed4.maybeUnitigifiable.begin(), removed4.maybeUnitigifiable.end());
 			std::sort(maybeUnitigifiable2.begin(), maybeUnitigifiable2.end());
 			auto unitigifiedHere = unitigifySet(resolvableGraph, readPaths, maybeUnitigifiable2);
 			for (size_t i = 0; i < unitigifiedHere.size(); i++)
@@ -3757,6 +3848,12 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 	if (removed.nodesRemoved > 0)
 	{
 		std::cerr << "removed " << removed.nodesRemoved << " tips" << std::endl;
+		unitigifyAll(resolvableGraph, readPaths);
+	}
+	auto removedEdges = removeLowCoverageCrosslinks(resolvableGraph, readPaths, 2, 10);
+	if (removedEdges.edgesRemoved > 0)
+	{
+		std::cerr << "removed " << removedEdges.edgesRemoved << " crosslinks" << std::endl;
 		unitigifyAll(resolvableGraph, readPaths);
 	}
 	if (guesswork)
