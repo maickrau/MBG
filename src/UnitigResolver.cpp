@@ -1734,17 +1734,15 @@ std::vector<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>> getVali
 		triplets = getGuessworkTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional);
 	}
 	std::sort(triplets.begin(), triplets.end(), [](std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> left, std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>> right) {
-		auto leftComp = canon(left.first, left.second);
-		auto rightComp = canon(right.first, right.second);
-		assert(leftComp != rightComp);
-		if (leftComp.first.first < rightComp.first.first) return true;
-		if (leftComp.first.first > rightComp.first.first) return false;
-		if (!leftComp.first.second && rightComp.first.second) return true;
-		if (leftComp.first.second && !rightComp.first.second) return false;
-		if (leftComp.second.first < rightComp.second.first) return true;
-		if (leftComp.second.first > rightComp.second.first) return false;
-		if (!leftComp.second.second && rightComp.second.second) return true;
-		if (leftComp.second.second && !rightComp.second.second) return false;
+		assert(left != right);
+		if (left.first.first < right.first.first) return true;
+		if (left.first.first > right.first.first) return false;
+		if (!left.first.second && right.first.second) return true;
+		if (left.first.second && !right.first.second) return false;
+		if (left.second.first < right.second.first) return true;
+		if (left.second.first > right.second.first) return false;
+		if (!left.second.second && right.second.second) return true;
+		if (left.second.second && !right.second.second) return false;
 		assert(false);
 		return false;
 	});
