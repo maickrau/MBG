@@ -124,53 +124,57 @@ public:
 		assert(unitig < precalcedUnitigCoverages.size());
 		if (precalcedUnitigCoverages[unitig] == 0)
 		{
-			double result = 0;
-			for (auto i : readsCrossingNode[unitig])
-			{
-				assert(readPaths[i].path.size() > 0);
-				assert(readPaths[i].reads.size() > 0);
-				if (readPaths[i].path.size() == 1)
-				{
-					assert(readPaths[i].path[0].first == unitig);
-					for (const auto& read : readPaths[i].reads)
-					{
-						assert(read.leftClip + read.rightClip < unitigs[readPaths[i].path[0].first].size());
-						result += (double)(unitigs[readPaths[i].path[0].first].size() - read.leftClip - read.rightClip) / (double)(unitigs[readPaths[i].path[0].first].size());
-					}
-				}
-				else
-				{
-					for (size_t j = 0; j < readPaths[i].path.size(); j++)
-					{
-						if (readPaths[i].path[j].first != unitig) continue;
-						if (j == 0)
-						{
-							for (const auto& read : readPaths[i].reads)
-							{
-								assert(read.leftClip < unitigs[unitig].size());
-								result += (double)(unitigs[unitig].size() - read.leftClip) / (double)(unitigs[unitig].size());
-							}
-						}
-						if (j > 0 && j < readPaths[i].path.size()-1) result += readPaths[i].reads.size();
-						if (j == readPaths[i].path.size()-1)
-						{
-							for (const auto& read : readPaths[i].reads)
-							{
-								assert(read.rightClip < unitigs[unitig].size());
-								result += (double)(unitigs[unitig].size() - read.rightClip) / (double)(unitigs[unitig].size());
-							}
-						}
-					}
-				}
-			}
-			precalcedUnitigCoverages[unitig] = result;
+			precalcedUnitigCoverages[unitig] = calculateCoverage(readPaths, unitig);
 		}
-		assert(precalcedUnitigCoverages[unitig] > 0);
+		assert(precalcedUnitigCoverages[unitig] != 0);
 		return precalcedUnitigCoverages[unitig];
 	}
 	const HashList& hashlist;
 	std::vector<std::string> readNames;
 	double averageCoverage;
+	double calculateCoverage(const std::vector<PathGroup>& readPaths, size_t unitig) const
+	{
+		double result = 0;
+		for (auto i : readsCrossingNode[unitig])
+		{
+			assert(readPaths[i].path.size() > 0);
+			assert(readPaths[i].reads.size() > 0);
+			if (readPaths[i].path.size() == 1)
+			{
+				assert(readPaths[i].path[0].first == unitig);
+				for (const auto& read : readPaths[i].reads)
+				{
+					assert(read.leftClip + read.rightClip < unitigs[readPaths[i].path[0].first].size());
+					result += (double)(unitigs[unitig].size() - read.leftClip - read.rightClip) / (double)(unitigs[unitig].size());
+				}
+			}
+			else
+			{
+				for (size_t j = 0; j < readPaths[i].path.size(); j++)
+				{
+					if (readPaths[i].path[j].first != unitig) continue;
+					if (j == 0)
+					{
+						for (const auto& read : readPaths[i].reads)
+						{
+							assert(read.leftClip < unitigs[unitig].size());
+							result += (double)(unitigs[unitig].size() - read.leftClip) / (double)(unitigs[unitig].size());
+						}
+					}
+					if (j > 0 && j < readPaths[i].path.size()-1) result += readPaths[i].reads.size();
+					if (j == readPaths[i].path.size()-1)
+					{
+						for (const auto& read : readPaths[i].reads)
+						{
+							assert(read.rightClip < unitigs[unitig].size());
+							result += (double)(unitigs[unitig].size() - read.rightClip) / (double)(unitigs[unitig].size());
+						}
+					}
+				}
+			}
+		}
+		return result;
+	}
 private:
 	const size_t kmerSize;
 };
@@ -251,7 +255,7 @@ void compact(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& pat
 	{
 		std::vector<size_t> newPrecalcedUnitigLengths;
 		newPrecalcedUnitigLengths.resize(newSize, 0);
-		for (size_t i = 0; i < resolvableGraph.unitigs.size(); i++)
+		for (size_t i = 0; i < resolvableGraph.precalcedUnitigLengths.size(); i++)
 		{
 			if (!kept.get(i)) continue;
 			size_t newIndex = kept.getRank(i);
@@ -262,7 +266,7 @@ void compact(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& pat
 	{
 		std::vector<double> newPrecalcedUnitigCoverages;
 		newPrecalcedUnitigCoverages.resize(newSize, 0);
-		for (size_t i = 0; i < resolvableGraph.unitigs.size(); i++)
+		for (size_t i = 0; i < resolvableGraph.precalcedUnitigCoverages.size(); i++)
 		{
 			if (!kept.get(i)) continue;
 			size_t newIndex = kept.getRank(i);
@@ -779,6 +783,7 @@ void erasePath(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& r
 	for (auto node : readPaths[i].path)
 	{
 		if (resolvableGraph.readsCrossingNode[node.first].count(i) == 1) resolvableGraph.readsCrossingNode[node.first].erase(i);
+		if (resolvableGraph.precalcedUnitigCoverages.size() > node.first) resolvableGraph.precalcedUnitigCoverages[node.first] = 0;
 	}
 	readPaths[i].path.clear();
 	readPaths[i].reads.clear();
@@ -814,6 +819,7 @@ void addPath(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& rea
 	for (auto pos : newPath.path)
 	{
 		resolvableGraph.readsCrossingNode[pos.first].insert(newIndex);
+		if (resolvableGraph.precalcedUnitigCoverages.size() > pos.first) resolvableGraph.precalcedUnitigCoverages[pos.first] = 0;
 	}
 	readPaths.emplace_back(std::move(newPath));
 }
@@ -2496,6 +2502,18 @@ void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<PathGro
 			assertPrintReads(coverages[i][j] > 0, graph, readPaths, i);
 		}
 	}
+	for (size_t i = 0; i < graph.unitigs.size(); i++)
+	{
+		if (i == graph.precalcedUnitigCoverages.size()) break;
+		if (graph.unitigRemoved[i]) continue;
+		if (graph.precalcedUnitigCoverages[i] == 0) continue;
+		double recalcedCoverage = graph.calculateCoverage(readPaths, i);
+		if (!(graph.precalcedUnitigCoverages[i] > recalcedCoverage - 0.01 && graph.precalcedUnitigCoverages[i] < recalcedCoverage + 0.01))
+		{
+			std::cerr << graph.precalcedUnitigCoverages[i] << " " << recalcedCoverage << std::endl;
+		}
+		assert(graph.precalcedUnitigCoverages[i] > recalcedCoverage - 0.01 && graph.precalcedUnitigCoverages[i] < recalcedCoverage + 0.01);
+	}
 }
 
 size_t getEdgeCoverage(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const std::pair<size_t, bool> from, const std::pair<size_t, bool> to)
@@ -3080,6 +3098,7 @@ void trimEndRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGr
 	if (resolvableGraph.precalcedUnitigLengths.size() > pos.first) resolvableGraph.precalcedUnitigLengths[pos.first] = 0;
 	assert(trimAmount > 0);
 	assert(resolvableGraph.unitigs[pos.first].size() > trimAmount);
+	if (resolvableGraph.precalcedUnitigCoverages.size() > pos.first) resolvableGraph.precalcedUnitigCoverages[pos.first] = 0;
 	for (auto edge : resolvableGraph.edges[pos])
 	{
 		assert(resolvableGraph.overlaps.at(canon(pos, edge)) >= trimAmount);
@@ -3199,6 +3218,29 @@ void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& r
 	trimEndRecursive(resolvableGraph, readPaths, pos, maxReadTrim, kmerSize);
 }
 
+void trimNodes(std::vector<std::pair<std::pair<size_t, bool>, size_t>> maybeTrimmable, ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const size_t kmerSize)
+{
+	std::sort(maybeTrimmable.begin(), maybeTrimmable.end(), [](const std::pair<std::pair<size_t, bool>, size_t>& left, const std::pair<std::pair<size_t, bool>, size_t>& right)
+	{
+		if (left.first < right.first) return true;
+		if (left.first > right.first) return false;
+		assert(left.first == right.first);
+		if (left.second > right.second) return true;
+		if (left.second < right.second) return false;
+		assert(left.second == right.second);
+		return false;
+	});
+	for (auto pair : maybeTrimmable)
+	{
+		assertPrintReads(!resolvableGraph.unitigRemoved[pair.first.first], resolvableGraph, readPaths, pair.first.first);
+	}
+	for (auto pair : maybeTrimmable)
+	{
+		if (resolvableGraph.unitigRemoved[pair.first.first]) continue;
+		maybeTrim(resolvableGraph, readPaths, kmerSize, pair.first, pair.second);
+	}
+}
+
 void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork)
 {
 	checkValidity(resolvableGraph, readPaths, kmerSize);
@@ -3304,25 +3346,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 				if (resolvableGraph.unitigRemoved[trimIndex.first]) continue;
 				maybeTrimmable.emplace_back(trimIndex, pair.second);
 			}
-			std::sort(maybeTrimmable.begin(), maybeTrimmable.end(), [](const std::pair<std::pair<size_t, bool>, size_t>& left, const std::pair<std::pair<size_t, bool>, size_t>& right)
-			{
-				if (left.first < right.first) return true;
-				if (left.first > right.first) return false;
-				assert(left.first == right.first);
-				if (left.second > right.second) return true;
-				if (left.second < right.second) return false;
-				assert(left.second == right.second);
-				return false;
-			});
-			for (auto pair : maybeTrimmable)
-			{
-				assertPrintReads(!resolvableGraph.unitigRemoved[pair.first.first], resolvableGraph, readPaths, pair.first.first);
-			}
-			for (auto pair : maybeTrimmable)
-			{
-				if (resolvableGraph.unitigRemoved[pair.first.first]) continue;
-				maybeTrim(resolvableGraph, readPaths, kmerSize, pair.first, pair.second);
-			}
+			trimNodes(maybeTrimmable, resolvableGraph, readPaths, kmerSize);
 		}
 		if (guesswork)
 		{
@@ -3373,6 +3397,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 				{
 					assert(unitigifiedHere[i].first[0] == std::make_pair(unitigifiedHere[i].second, true));
 					queue.emplace(unitigifiedHere[i].second);
+					if (resolvableGraph.precalcedUnitigCoverages.size() > unitigifiedHere[i].second) resolvableGraph.precalcedUnitigCoverages[unitigifiedHere[i].second] = 0;
 				}
 			}
 		}
