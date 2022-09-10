@@ -190,8 +190,8 @@ public:
 		}
 		return result;
 	}
-private:
 	const size_t kmerSize;
+private:
 };
 
 void printReads(const ResolvableUnitigGraph& graph, const std::vector<PathGroup>& paths, size_t node)
@@ -3615,9 +3615,13 @@ void trimNodes(std::vector<std::pair<std::pair<size_t, bool>, size_t>> maybeTrim
 	}
 }
 
-std::tuple<size_t, size_t, phmap::flat_hash_map<size_t, std::pair<size_t, bool>>> unitigifyAfterResolve(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const ResolutionResult& resolutionResult)
+std::tuple<size_t, size_t> unitigifyAndTrimAfterResolve(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const ResolutionResult& resolutionResult)
 {
-	if (resolutionResult.maybeUnitigifiable.size() == 0) return std::tuple<size_t, size_t, phmap::flat_hash_map<size_t, std::pair<size_t, bool>>> {};
+	if (resolutionResult.maybeUnitigifiable.size() == 0)
+	{
+		assert(resolutionResult.maybeTrimmable.size() == 0);
+		return std::make_tuple(0, 0);
+	}
 	std::vector<size_t> maybeUnitigifiable { resolutionResult.maybeUnitigifiable.begin(), resolutionResult.maybeUnitigifiable.end() };
 	std::sort(maybeUnitigifiable.begin(), maybeUnitigifiable.end());
 	size_t unitigified = 0;
@@ -3642,7 +3646,24 @@ std::tuple<size_t, size_t, phmap::flat_hash_map<size_t, std::pair<size_t, bool>>
 			assert(!resolvableGraph.unitigRemoved[unitigifiedHere[i].second]);
 		}
 	}
-	return std::make_tuple(unitigified, unitigifiedTo, belongsToUnitig);
+	if (resolutionResult.maybeTrimmable.size() > 0)
+	{
+		std::vector<std::pair<std::pair<size_t, bool>, size_t>> maybeTrimmable;
+		for (auto pair : resolutionResult.maybeTrimmable)
+		{
+			std::pair<size_t, bool> trimIndex = pair.first;
+			if (belongsToUnitig.count(trimIndex.first) == 1)
+			{
+				bool fw = trimIndex.second;
+				trimIndex = belongsToUnitig.at(trimIndex.first);
+				if (!fw) trimIndex.second = !trimIndex.second;
+			}
+			if (resolvableGraph.unitigRemoved[trimIndex.first]) continue;
+			maybeTrimmable.emplace_back(trimIndex, pair.second);
+		}
+		trimNodes(maybeTrimmable, resolvableGraph, readPaths, resolvableGraph.kmerSize);
+	}
+	return std::make_tuple(unitigified, unitigifiedTo);
 }
 
 void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork)
@@ -3704,30 +3725,12 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		}
 		size_t unitigified = 0;
 		size_t unitigifiedTo = 0;
-		phmap::flat_hash_map<size_t, std::pair<size_t, bool>> belongsToUnitig;
-		std::tie(unitigified, unitigifiedTo, belongsToUnitig) = unitigifyAfterResolve(resolvableGraph, readPaths, resolutionResult);
+		std::tie(unitigified, unitigifiedTo) = unitigifyAndTrimAfterResolve(resolvableGraph, readPaths, resolutionResult);
 		if (unitigified > 0)
 		{
 			std::cerr << ", unitigified " << unitigified << " nodes to " << unitigifiedTo << " nodes";
 		}
 		std::cerr << std::endl;
-		if (resolutionResult.maybeTrimmable.size() > 0)
-		{
-			std::vector<std::pair<std::pair<size_t, bool>, size_t>> maybeTrimmable;
-			for (auto pair : resolutionResult.maybeTrimmable)
-			{
-				std::pair<size_t, bool> trimIndex = pair.first;
-				if (belongsToUnitig.count(trimIndex.first) == 1)
-				{
-					bool fw = trimIndex.second;
-					trimIndex = belongsToUnitig.at(trimIndex.first);
-					if (!fw) trimIndex.second = !trimIndex.second;
-				}
-				if (resolvableGraph.unitigRemoved[trimIndex.first]) continue;
-				maybeTrimmable.emplace_back(trimIndex, pair.second);
-			}
-			trimNodes(maybeTrimmable, resolvableGraph, readPaths, kmerSize);
-		}
 		if (guesswork)
 		{
 			phmap::flat_hash_set<size_t> cleanables = thisLengthNodes;
@@ -3901,8 +3904,7 @@ void resolveDiploidBubbleChains(ResolvableUnitigGraph& resolvableGraph, std::vec
 	std::cerr << ", replaced " << resolutionResult.nodesResolved << " nodes with " << resolutionResult.nodesAdded << " nodes";
 	size_t unitigified = 0;
 	size_t unitigifiedTo = 0;
-	phmap::flat_hash_map<size_t, std::pair<size_t, bool>> belongsToUnitig;
-	std::tie(unitigified, unitigifiedTo, belongsToUnitig) = unitigifyAfterResolve(resolvableGraph, readPaths, resolutionResult);
+	std::tie(unitigified, unitigifiedTo) = unitigifyAndTrimAfterResolve(resolvableGraph, readPaths, resolutionResult);
 	if (unitigified > 0)
 	{
 		std::cerr << ", unitigified " << unitigified << " nodes to " << unitigifiedTo << " nodes";
