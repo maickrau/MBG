@@ -1,4 +1,5 @@
 #include <iostream>
+#include <set>
 #include <queue>
 #include <unordered_set>
 #include <unordered_map>
@@ -3614,6 +3615,36 @@ void trimNodes(std::vector<std::pair<std::pair<size_t, bool>, size_t>> maybeTrim
 	}
 }
 
+std::tuple<size_t, size_t, phmap::flat_hash_map<size_t, std::pair<size_t, bool>>> unitigifyAfterResolve(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const ResolutionResult& resolutionResult)
+{
+	if (resolutionResult.maybeUnitigifiable.size() == 0) return std::tuple<size_t, size_t, phmap::flat_hash_map<size_t, std::pair<size_t, bool>>> {};
+	std::vector<size_t> maybeUnitigifiable { resolutionResult.maybeUnitigifiable.begin(), resolutionResult.maybeUnitigifiable.end() };
+	std::sort(maybeUnitigifiable.begin(), maybeUnitigifiable.end());
+	size_t unitigified = 0;
+	size_t unitigifiedTo = 0;
+	phmap::flat_hash_map<size_t, std::pair<size_t, bool>> belongsToUnitig;
+	auto unitigifiedHere = unitigifySet(resolvableGraph, readPaths, maybeUnitigifiable);
+	for (size_t i = 0; i < unitigifiedHere.size(); i++)
+	{
+		assert(unitigifiedHere[i].first.size() > 0);
+		if (unitigifiedHere[i].first.size() > 1)
+		{
+			for (auto unitig : unitigifiedHere[i].first)
+			{
+				belongsToUnitig[unitig.first] = std::make_pair(unitigifiedHere[i].second, unitig.second);
+			}
+			unitigified += unitigifiedHere[i].first.size();
+			unitigifiedTo += 1;
+		}
+		else
+		{
+			assert(unitigifiedHere[i].first[0] == std::make_pair(unitigifiedHere[i].second, true));
+			assert(!resolvableGraph.unitigRemoved[unitigifiedHere[i].second]);
+		}
+	}
+	return std::make_tuple(unitigified, unitigifiedTo, belongsToUnitig);
+}
+
 void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork)
 {
 	checkValidity(resolvableGraph, readPaths, kmerSize);
@@ -3673,32 +3704,8 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		}
 		size_t unitigified = 0;
 		size_t unitigifiedTo = 0;
-		std::vector<size_t> maybeUnitigifiable { resolutionResult.maybeUnitigifiable.begin(), resolutionResult.maybeUnitigifiable.end() };
-		std::sort(maybeUnitigifiable.begin(), maybeUnitigifiable.end());
 		phmap::flat_hash_map<size_t, std::pair<size_t, bool>> belongsToUnitig;
-		{
-			auto unitigifiedHere = unitigifySet(resolvableGraph, readPaths, maybeUnitigifiable);
-			for (size_t i = 0; i < unitigifiedHere.size(); i++)
-			{
-				assert(unitigifiedHere[i].first.size() > 0);
-				if (unitigifiedHere[i].first.size() > 1)
-				{
-					for (auto unitig : unitigifiedHere[i].first)
-					{
-						belongsToUnitig[unitig.first] = std::make_pair(unitigifiedHere[i].second, unitig.second);
-					}
-					nodesRemoved += unitigifiedHere[i].first.size();
-					unitigified += unitigifiedHere[i].first.size();
-					unitigifiedTo += 1;
-				}
-				else
-				{
-					assert(unitigifiedHere[i].first[0] == std::make_pair(unitigifiedHere[i].second, true));
-					assert(!resolvableGraph.unitigRemoved[unitigifiedHere[i].second]);
-					queue.emplace(unitigifiedHere[i].second);
-				}
-			}
-		}
+		std::tie(unitigified, unitigifiedTo, belongsToUnitig) = unitigifyAfterResolve(resolvableGraph, readPaths, resolutionResult);
 		if (unitigified > 0)
 		{
 			std::cerr << ", unitigified " << unitigified << " nodes to " << unitigifiedTo << " nodes";
@@ -3810,6 +3817,99 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 	}
 }
 
+std::pair<size_t, bool> getDiploidBubbleEnd(const ResolvableUnitigGraph& resolvableGraph, const std::pair<size_t, bool> pos)
+{
+	if (resolvableGraph.edges[pos].size() != 2) return std::make_pair(std::numeric_limits<size_t>::max(), false);
+	std::pair<size_t, bool> candidate;
+	for (auto edge : resolvableGraph.edges[pos])
+	{
+		if (resolvableGraph.edges[edge].size() != 1) return std::make_pair(std::numeric_limits<size_t>::max(), false);
+		if (resolvableGraph.edges[reverse(edge)].size() != 1) return std::make_pair(std::numeric_limits<size_t>::max(), false);
+		if (candidate.first == std::numeric_limits<size_t>::max()) candidate = *resolvableGraph.edges[edge].begin();
+		if ((*resolvableGraph.edges[edge].begin()) != candidate) return std::make_pair(std::numeric_limits<size_t>::max(), false);
+	}
+	if (resolvableGraph.edges[reverse(candidate)].size() != 2) return std::make_pair(std::numeric_limits<size_t>::max(), false);
+	return candidate;
+}
+
+std::pair<size_t, bool> getBubbleChainStart(const ResolvableUnitigGraph& resolvableGraph, const std::vector<bool>& validDiploidBubbleCenter, std::pair<size_t, bool> pos)
+{
+	std::pair<size_t, bool> result;
+	result = pos;
+	assert(validDiploidBubbleCenter[result.first]);
+	while (true)
+	{
+		if (!validDiploidBubbleCenter[result.first]) break;
+		auto candidate = getDiploidBubbleEnd(resolvableGraph, result);
+		if (candidate.first == std::numeric_limits<size_t>::max()) break;
+		if (candidate == pos) break;
+		result = candidate;
+	}
+	return reverse(result);
+}
+
+void resolveDiploidBubbleChains(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork)
+{
+	std::vector<bool> validDiploidBubbleCenter;
+	validDiploidBubbleCenter.resize(resolvableGraph.unitigs.size(), false);
+	for (size_t i = 0; i < resolvableGraph.unitigs.size(); i++)
+	{
+		if (resolvableGraph.edges[std::make_pair(i, true)].size() != 2) continue;
+		if (resolvableGraph.edges[std::make_pair(i, false)].size() != 2) continue;
+		double coverage = resolvableGraph.getCoverage(readPaths, i);
+		if (coverage < resolvableGraph.averageCoverage * 1.5) continue;
+		if (coverage > resolvableGraph.averageCoverage * 2.5) continue;
+		auto triplets = getRawTriplets(resolvableGraph, phmap::flat_hash_set<size_t>{i}, readPaths, i, minCoverage, false);
+		if (triplets.size() != 2) continue;
+		std::set<std::pair<size_t, bool>> coveredInNeighbors;
+		std::set<std::pair<size_t, bool>> coveredOutNeighbors;
+		for (auto triplet : triplets)
+		{
+			coveredInNeighbors.insert(triplet.left);
+			coveredOutNeighbors.insert(triplet.right);
+		}
+		if (coveredInNeighbors.size() != 2) continue;
+		if (coveredOutNeighbors.size() != 2) continue;
+		validDiploidBubbleCenter[i] = true;
+	}
+	std::vector<bool> coveredDiploidBubbleCenter;
+	coveredDiploidBubbleCenter.resize(resolvableGraph.unitigs.size(), false);
+	std::vector<std::pair<size_t, bool>> diploidBubbleChainStarts;
+	phmap::flat_hash_set<size_t> resolvables;
+	for (size_t i = 0; i < resolvableGraph.unitigs.size(); i++)
+	{
+		if (!validDiploidBubbleCenter[i]) continue;
+		if (coveredDiploidBubbleCenter[i]) continue;
+		std::pair<size_t, bool> start = getBubbleChainStart(resolvableGraph, validDiploidBubbleCenter, std::make_pair(i, false));
+		diploidBubbleChainStarts.push_back(start);
+		while (true)
+		{
+			if (validDiploidBubbleCenter[start.first])
+			{
+				coveredDiploidBubbleCenter[start.first] = true;
+				resolvables.insert(start.first);
+			}
+			auto candidate = getDiploidBubbleEnd(resolvableGraph, start);
+			if (candidate.first == std::numeric_limits<size_t>::max()) break;
+			if (coveredDiploidBubbleCenter[candidate.first]) break;
+			start = candidate;
+		}
+	}
+	std::cerr << "try resolve diploid bubble chains";
+	auto resolutionResult = resolve(resolvableGraph, hashlist, kmerSize, readPaths, resolvables, minCoverage, false, false);
+	assert(resolutionResult.maybeTrimmable.size() == 0);
+	std::cerr << ", replaced " << resolutionResult.nodesResolved << " nodes with " << resolutionResult.nodesAdded << " nodes";
+	size_t unitigified = 0;
+	size_t unitigifiedTo = 0;
+	phmap::flat_hash_map<size_t, std::pair<size_t, bool>> belongsToUnitig;
+	std::tie(unitigified, unitigifiedTo, belongsToUnitig) = unitigifyAfterResolve(resolvableGraph, readPaths, resolutionResult);
+	if (unitigified > 0)
+	{
+		std::cerr << ", unitigified " << unitigified << " nodes to " << unitigifiedTo << " nodes";
+	}
+	std::cerr << std::endl;
+}
+
 std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork)
 {
 	auto resolvableGraph = getUnitigs(initial, minCoverage, hashlist, kmerSize, keepGaps);
@@ -3867,6 +3967,7 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 		assert(resolvableGraph.readsCrossingNode[i].size() >= 1);
 	}
 	unitigifyAll(resolvableGraph, readPaths);
+	resolveDiploidBubbleChains(resolvableGraph, readPaths, hashlist, minCoverage, kmerSize, maxResolveLength, maxUnconditionalResolveLength, guesswork);
 	auto removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, 10000, kmerSize, phmap::flat_hash_set<size_t> {});
 	if (removed.nodesRemoved > 0)
 	{
