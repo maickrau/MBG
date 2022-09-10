@@ -1809,9 +1809,10 @@ std::vector<ResolveTriplet> getRawTriplets(const ResolvableUnitigGraph& resolvab
 	return coveredTriplets;
 }
 
-std::vector<ResolveTriplet> getReadSupportedTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool unconditional, bool guesswork)
+std::vector<ResolveTriplet> getReadSupportedTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool unconditional, bool guesswork, bool extraUnconditional)
 {
 	auto coveredTriplets = getRawTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, guesswork);
+	if (extraUnconditional) return coveredTriplets;
 	if (unconditional && coveredTriplets.size() >= 2) return coveredTriplets;
 	phmap::flat_hash_set<std::pair<size_t, bool>> coveredInNeighbors;
 	phmap::flat_hash_set<std::pair<size_t, bool>> coveredOutNeighbors;
@@ -2013,9 +2014,9 @@ void filterCopyCountTriplets(const ResolvableUnitigGraph& resolvableGraph, const
 	originals.erase(originals.begin() + threshold, originals.end());
 }
 
-std::vector<ResolveTriplet> getValidTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool unconditional, bool guesswork)
+std::vector<ResolveTriplet> getValidTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool unconditional, bool guesswork, bool extraUnconditional)
 {
-	auto triplets = getReadSupportedTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork);
+	auto triplets = getReadSupportedTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork, extraUnconditional);
 	if (triplets.size() > 0 && guesswork && unconditional)
 	{
 		filterCopyCountTriplets(resolvableGraph, readPaths, node, triplets);
@@ -2305,7 +2306,7 @@ public:
 	phmap::flat_hash_map<std::pair<size_t, bool>, size_t> maybeTrimmable;
 };
 
-ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList& hashlist, std::vector<PathGroup>& readPaths, const phmap::flat_hash_set<size_t>& resolvables, const size_t minCoverage, const bool unconditional, const bool guesswork)
+ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList& hashlist, std::vector<PathGroup>& readPaths, const phmap::flat_hash_set<size_t>& resolvables, const size_t minCoverage, const bool unconditional, const bool guesswork, const bool extraUnconditional)
 {
 	static BigVectorSet actuallyResolvables;
 	ResolutionResult result;
@@ -2334,7 +2335,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 	for (auto node : resolvables)
 	{
 		if (unresolvables.count(node) == 1) continue;
-		auto triplets = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork);
+		auto triplets = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork, extraUnconditional);
 		if (triplets.size() == 0)
 		{
 			unresolvables.insert(node);
@@ -2351,7 +2352,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 		{
 			if (unresolvables.count(node) == 1) continue;
 			phmap::flat_hash_map<std::pair<size_t, bool>, size_t> fakeEdgeCount;
-			auto triplets = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork);
+			auto triplets = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork, extraUnconditional);
 			bool unresolve = false;
 			for (auto triplet : triplets)
 			{
@@ -2410,7 +2411,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 	std::unordered_map<size_t, std::vector<ResolveTriplet>> tripletsPerNode;
 	for (auto node : actuallyResolvables)
 	{
-		tripletsPerNode[node] = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork);
+		tripletsPerNode[node] = getValidTriplets(resolvableGraph, resolvables, readPaths, node, minCoverage, unconditional, guesswork, extraUnconditional);
 	}
 	assert(actuallyResolvables.activeSize() == resolvables.size() - unresolvables.size());
 	phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t> newEdgeNodes;
@@ -3714,7 +3715,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		size_t oldSize = resolvableGraph.unitigs.size();
 		checkValidity(resolvableGraph, readPaths);
 		std::cerr << "try resolve k=" << topSize;
-		auto resolutionResult = resolve(resolvableGraph, hashlist, readPaths, resolvables, minCoverage, topSize < maxUnconditionalResolveLength, guesswork);
+		auto resolutionResult = resolve(resolvableGraph, hashlist, readPaths, resolvables, minCoverage, topSize < maxUnconditionalResolveLength, guesswork, false);
 		std::cerr << ", replaced " << resolutionResult.nodesResolved << " nodes with " << resolutionResult.nodesAdded << " nodes";
 		nodesRemoved += resolutionResult.nodesResolved;
 		if (resolutionResult.nodesResolved == 0)
@@ -3820,6 +3821,143 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 	}
 }
 
+size_t getNumCrossingReads(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, size_t unitigLeft, size_t unitigRight)
+{
+	size_t result = 0;
+	for (auto readI : resolvableGraph.readsCrossingNode[unitigLeft])
+	{
+		if (resolvableGraph.readsCrossingNode[unitigRight].count(readI) == 0) continue;
+		result += readPaths[readI].reads.size();
+	}
+	return result;
+}
+
+size_t getNumTouchingReads(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, size_t unitigLeft, size_t unitigRight)
+{
+	phmap::flat_hash_set<size_t> readNamesCrossingLeft;
+	for (auto readI : resolvableGraph.readsCrossingNode[unitigLeft])
+	{
+		for (const auto& read : readPaths[readI].reads)
+		{
+			readNamesCrossingLeft.insert(read.readNameIndex);
+		}
+	}
+	size_t result = 0;
+	for (auto readI : resolvableGraph.readsCrossingNode[unitigRight])
+	{
+		for (const auto& read : readPaths[readI].reads)
+		{
+			if (readNamesCrossingLeft.count(read.readNameIndex) == 1) result += 1;
+		}
+	}
+	return result;
+}
+
+void resolveDiploidHetBreaks(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork)
+{
+	phmap::flat_hash_set<size_t> resolvables;
+	for (size_t i = 0; i < resolvableGraph.unitigs.size(); i++)
+	{
+		if (resolvableGraph.edges[std::make_pair(i, true)].size() >= 2 || resolvableGraph.edges[std::make_pair(i, false)].size() >= 2) continue;
+		if (resolvableGraph.edges[std::make_pair(i, true)].size() == 0 && resolvableGraph.edges[std::make_pair(i, false)].size() == 0) continue;
+		if (resolvableGraph.edges[std::make_pair(i, true)].size() == 1 && resolvableGraph.edges[std::make_pair(i, false)].size() == 1) continue;
+		std::pair<size_t, bool> midNodeOne { std::numeric_limits<size_t>::max(), false };
+		std::pair<size_t, bool> midNodeTwo { std::numeric_limits<size_t>::max(), false };
+		std::pair<size_t, bool> leftNodeOne { std::numeric_limits<size_t>::max(), false };
+		std::pair<size_t, bool> leftNodeTwo { std::numeric_limits<size_t>::max(), false };
+		std::pair<size_t, bool> rightNodeOne { std::numeric_limits<size_t>::max(), false };
+		std::pair<size_t, bool> rightNodeTwo { std::numeric_limits<size_t>::max(), false };
+		if (resolvableGraph.edges[std::make_pair(i, true)].size() == 1)
+		{
+			assert(resolvableGraph.edges[std::make_pair(i, false)].size() == 0);
+			midNodeOne = *resolvableGraph.edges[std::make_pair(i, true)].begin();
+		}
+		else
+		{
+			assert(resolvableGraph.edges[std::make_pair(i, true)].size() == 0);
+			assert(resolvableGraph.edges[std::make_pair(i, false)].size() == 1);
+			midNodeOne = *resolvableGraph.edges[std::make_pair(i, false)].begin();
+		}
+		if (resolvableGraph.edges[midNodeOne].size() != 2) continue;
+		if (resolvableGraph.edges[reverse(midNodeOne)].size() != 2) continue;
+		bool valid = true;
+		for (auto edge : resolvableGraph.edges[reverse(midNodeOne)])
+		{
+			if (edge.first == i) continue;
+			if (midNodeTwo.first != std::numeric_limits<size_t>::max()) valid = false;
+			midNodeTwo = edge;
+		}
+		if (midNodeTwo.first == std::numeric_limits<size_t>::max()) valid = false;
+		if (!valid) continue;
+		if (resolvableGraph.edges[midNodeTwo].size() != 2) continue;
+		if (resolvableGraph.edges[reverse(midNodeTwo)].size() != 1) continue;
+		size_t count = 0;
+		for (auto edge : resolvableGraph.edges[midNodeOne])
+		{
+			if (count == 0) leftNodeOne = edge;
+			if (count == 1) leftNodeTwo = edge;
+			count += 1;
+		}
+		assert(count == 2);
+		count = 0;
+		for (auto edge : resolvableGraph.edges[midNodeTwo])
+		{
+			if (count == 0) rightNodeOne = edge;
+			if (count == 1) rightNodeTwo = edge;
+			count += 1;
+		}
+		assert(count == 2);
+		if (resolvableGraph.edges[reverse(leftNodeOne)].size() != 1) continue;
+		if (resolvableGraph.edges[reverse(leftNodeTwo)].size() != 1) continue;
+		if (resolvableGraph.edges[reverse(rightNodeOne)].size() != 1) continue;
+		if (resolvableGraph.edges[reverse(rightNodeTwo)].size() != 1) continue;
+		bool parallel = true;
+		bool parallelFound = false;
+		if (getNumCrossingReads(resolvableGraph, readPaths, leftNodeOne.first, rightNodeOne.first) >= minCoverage || getNumCrossingReads(resolvableGraph, readPaths, leftNodeTwo.first, rightNodeTwo.first) >= minCoverage)
+		{
+			parallel = true;
+			parallelFound = true;
+		}
+		if (getNumCrossingReads(resolvableGraph, readPaths, leftNodeOne.first, rightNodeTwo.first) >= minCoverage || getNumCrossingReads(resolvableGraph, readPaths, leftNodeTwo.first, rightNodeOne.first) >= minCoverage)
+		{
+			if (parallelFound) continue;
+			parallelFound = true;
+			parallel = false;
+		}
+		if (!parallelFound) continue;
+		if (parallel && (getNumTouchingReads(resolvableGraph, readPaths, leftNodeOne.first, rightNodeOne.first) == 0 || getNumTouchingReads(resolvableGraph, readPaths, leftNodeTwo.first, rightNodeTwo.first) == 0)) continue;
+		if (parallel && (getNumTouchingReads(resolvableGraph, readPaths, leftNodeOne.first, rightNodeTwo.first) > 0 || getNumTouchingReads(resolvableGraph, readPaths, leftNodeTwo.first, rightNodeOne.first) > 0)) continue;
+		if (!parallel && (getNumTouchingReads(resolvableGraph, readPaths, leftNodeOne.first, rightNodeTwo.first) == 0 || getNumTouchingReads(resolvableGraph, readPaths, leftNodeTwo.first, rightNodeOne.first) == 0)) continue;
+		if (!parallel && (getNumTouchingReads(resolvableGraph, readPaths, leftNodeOne.first, rightNodeOne.first) > 0 || getNumTouchingReads(resolvableGraph, readPaths, leftNodeTwo.first, rightNodeTwo.first) > 0)) continue;
+		auto triplets = getRawTriplets(resolvableGraph, phmap::flat_hash_set<size_t>{midNodeOne.first}, readPaths, midNodeOne.first, minCoverage, false);
+		if (triplets.size() != 2) continue;
+		std::set<std::pair<size_t, bool>> coveredInNeighbors;
+		std::set<std::pair<size_t, bool>> coveredOutNeighbors;
+		for (auto triplet : triplets)
+		{
+			coveredInNeighbors.insert(triplet.left);
+			coveredOutNeighbors.insert(triplet.right);
+		}
+		if (coveredInNeighbors.size() != 2) continue;
+		if (coveredOutNeighbors.size() != 2) continue;
+		auto triplets2 = getRawTriplets(resolvableGraph, phmap::flat_hash_set<size_t>{midNodeTwo.first}, readPaths, midNodeTwo.first, minCoverage, false);
+		if (triplets2.size() != 1) continue;
+		resolvables.insert(midNodeOne.first);
+		resolvables.insert(midNodeTwo.first);
+	}
+	std::cerr << "try resolve special case broken hets";
+	auto resolutionResult = resolve(resolvableGraph, hashlist, readPaths, resolvables, minCoverage, true, false, true);
+	std::cerr << ", replaced " << resolutionResult.nodesResolved << " nodes with " << resolutionResult.nodesAdded << " nodes";
+	size_t unitigified = 0;
+	size_t unitigifiedTo = 0;
+	std::tie(unitigified, unitigifiedTo) = unitigifyAndTrimAfterResolve(resolvableGraph, readPaths, resolutionResult);
+	if (unitigified > 0)
+	{
+		std::cerr << ", unitigified " << unitigified << " nodes to " << unitigifiedTo << " nodes";
+	}
+	std::cerr << std::endl;
+}
+
 std::pair<size_t, bool> getDiploidBubbleEnd(const ResolvableUnitigGraph& resolvableGraph, const std::pair<size_t, bool> pos)
 {
 	if (resolvableGraph.edges[pos].size() != 2) return std::make_pair(std::numeric_limits<size_t>::max(), false);
@@ -3899,7 +4037,7 @@ void resolveDiploidBubbleChains(ResolvableUnitigGraph& resolvableGraph, std::vec
 		}
 	}
 	std::cerr << "try resolve diploid bubble chains";
-	auto resolutionResult = resolve(resolvableGraph, hashlist, readPaths, resolvables, minCoverage, false, false);
+	auto resolutionResult = resolve(resolvableGraph, hashlist, readPaths, resolvables, minCoverage, false, false, false);
 	assert(resolutionResult.maybeTrimmable.size() == 0);
 	std::cerr << ", replaced " << resolutionResult.nodesResolved << " nodes with " << resolutionResult.nodesAdded << " nodes";
 	size_t unitigified = 0;
@@ -3969,7 +4107,11 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 		assert(resolvableGraph.readsCrossingNode[i].size() >= 1);
 	}
 	unitigifyAll(resolvableGraph, readPaths);
-	resolveDiploidBubbleChains(resolvableGraph, readPaths, hashlist, minCoverage, maxResolveLength, maxUnconditionalResolveLength, guesswork);
+	if (guesswork)
+	{
+		resolveDiploidHetBreaks(resolvableGraph, readPaths, hashlist, minCoverage, maxResolveLength, maxUnconditionalResolveLength, guesswork);
+		resolveDiploidBubbleChains(resolvableGraph, readPaths, hashlist, minCoverage, maxResolveLength, maxUnconditionalResolveLength, guesswork);
+	}
 	auto removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, 10000, phmap::flat_hash_set<size_t> {});
 	if (removed.nodesRemoved > 0)
 	{
