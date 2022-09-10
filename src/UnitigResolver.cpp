@@ -3933,7 +3933,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 			if (resolvableGraph.unitigRemoved[i]) continue;
 			queue.emplace(i);
 		}
-		resolveDiploidHetBreaks(resolvableGraph, readPaths, hashlist, minCoverage, maxResolveLength, maxUnconditionalResolveLength, oldSize);
+		if (guesswork) resolveDiploidHetBreaks(resolvableGraph, readPaths, hashlist, minCoverage, maxResolveLength, maxUnconditionalResolveLength, oldSize);
 		if (nodesRemoved > resolvableGraph.unitigs.size() / 2 + 50)
 		{
 			std::vector<size_t> queueNodes;
@@ -4137,7 +4137,7 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 		}
 	}
 	resolveRound(resolvableGraph, readPaths, hashlist, minCoverage, maxResolveLength, maxUnconditionalResolveLength, guesswork);
-	resolveDiploidHetBreaks(resolvableGraph, readPaths, hashlist, 1, maxResolveLength, maxUnconditionalResolveLength, 0);
+	if (guesswork) resolveDiploidHetBreaks(resolvableGraph, readPaths, hashlist, 1, maxResolveLength, maxUnconditionalResolveLength, 0);
 	resolveRound(resolvableGraph, readPaths, hashlist, 1, maxResolveLength, maxUnconditionalResolveLength, guesswork);
 	checkValidity(resolvableGraph, readPaths);
 	return resolvableToUnitigs(resolvableGraph, readPaths, readInfos);
