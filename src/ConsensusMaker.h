@@ -90,7 +90,6 @@ public:
 		}
 	}
 	void prepareEdgeOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, size_t overlap);
-	void allocateParent();
 	void addEdgeOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, size_t overlap);
 	void prepareHpcVariants(const std::vector<bool>& checkUnitig);
 	std::vector<std::pair<size_t, std::vector<size_t>>> getHpcVariants(const size_t unitig, const size_t minCoverage);
@@ -99,7 +98,6 @@ private:
 	size_t unitigLength(size_t unitig) const;
 	std::tuple<size_t, size_t, bool> getParent(size_t unitig, size_t index) const;
 	std::tuple<size_t, size_t, bool> find(size_t unitig, size_t index);
-	void merge(size_t leftUnitig, size_t leftIndex, size_t rightUnitig, size_t rightIndex, bool fw);
 	StringIndex stringIndex;
 	std::vector<std::vector<std::pair<uint8_t, uint8_t>>> simpleCounts;
 	phmap::flat_hash_map<size_t, phmap::flat_hash_map<size_t, phmap::flat_hash_map<uint32_t, uint32_t>>> complexCounts;
@@ -108,7 +106,7 @@ private:
 	std::mutex stringIndexMutex;
 	std::vector<TwobitLittleBigVector<uint16_t>> compressedSequences;
 	std::vector<std::pair<size_t, size_t>> needsComplementVerification;
-	mutable std::vector<std::vector<std::tuple<size_t, size_t, bool>>> parent;
+	mutable std::vector<std::vector<std::tuple<size_t, size_t, size_t, size_t, bool>>> parent;
 	std::vector<size_t> longestLeftOverlap;
 	std::vector<size_t> longestRightOverlap;
 };
