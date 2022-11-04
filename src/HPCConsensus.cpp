@@ -228,7 +228,6 @@ void initializeHelpers(ConsensusMaker& consensusMaker, std::unordered_map<std::s
 			consensusMaker.prepareEdgeOverlap(pos, edge, bpOverlap - fromClip - toClip);
 		}
 	}
-	consensusMaker.allocateParent();
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
 		std::pair<size_t, bool> pos { i, true };
