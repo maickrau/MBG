@@ -39,6 +39,8 @@ void ConsensusMaker::addEdgeOverlap(std::pair<size_t, bool> from, std::pair<size
 	size_t toStartIndex = std::numeric_limits<size_t>::max();
 	bool toFw = true;
 	size_t matchLength = 0;
+	size_t currentInsertUnitig = std::numeric_limits<size_t>::max();
+	size_t currentInsertIndex = std::numeric_limits<size_t>::max();
 	for (size_t i = 0; i < overlap; i++)
 	{
 		size_t fromIndex = unitigLength(from.first) - overlap + i;
@@ -47,6 +49,8 @@ void ConsensusMaker::addEdgeOverlap(std::pair<size_t, bool> from, std::pair<size
 		if (!to.second) toIndex = unitigLength(to.first) - 1 - i;
 		auto fromTuple = find(from.first, fromIndex);
 		auto toTuple = find(to.first, toIndex);
+		assert(getParent(std::get<0>(fromTuple), std::get<1>(fromTuple)) == std::make_tuple(std::get<0>(fromTuple), std::get<1>(fromTuple), true));
+		assert(getParent(std::get<0>(toTuple), std::get<1>(toTuple)) == std::make_tuple(std::get<0>(toTuple), std::get<1>(toTuple), true));
 		if (!from.second) std::get<2>(fromTuple) = !std::get<2>(fromTuple);
 		if (!to.second) std::get<2>(toTuple) = !std::get<2>(toTuple);
 		size_t newFromUnitig = std::get<0>(fromTuple);
@@ -61,23 +65,15 @@ void ConsensusMaker::addEdgeOverlap(std::pair<size_t, bool> from, std::pair<size
 			{
 				if (newFromUnitig != newToUnitig || newFromPos != newToPos)
 				{
+					assert(currentInsertUnitig < parent.size());
+					assert(currentInsertIndex < parent[currentInsertUnitig].size());
+					std::get<1>(parent[currentInsertUnitig][currentInsertIndex]) += 1;
+					if (!fromFw) std::get<0>(parent[currentInsertUnitig][currentInsertIndex]) -= 1;
+					if (!toFw) std::get<3>(parent[currentInsertUnitig][currentInsertIndex]) -= 1;
 					matchLength += 1;
 					continue;
 				}
 			}
-		}
-		if (matchLength > 0 && (fromUnitig != toUnitig || fromStartIndex != toStartIndex || fromFw != toFw))
-		{
-			size_t fromRealStart = fromStartIndex;
-			if (!fromFw) fromRealStart -= matchLength - 1;
-			size_t toRealStart = toStartIndex;
-			if (!toFw) toRealStart -= matchLength - 1;
-			assert(fromRealStart < unitigLength(fromUnitig));
-			assert(toRealStart < unitigLength(toUnitig));
-			assert(fromRealStart + matchLength <= unitigLength(fromUnitig));
-			assert(toRealStart + matchLength <= unitigLength(toUnitig));
-			parent[fromUnitig].emplace_back(fromRealStart, matchLength, toUnitig, toRealStart, fromFw == toFw);
-			std::sort(parent[fromUnitig].begin(), parent[fromUnitig].end(), [](auto left, auto right) { return std::get<0>(left) < std::get<0>(right); });
 		}
 		fromUnitig = newFromUnitig;
 		fromStartIndex = newFromPos;
@@ -91,20 +87,32 @@ void ConsensusMaker::addEdgeOverlap(std::pair<size_t, bool> from, std::pair<size
 			matchLength = 0;
 			fromUnitig = std::numeric_limits<size_t>::max();
 			toUnitig = std::numeric_limits<size_t>::max();
+			currentInsertUnitig = std::numeric_limits<size_t>::max();
 		}
-	}
-	if (matchLength > 0 && (fromUnitig != toUnitig || fromStartIndex != toStartIndex || fromFw != toFw))
-	{
-		size_t fromRealStart = fromStartIndex;
-		if (!fromFw) fromRealStart -= matchLength - 1;
-		size_t toRealStart = toStartIndex;
-		if (!toFw) toRealStart -= matchLength - 1;
-		assert(fromRealStart < unitigLength(fromUnitig));
-		assert(toRealStart < unitigLength(toUnitig));
-		assert(fromRealStart + matchLength <= unitigLength(fromUnitig));
-		assert(toRealStart + matchLength <= unitigLength(toUnitig));
-		parent[fromUnitig].emplace_back(fromRealStart, matchLength, toUnitig, toRealStart, fromFw == toFw);
-		std::sort(parent[fromUnitig].begin(), parent[fromUnitig].end(), [](auto left, auto right) { return std::get<0>(left) < std::get<0>(right); });
+		if (matchLength >= 1)
+		{
+			size_t fromRealStart = fromStartIndex;
+			if (!fromFw) fromRealStart -= matchLength - 1;
+			size_t toRealStart = toStartIndex;
+			if (!toFw) toRealStart -= matchLength - 1;
+			assert(fromRealStart < unitigLength(fromUnitig));
+			assert(toRealStart < unitigLength(toUnitig));
+			assert(fromRealStart + matchLength <= unitigLength(fromUnitig));
+			assert(toRealStart + matchLength <= unitigLength(toUnitig));
+			parent[fromUnitig].emplace_back(fromRealStart, matchLength, toUnitig, toRealStart, fromFw == toFw);
+			std::sort(parent[fromUnitig].begin(), parent[fromUnitig].end(), [](auto left, auto right) { return std::get<0>(left) < std::get<0>(right); });
+			currentInsertUnitig = fromUnitig;
+			currentInsertIndex = std::numeric_limits<size_t>::max();
+			for (size_t j = 0; j < parent[fromUnitig].size(); j++)
+			{
+				if (std::get<0>(parent[fromUnitig][j]) == fromRealStart)
+				{
+					currentInsertIndex = j;
+					break;
+				}
+			}
+			assert(currentInsertIndex != std::numeric_limits<size_t>::max());
+		}
 	}
 	for (size_t i = 0; i < overlap; i++)
 	{
