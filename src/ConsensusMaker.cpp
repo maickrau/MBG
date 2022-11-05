@@ -21,7 +21,6 @@ void ConsensusMaker::init(const std::vector<size_t>& unitigLengths)
 	parent.resize(unitigLengths.size());
 	longestLeftOverlap.resize(unitigLengths.size(), 0);
 	longestRightOverlap.resize(unitigLengths.size(), 0);
-	parent.resize(unitigLengths.size());
 	for (size_t i = 0; i < unitigLengths.size(); i++)
 	{
 		assert(unitigLengths[i] >= 1);
@@ -60,8 +59,11 @@ void ConsensusMaker::addEdgeOverlap(std::pair<size_t, bool> from, std::pair<size
 		{
 			if (newFromPos == fromStartIndex + (fromFw ? 1 : -1) * matchLength && newToPos == toStartIndex + (toFw ? 1 : -1) * matchLength)
 			{
-				matchLength += 1;
-				continue;
+				if (newFromUnitig != newToUnitig || newFromPos != newToPos)
+				{
+					matchLength += 1;
+					continue;
+				}
 			}
 		}
 		if (matchLength > 0 && (fromUnitig != toUnitig || fromStartIndex != toStartIndex || fromFw != toFw))
@@ -84,6 +86,12 @@ void ConsensusMaker::addEdgeOverlap(std::pair<size_t, bool> from, std::pair<size
 		toStartIndex = newToPos;
 		toFw = newToFw;
 		matchLength = 1;
+		if (fromUnitig == toUnitig && fromStartIndex == toStartIndex)
+		{
+			matchLength = 0;
+			fromUnitig = std::numeric_limits<size_t>::max();
+			toUnitig = std::numeric_limits<size_t>::max();
+		}
 	}
 	if (matchLength > 0 && (fromUnitig != toUnitig || fromStartIndex != toStartIndex || fromFw != toFw))
 	{
@@ -110,7 +118,7 @@ void ConsensusMaker::addEdgeOverlap(std::pair<size_t, bool> from, std::pair<size
 		// if (!to.second) std::get<2>(toTuple) = !std::get<2>(toTuple);
 		assert(std::get<0>(fromTuple) == std::get<0>(toTuple));
 		assert(std::get<1>(fromTuple) == std::get<1>(toTuple));
-		assert((std::get<2>(fromTuple) == std::get<2>(toTuple)) == (from.second == to.second));
+		// assert((std::get<2>(fromTuple) == std::get<2>(toTuple)) == (from.second == to.second));
 	}
 }
 
@@ -249,7 +257,7 @@ std::tuple<size_t, size_t, bool> ConsensusMaker::find(size_t unitig, size_t inde
 		}
 		if (!std::get<2>(result)) std::get<2>(nextResult) = !std::get<2>(nextResult);
 		result = nextResult;
-		assert(iterations < parent.size());
+		assert(iterations < parent.size()+1000);
 	}
 	return result;
 }
