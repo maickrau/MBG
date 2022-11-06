@@ -5,6 +5,7 @@
 #include <limits>
 #include <vector>
 #include <phmap.h>
+#include "MsatValueVector.h"
 
 template <typename BigType>
 class TwobitLittleBigVector
@@ -20,6 +21,7 @@ public:
 	{
 		realSize = size;
 		littles.resize((realSize+3)/4);
+		bigs.resize(size);
 	}
 	void resize(size_t size, BigType v)
 	{
@@ -30,8 +32,8 @@ public:
 	}
 	BigType get(size_t i) const
 	{
-		auto found = bigs.find(i);
-		if (found != bigs.end()) return found->second;
+		auto got = bigs.get(i);
+		if (got != 65535) return got;
 		size_t index = i / 4;
 		size_t offset = (i % 4) * 2;
 		return (littles[index] >> offset) & 3;
@@ -40,8 +42,8 @@ public:
 	{
 		if (v >= 0 && v <= 3)
 		{
-			auto found = bigs.find(i);
-			if (found != bigs.end()) bigs.erase(found);
+			auto got = bigs.get(i);
+			if (got != 65535) bigs.erase(i);
 			size_t index = i / 4;
 			size_t offset = (i % 4) * 2;
 			uint8_t removeMask = ~(3 << offset);
@@ -50,7 +52,7 @@ public:
 			littles[index] |= addMask;
 			return;
 		}
-		bigs[i] = v;
+		bigs.set(i, v);
 	}
 	void emplace_back(BigType v)
 	{
@@ -65,7 +67,7 @@ public:
 private:
 	size_t realSize;
 	std::vector<uint8_t> littles;
-	phmap::flat_hash_map<uint32_t, BigType> bigs;
+	MsatValueVector bigs;
 };
 
 #endif
