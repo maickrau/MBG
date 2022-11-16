@@ -63,6 +63,7 @@ MsatValueVector::MsatValueChunk& MsatValueVector::MsatValueChunk::operator=(cons
 
 void MsatValueVector::MsatValueChunk::set(uint8_t index, uint16_t val)
 {
+	assert(realsize <= capacity);
 	uint16_t got = get(index);
 	if (got == val) return;
 	if (got != 65535) erase(index);
@@ -98,7 +99,10 @@ void MsatValueVector::MsatValueChunk::set(uint8_t index, uint16_t val)
 		return;
 	}
 	assert(realsize == capacity);
-	capacity *= 2;
+	size_t newCapacity = (size_t)capacity * 2;
+	if (newCapacity >= 256) newCapacity = 255;
+	assert(newCapacity > capacity);
+	capacity = newCapacity;
 	uint32_t* newVec = new uint32_t[capacity];
 	memcpy(newVec, vec, 4*realsize);
 	delete [] vec;
