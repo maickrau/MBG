@@ -8,12 +8,13 @@
 #include "RankBitvector.h"
 #include "ReadHelper.h"
 #include "BigVectorSet.h"
+#include "Node.h"
 
 #define assertPrintReads(expression, graph, paths, node) {if (!(expression)) {printReads(graph, paths, node);} assert(expression);}
 
 struct ReadPathInfo
 {
-	std::vector<size_t> readPoses;
+	std::vector<uint32_t> readPoses;
 	size_t expandedReadPosStart;
 	size_t expandedReadPosEnd;
 	size_t readLength;
@@ -730,7 +731,7 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolvableToUnitigs(const Resolvab
 		for (const auto& read : path.reads)
 		{
 			resultReads.emplace_back();
-			resultReads.back().path = fixPath;
+			resultReads.back().path = std::vector<Node> { fixPath.begin(), fixPath.end() };
 			resultReads.back().readName = resolvableGraph.readNames[read.readNameIndex];
 			resultReads.back().readPoses = { readInfos[read.readInfoIndex].readPoses.begin() + read.readPosStartIndex, readInfos[read.readInfoIndex].readPoses.begin() + read.readPosEndIndex };
 			resultReads.back().expandedReadPosStart = readInfos[read.readInfoIndex].expandedReadPosStart;
@@ -973,7 +974,7 @@ void cutRemovedEdgesFromPaths(ResolvableUnitigGraph& graph, std::vector<ReadPath
 		for (size_t j = 0; j < readPaths[i].path.size(); j++)
 		{
 			pathStartPoses.push_back(pos);
-			pos += graph.unitigs[readPaths[i].path[j].first].size();
+			pos += graph.unitigs[readPaths[i].path[j].id()].size();
 			pathEndPoses.push_back(pos);
 		}
 		for (size_t j = 1; j < readPaths[i].path.size(); j++)
@@ -3541,6 +3542,21 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 	}
 }
 
+bool operator==(const std::vector<std::pair<size_t, bool>>& left, const std::vector<Node>& right)
+{
+	if (left.size() != right.size()) return false;
+	for (size_t i = 0; i < left.size(); i++)
+	{
+		if (left[i] != (std::pair<size_t, bool>)right[i]) return false;
+	}
+	return true;
+}
+
+bool operator!=(const std::vector<std::pair<size_t, bool>>& left, const std::vector<Node>& right)
+{
+	return !(left == right);
+}
+
 std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork)
 {
 	auto resolvableGraph = getUnitigs(initial, minCoverage, hashlist, kmerSize, keepGaps);
@@ -3559,10 +3575,10 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 			if (readPaths.size() == 0 || readPaths.back().path != rawReadPaths[i].path)
 			{
 				readPaths.emplace_back();
-				readPaths.back().path = rawReadPaths[i].path;
+				readPaths.back().path.insert(readPaths.back().path.end(), rawReadPaths[i].path.begin(), rawReadPaths[i].path.end());
 				for (auto pos : rawReadPaths[i].path)
 				{
-					resolvableGraph.readsCrossingNode[pos.first].insert(readPaths.size()-1);
+					resolvableGraph.readsCrossingNode[pos.id()].insert(readPaths.size()-1);
 				}
 			}
 			assert(readPaths.size() > 0);

@@ -8,13 +8,14 @@
 #include "HashList.h"
 #include "CumulativeVector.h"
 #include "ReadHelper.h"
+#include "Node.h"
 
 class ReadPath
 {
 public:
 	std::string readName;
-	std::vector<std::pair<size_t, bool>> path;
-	std::vector<size_t> readPoses;
+	std::vector<Node> path;
+	std::vector<uint32_t> readPoses;
 	size_t expandedReadPosStart;
 	size_t expandedReadPosEnd;
 	size_t leftClip;
