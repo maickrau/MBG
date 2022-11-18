@@ -146,15 +146,15 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 		{
 			size_t skip = 0;
 			if (i > 0) skip = unitigs.edgeOverlap(path.path[i-1], path.path[i]);
-			for (size_t j = skip; j < unitigs.unitigs[path.path[i].first].size(); j++)
+			for (size_t j = skip; j < unitigs.unitigs[path.path[i].id()].size(); j++)
 			{
-				if (!path.path[i].second)
+				if (!path.path[i].forward())
 				{
-					kmerPath.push_back(reverse(unitigs.unitigs[path.path[i].first][unitigs.unitigs[path.path[i].first].size() - 1 - j]));
+					kmerPath.push_back(reverse(unitigs.unitigs[path.path[i].id()][unitigs.unitigs[path.path[i].id()].size() - 1 - j]));
 				}
 				else
 				{
-					kmerPath.push_back(unitigs.unitigs[path.path[i].first][j]);
+					kmerPath.push_back(unitigs.unitigs[path.path[i].id()][j]);
 				}
 			}
 		}
@@ -174,8 +174,8 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 		{
 			pathRightClipRLE += kmerSize - hashlist.getOverlap(kmerPath[kmerPath.size()-2-i], kmerPath[kmerPath.size()-1-i]);
 		}
-		size_t pathUnitigLeftClipRLE = path.path[0].second ? unitigs.leftClip[path.path[0].first] : unitigs.rightClip[path.path[0].first];
-		size_t pathUnitigRightClipRLE = path.path.back().second ? unitigs.rightClip[path.path.back().first] : unitigs.leftClip[path.path.back().first];
+		size_t pathUnitigLeftClipRLE = path.path[0].forward() ? unitigs.leftClip[path.path[0].id()] : unitigs.rightClip[path.path[0].id()];
+		size_t pathUnitigRightClipRLE = path.path.back().forward() ? unitigs.rightClip[path.path.back().id()] : unitigs.leftClip[path.path.back().id()];
 		assert(pathLengthRLE > pathUnitigRightClipRLE + pathUnitigLeftClipRLE);
 		pathLengthRLE -= pathUnitigLeftClipRLE + pathUnitigRightClipRLE;
 		size_t readLeftClip = 0;
@@ -200,9 +200,9 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 		}
 		for (size_t i = 0; i < path.path.size(); i++)
 		{
-			pathStr += (path.path[i].second ? ">" : "<");
+			pathStr += (path.path[i].forward() ? ">" : "<");
 			pathStr += nodeNamePrefix;
-			pathStr += std::to_string(path.path[i].first+1);
+			pathStr += std::to_string(path.path[i].id()+1);
 		}
 		assert(readEnd - readStart > readRightClip + readLeftClip);
 		// todo fix: readLeftClip and readRightClip are rle, readStart and readEnd are not
@@ -222,14 +222,14 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 			if (i > 0)
 			{
 				overlap = getUnitigOverlap(hashlist, kmerSize, unitigs, path.path[i-1], path.path[i]);
-				size_t fromClip = path.path[i-1].second ? unitigs.rightClip[path.path[i-1].first] : unitigs.leftClip[path.path[i-1].first];
-				size_t toClip = path.path[i].second ? unitigs.leftClip[path.path[i].first] : unitigs.rightClip[path.path[i].first];
+				size_t fromClip = path.path[i-1].forward() ? unitigs.rightClip[path.path[i-1].id()] : unitigs.leftClip[path.path[i-1].id()];
+				size_t toClip = path.path[i].forward() ? unitigs.leftClip[path.path[i].id()] : unitigs.rightClip[path.path[i].id()];
 				assert(overlap > fromClip + toClip);
 				overlap -= fromClip + toClip;
 			}
-			updatePathRemaining(startRemaining, pathStartExpanded, path.path[i].second, unitigExpandedPoses[path.path[i].first], overlap);
-			updatePathRemaining(endRemaining, pathEndExpanded, path.path[i].second, unitigExpandedPoses[path.path[i].first], overlap);
-			updatePathRemaining(lenRemaining, pathLengthExpanded, path.path[i].second, unitigExpandedPoses[path.path[i].first], overlap);
+			updatePathRemaining(startRemaining, pathStartExpanded, path.path[i].forward(), unitigExpandedPoses[path.path[i].id()], overlap);
+			updatePathRemaining(endRemaining, pathEndExpanded, path.path[i].forward(), unitigExpandedPoses[path.path[i].id()], overlap);
+			updatePathRemaining(lenRemaining, pathLengthExpanded, path.path[i].forward(), unitigExpandedPoses[path.path[i].id()], overlap);
 		}
 		assert(startRemaining == std::numeric_limits<size_t>::max());
 		assert(endRemaining == std::numeric_limits<size_t>::max());
