@@ -421,7 +421,7 @@ ResolvableUnitigGraph getUnitigs(const UnitigGraph& initial, size_t minCoverage,
 		result.unitigs[i].insert(result.unitigs[i].end(), initial.unitigs[i].begin(), initial.unitigs[i].end());
 		std::pair<size_t, bool> fw { i, true };
 		bool keepCheck = false;
-		for (auto pair : initial.edgeCov[fw])
+		for (auto pair : initial.edgeCov.getValues(fw))
 		{
 			if (pair.second < minCoverage)
 			{
@@ -436,7 +436,7 @@ ResolvableUnitigGraph getUnitigs(const UnitigGraph& initial, size_t minCoverage,
 		if (keepCheck) checkKeepTips.push_back(fw);
 		std::pair<size_t, bool> bw { i, false };
 		keepCheck = false;
-		for (auto pair : initial.edgeCov[bw])
+		for (auto pair : initial.edgeCov.getValues(bw))
 		{
 			if (pair.second < minCoverage)
 			{
@@ -456,7 +456,7 @@ ResolvableUnitigGraph getUnitigs(const UnitigGraph& initial, size_t minCoverage,
 		for (auto tip : checkKeepTips)
 		{
 			if (result.edges[tip].size() != 0) continue;
-			for (auto pair : initial.edgeCov[tip])
+			for (auto pair : initial.edgeCov.getValues(tip))
 			{
 				if (result.edges[reverse(pair.first)].size() != 0) continue;
 				auto canonpair = canon(tip, pair.first);
@@ -651,10 +651,10 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolvableToUnitigs(const Resolvab
 			assert(newIndex.get(edge.first));
 			std::pair<size_t, bool> newEdge { newIndex.getRank(edge.first), edge.second };
 			assert(newEdge.first < newSize);
-			result.edges[newfw].emplace(newEdge);
-			result.edges[reverse(newEdge)].emplace(reverse(newfw));
-			result.edgeCoverage(newfw, newEdge) = 0;
-			result.edgeOverlap(newfw, newEdge) = resolvableGraph.overlaps.at(canon(fw, edge));
+			result.edges.addEdge(newfw, newEdge);
+			result.edges.addEdge(reverse(newEdge), reverse(newfw));
+			result.setEdgeCoverage(newfw, newEdge, 0);
+			result.setEdgeOverlap(newfw, newEdge, resolvableGraph.overlaps.at(canon(fw, edge)));
 		}
 		std::pair<size_t, bool> bw { i, false };
 		std::pair<size_t, bool> newbw { newIndex.getRank(i), false };
@@ -664,10 +664,10 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolvableToUnitigs(const Resolvab
 			assert(newIndex.get(edge.first));
 			std::pair<size_t, bool> newEdge { newIndex.getRank(edge.first), edge.second };
 			assert(newEdge.first < newSize);
-			result.edges[newbw].emplace(newEdge);
-			result.edges[reverse(newEdge)].emplace(reverse(newbw));
-			result.edgeCoverage(newbw, newEdge) = 0;
-			result.edgeOverlap(newbw, newEdge) = resolvableGraph.overlaps.at(canon(bw, edge));
+			result.edges.addEdge(newbw, newEdge);
+			result.edges.addEdge(reverse(newEdge), reverse(newbw));
+			result.setEdgeCoverage(newbw, newEdge, 0);
+			result.setEdgeOverlap(newbw, newEdge, resolvableGraph.overlaps.at(canon(bw, edge)));
 		}
 	}
 	std::vector<ReadPath> resultReads;
@@ -726,7 +726,7 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolvableToUnitigs(const Resolvab
 		}
 		for (size_t j = 1; j < fixPath.size(); j++)
 		{
-			result.edgeCoverage(fixPath[j-1], fixPath[j]) += path.reads.size();
+			result.setEdgeCoverage(fixPath[j-1], fixPath[j], result.edgeCoverage(fixPath[j-1], fixPath[j]) + path.reads.size());
 		}
 		for (const auto& read : path.reads)
 		{
