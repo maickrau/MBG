@@ -2768,32 +2768,28 @@ struct UntippingResult
 void tryRemoveTip(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const double maxRemovableCoverage, const double minSafeCoverage, const size_t maxRemovableLength, const size_t i, UntippingResult& result)
 {
 	assert(!resolvableGraph.unitigRemoved[i]);
-	size_t maxEdgeCoverage = 0;
-	size_t fwHasSafeEdge = false;
-	size_t fwHasSafeNode = false;
+	bool fwHasSafeEdge = false;
 	for (auto edge : resolvableGraph.edges[std::make_pair(i, true)])
 	{
-		maxEdgeCoverage = std::max(maxEdgeCoverage, getEdgeCoverage(resolvableGraph, readPaths, std::make_pair(i, true), edge));
-		if (resolvableGraph.getCoverage(readPaths, edge.first) >= minSafeCoverage) fwHasSafeNode = true;
+		if (resolvableGraph.getCoverage(readPaths, edge.first) < minSafeCoverage) return;
+		if (getEdgeCoverage(resolvableGraph, readPaths, std::make_pair(i, true), edge) > maxRemovableCoverage) return;
 		for (auto edge2 : resolvableGraph.edges[reverse(edge)])
 		{
 			if (getEdgeCoverage(resolvableGraph, readPaths, reverse(edge), edge2) >= minSafeCoverage) fwHasSafeEdge = true;
 		}
 	}
-	if (resolvableGraph.edges[std::make_pair(i, true)].size() > 0 && (!fwHasSafeNode || !fwHasSafeEdge)) return;
-	bool bwHasSafeNode = false;
+	if (resolvableGraph.edges[std::make_pair(i, true)].size() > 0 && !fwHasSafeEdge) return;
 	bool bwHasSafeEdge = false;
 	for (auto edge : resolvableGraph.edges[std::make_pair(i, false)])
 	{
-		maxEdgeCoverage = std::max(maxEdgeCoverage, getEdgeCoverage(resolvableGraph, readPaths, std::make_pair(i, false), edge));
-		if (resolvableGraph.getCoverage(readPaths, edge.first) >= minSafeCoverage) bwHasSafeNode = true;
+		if (resolvableGraph.getCoverage(readPaths, edge.first) < minSafeCoverage) return;
+		if (getEdgeCoverage(resolvableGraph, readPaths, std::make_pair(i, false), edge) > maxRemovableCoverage) return;
 		for (auto edge2 : resolvableGraph.edges[reverse(edge)])
 		{
 			if (getEdgeCoverage(resolvableGraph, readPaths, reverse(edge), edge2) >= minSafeCoverage) bwHasSafeEdge = true;
 		}
 	}
-	if (resolvableGraph.edges[std::make_pair(i, false)].size() > 0 && (!bwHasSafeNode || !bwHasSafeEdge)) return;
-	if (maxEdgeCoverage > maxRemovableCoverage) return;
+	if (resolvableGraph.edges[std::make_pair(i, false)].size() > 0 && !bwHasSafeEdge) return;
 	for (auto edge : resolvableGraph.edges[std::make_pair(i, true)]) result.maybeUnitigifiable.insert(edge.first);
 	for (auto edge : resolvableGraph.edges[std::make_pair(i, false)]) result.maybeUnitigifiable.insert(edge.first);
 	removeNode(resolvableGraph, readPaths, i);
