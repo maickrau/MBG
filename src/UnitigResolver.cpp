@@ -1943,6 +1943,10 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 						leftClipRemove = posesStart;
 						posesStart = 0;
 					}
+					if (posesEnd-posesStart > read.readPosEndIndex - read.readPosStartIndex)
+					{
+						posesEnd = read.readPosEndIndex - read.readPosStartIndex + posesStart;
+					}
 					assert(posesStart < posesEnd);
 					assert(posesEnd <= (read.readPosEndIndex - read.readPosStartIndex));
 					path.reads.emplace_back();
