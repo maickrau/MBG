@@ -15,18 +15,19 @@ public:
 	void resize(size_t newSize)
 	{
 		size_t oldSize = size();
-		firstKeyValue.resize(newSize);
+		firstKey.resize(newSize);
+		firstValue.resize(newSize);
 		for (size_t i = oldSize; i < newSize; i++)
 		{
-			firstKeyValue[std::make_pair(i, true)].first = std::numeric_limits<uint32_t>::max();
-			firstKeyValue[std::make_pair(i, false)].first = std::numeric_limits<uint32_t>::max();
+			firstKey[std::make_pair(i, true)] = std::numeric_limits<uint32_t>::max();
+			firstKey[std::make_pair(i, false)] = std::numeric_limits<uint32_t>::max();
 		}
 	}
 	bool hasValue(std::pair<size_t, bool> from, std::pair<size_t, bool> to) const
 	{
 		if (pairToInt(to) < std::numeric_limits<uint32_t>::max())
 		{
-			if (firstKeyValue[from].first == pairToInt(to)) return true;
+			if (firstKey[from] == pairToInt(to)) return true;
 		}
 		auto found = additionalKeyValues.find(from);
 		if (found == additionalKeyValues.end()) return false;
@@ -35,17 +36,18 @@ public:
 	}
 	size_t size() const
 	{
-		return firstKeyValue.size();
+		return firstKey.size();
 	}
 	void emplace_back()
 	{
-		firstKeyValue.emplace_back();
-		firstKeyValue[std::make_pair(firstKeyValue.size()-1, true)].first = std::numeric_limits<uint32_t>::max();
-		firstKeyValue[std::make_pair(firstKeyValue.size()-1, false)].first = std::numeric_limits<uint32_t>::max();
+		firstKey.emplace_back();
+		firstValue.emplace_back();
+		firstKey[std::make_pair(firstKey.size()-1, true)] = std::numeric_limits<uint32_t>::max();
+		firstKey[std::make_pair(firstKey.size()-1, false)] = std::numeric_limits<uint32_t>::max();
 	}
 	BigType get(std::pair<size_t, bool> from, std::pair<size_t, bool> to) const
 	{
-		if (pairToInt(to) < std::numeric_limits<uint32_t>::max() && firstKeyValue[from].first == pairToInt(to)) return (BigType)firstKeyValue[from].second;
+		if (pairToInt(to) < std::numeric_limits<uint32_t>::max() && firstKey[from] == pairToInt(to)) return (BigType)firstValue[from];
 		auto found = additionalKeyValues.find(from);
 		assert(found != additionalKeyValues.end());
 		auto found2 = found->second.find(to);
@@ -57,15 +59,15 @@ public:
 		if (pairToInt(to) < std::numeric_limits<uint32_t>::max() && value >= (BigType)std::numeric_limits<SmallType>::min() && value <= (BigType)std::numeric_limits<SmallType>::max())
 		{
 			bool setted = false;
-			if (firstKeyValue[from].first == std::numeric_limits<uint32_t>::max())
+			if (firstKey[from] == std::numeric_limits<uint32_t>::max())
 			{
-				firstKeyValue[from].first = pairToInt(to);
-				firstKeyValue[from].second = (SmallType)value;
+				firstKey[from] = pairToInt(to);
+				firstValue[from] = (SmallType)value;
 				setted = true;
 			}
-			if (firstKeyValue[from].first == pairToInt(to))
+			if (firstKey[from] == pairToInt(to))
 			{
-				firstKeyValue[from].second = (SmallType)value;
+				firstValue[from] = (SmallType)value;
 				setted = true;
 			}
 			if (setted)
@@ -84,14 +86,14 @@ public:
 		}
 		else
 		{
-			if (pairToInt(to) < std::numeric_limits<uint32_t>::max() && firstKeyValue[from].first == pairToInt(to)) firstKeyValue[from].first = std::numeric_limits<uint32_t>::max();
+			if (pairToInt(to) < std::numeric_limits<uint32_t>::max() && firstKey[from] == pairToInt(to)) firstKey[from] = std::numeric_limits<uint32_t>::max();
 		}
 		additionalKeyValues[from][to] = value;
 	}
 	std::vector<std::pair<std::pair<size_t, bool>, BigType>> getValues(std::pair<size_t, bool> from) const
 	{
 		std::vector<std::pair<std::pair<size_t, bool>, BigType>> result;
-		if (firstKeyValue[from].first != std::numeric_limits<uint32_t>::max()) result.emplace_back(intToPair(firstKeyValue[from].first), firstKeyValue[from].second);
+		if (firstKey[from] != std::numeric_limits<uint32_t>::max()) result.emplace_back(intToPair(firstKey[from]), firstValue[from]);
 		if (additionalKeyValues.count(from) == 1)
 		{
 			result.insert(result.end(), additionalKeyValues.at(from).begin(), additionalKeyValues.at(from).end());
@@ -109,7 +111,8 @@ private:
 	{
 		return std::make_pair(value / 2, (value % 2) == 1);
 	}
-	VectorWithDirection<std::pair<uint32_t, SmallType>> firstKeyValue;
+	VectorWithDirection<uint32_t> firstKey;
+	VectorWithDirection<SmallType> firstValue;
 	phmap::flat_hash_map<std::pair<size_t, bool>, phmap::flat_hash_map<std::pair<size_t, bool>, BigType>> additionalKeyValues;
 };
 

@@ -9,12 +9,13 @@
 #include "RankBitvector.h"
 #include "ReadHelper.h"
 #include "BigVectorSet.h"
+#include "Node.h"
 
 #define assertPrintReads(expression, graph, paths, node) {if (!(expression)) {printReads(graph, paths, node);} assert(expression);}
 
 struct ReadPathInfo
 {
-	std::vector<size_t> readPoses;
+	std::vector<uint32_t> readPoses;
 	size_t expandedReadPosStart;
 	size_t expandedReadPosEnd;
 	size_t readLength;
@@ -435,7 +436,7 @@ ResolvableUnitigGraph getUnitigs(const UnitigGraph& initial, size_t minCoverage,
 		result.unitigs[i].insert(result.unitigs[i].end(), initial.unitigs[i].begin(), initial.unitigs[i].end());
 		std::pair<size_t, bool> fw { i, true };
 		bool keepCheck = false;
-		for (auto pair : initial.edgeCov[fw])
+		for (auto pair : initial.edgeCov.getValues(fw))
 		{
 			if (pair.second < minCoverage)
 			{
@@ -450,7 +451,7 @@ ResolvableUnitigGraph getUnitigs(const UnitigGraph& initial, size_t minCoverage,
 		if (keepCheck) checkKeepTips.push_back(fw);
 		std::pair<size_t, bool> bw { i, false };
 		keepCheck = false;
-		for (auto pair : initial.edgeCov[bw])
+		for (auto pair : initial.edgeCov.getValues(bw))
 		{
 			if (pair.second < minCoverage)
 			{
@@ -470,7 +471,7 @@ ResolvableUnitigGraph getUnitigs(const UnitigGraph& initial, size_t minCoverage,
 		for (auto tip : checkKeepTips)
 		{
 			if (result.edges[tip].size() != 0) continue;
-			for (auto pair : initial.edgeCov[tip])
+			for (auto pair : initial.edgeCov.getValues(tip))
 			{
 				if (result.edges[reverse(pair.first)].size() != 0) continue;
 				auto canonpair = canon(tip, pair.first);
@@ -665,10 +666,10 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolvableToUnitigs(const Resolvab
 			assert(newIndex.get(edge.first));
 			std::pair<size_t, bool> newEdge { newIndex.getRank(edge.first), edge.second };
 			assert(newEdge.first < newSize);
-			result.edges[newfw].emplace(newEdge);
-			result.edges[reverse(newEdge)].emplace(reverse(newfw));
-			result.edgeCoverage(newfw, newEdge) = 0;
-			result.edgeOverlap(newfw, newEdge) = resolvableGraph.overlaps.at(canon(fw, edge));
+			result.edges.addEdge(newfw, newEdge);
+			result.edges.addEdge(reverse(newEdge), reverse(newfw));
+			result.setEdgeCoverage(newfw, newEdge, 0);
+			result.setEdgeOverlap(newfw, newEdge, resolvableGraph.overlaps.at(canon(fw, edge)));
 		}
 		std::pair<size_t, bool> bw { i, false };
 		std::pair<size_t, bool> newbw { newIndex.getRank(i), false };
@@ -678,10 +679,10 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolvableToUnitigs(const Resolvab
 			assert(newIndex.get(edge.first));
 			std::pair<size_t, bool> newEdge { newIndex.getRank(edge.first), edge.second };
 			assert(newEdge.first < newSize);
-			result.edges[newbw].emplace(newEdge);
-			result.edges[reverse(newEdge)].emplace(reverse(newbw));
-			result.edgeCoverage(newbw, newEdge) = 0;
-			result.edgeOverlap(newbw, newEdge) = resolvableGraph.overlaps.at(canon(bw, edge));
+			result.edges.addEdge(newbw, newEdge);
+			result.edges.addEdge(reverse(newEdge), reverse(newbw));
+			result.setEdgeCoverage(newbw, newEdge, 0);
+			result.setEdgeOverlap(newbw, newEdge, resolvableGraph.overlaps.at(canon(bw, edge)));
 		}
 	}
 	std::vector<ReadPath> resultReads;
@@ -740,12 +741,12 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolvableToUnitigs(const Resolvab
 		}
 		for (size_t j = 1; j < fixPath.size(); j++)
 		{
-			result.edgeCoverage(fixPath[j-1], fixPath[j]) += path.reads.size();
+			result.setEdgeCoverage(fixPath[j-1], fixPath[j], result.edgeCoverage(fixPath[j-1], fixPath[j]) + path.reads.size());
 		}
 		for (const auto& read : path.reads)
 		{
 			resultReads.emplace_back();
-			resultReads.back().path = fixPath;
+			resultReads.back().path = std::vector<Node> { fixPath.begin(), fixPath.end() };
 			resultReads.back().readName = resolvableGraph.readNames[read.readNameIndex];
 			resultReads.back().readPoses = { readInfos[read.readInfoIndex].readPoses.begin() + read.readPosStartIndex, readInfos[read.readInfoIndex].readPoses.begin() + read.readPosEndIndex };
 			resultReads.back().expandedReadPosStart = readInfos[read.readInfoIndex].expandedReadPosStart;
@@ -1130,7 +1131,7 @@ void cutRemovedEdgesFromPaths(ResolvableUnitigGraph& graph, std::vector<ReadPath
 		for (size_t j = 0; j < readPaths[i].path.size(); j++)
 		{
 			pathStartPoses.push_back(pos);
-			pos += graph.unitigs[readPaths[i].path[j].first].size();
+			pos += graph.unitigs[readPaths[i].path[j].id()].size();
 			pathEndPoses.push_back(pos);
 		}
 		for (size_t j = 1; j < readPaths[i].path.size(); j++)
@@ -2228,6 +2229,10 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 						leftClipRemove = posesStart;
 						posesStart = 0;
 					}
+					if (posesEnd-posesStart > read.readPosEndIndex - read.readPosStartIndex)
+					{
+						posesEnd = read.readPosEndIndex - read.readPosStartIndex + posesStart;
+					}
 					assert(posesStart < posesEnd);
 					assert(posesEnd <= (read.readPosEndIndex - read.readPosStartIndex));
 					path.reads.emplace_back();
@@ -2358,14 +2363,14 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			{
 				bool bwFake = false;
 				bool fwFake = false;
-				if (triplet.left.first != std::numeric_limits<size_t>::max())
+				if (triplet.left.first != std::numeric_limits<size_t>::max() && (resolvables.count(triplet.left.first) == 0 || unresolvables.count(triplet.left.first) == 1))
 				{
 					if (resolvableGraph.unitigLength(triplet.left.first) == resolvableGraph.getBpOverlap(std::make_pair(node, false), reverse(triplet.left))+1)
 					{
 						bwFake = true;
 					}
 				}
-				if (triplet.right.first != std::numeric_limits<size_t>::max())
+				if (triplet.right.first != std::numeric_limits<size_t>::max() && (resolvables.count(triplet.right.first) == 0 || unresolvables.count(triplet.right.first) == 1))
 				{
 					if (resolvableGraph.unitigLength(triplet.right.first) == resolvableGraph.getBpOverlap(std::make_pair(node, true), triplet.right)+1)
 					{
@@ -3035,32 +3040,28 @@ struct UntippingResult
 void tryRemoveTip(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const double maxRemovableCoverage, const double minSafeCoverage, const size_t maxRemovableLength, const size_t i, UntippingResult& result)
 {
 	assert(!resolvableGraph.unitigRemoved[i]);
-	size_t maxEdgeCoverage = 0;
-	size_t fwHasSafeEdge = false;
-	size_t fwHasSafeNode = false;
+	bool fwHasSafeEdge = false;
 	for (auto edge : resolvableGraph.edges[std::make_pair(i, true)])
 	{
-		maxEdgeCoverage = std::max(maxEdgeCoverage, getEdgeCoverage(resolvableGraph, readPaths, std::make_pair(i, true), edge));
-		if (resolvableGraph.getCoverage(readPaths, edge.first) >= minSafeCoverage) fwHasSafeNode = true;
+		if (resolvableGraph.getCoverage(readPaths, edge.first) < minSafeCoverage) return;
+		if (getEdgeCoverage(resolvableGraph, readPaths, std::make_pair(i, true), edge) > maxRemovableCoverage) return;
 		for (auto edge2 : resolvableGraph.edges[reverse(edge)])
 		{
 			if (getEdgeCoverage(resolvableGraph, readPaths, reverse(edge), edge2) >= minSafeCoverage) fwHasSafeEdge = true;
 		}
 	}
-	if (resolvableGraph.edges[std::make_pair(i, true)].size() > 0 && (!fwHasSafeNode || !fwHasSafeEdge)) return;
-	bool bwHasSafeNode = false;
+	if (resolvableGraph.edges[std::make_pair(i, true)].size() > 0 && !fwHasSafeEdge) return;
 	bool bwHasSafeEdge = false;
 	for (auto edge : resolvableGraph.edges[std::make_pair(i, false)])
 	{
-		maxEdgeCoverage = std::max(maxEdgeCoverage, getEdgeCoverage(resolvableGraph, readPaths, std::make_pair(i, false), edge));
-		if (resolvableGraph.getCoverage(readPaths, edge.first) >= minSafeCoverage) bwHasSafeNode = true;
+		if (resolvableGraph.getCoverage(readPaths, edge.first) < minSafeCoverage) return;
+		if (getEdgeCoverage(resolvableGraph, readPaths, std::make_pair(i, false), edge) > maxRemovableCoverage) return;
 		for (auto edge2 : resolvableGraph.edges[reverse(edge)])
 		{
 			if (getEdgeCoverage(resolvableGraph, readPaths, reverse(edge), edge2) >= minSafeCoverage) bwHasSafeEdge = true;
 		}
 	}
-	if (resolvableGraph.edges[std::make_pair(i, false)].size() > 0 && (!bwHasSafeNode || !bwHasSafeEdge)) return;
-	if (maxEdgeCoverage > maxRemovableCoverage) return;
+	if (resolvableGraph.edges[std::make_pair(i, false)].size() > 0 && !bwHasSafeEdge) return;
 	for (auto edge : resolvableGraph.edges[std::make_pair(i, true)]) result.maybeUnitigifiable.insert(edge.first);
 	for (auto edge : resolvableGraph.edges[std::make_pair(i, false)]) result.maybeUnitigifiable.insert(edge.first);
 	removeNode(resolvableGraph, readPaths, i);
@@ -3805,6 +3806,53 @@ void resolveDiploidHetBreaks(ResolvableUnitigGraph& resolvableGraph, std::vector
 	std::cerr << std::endl;
 }
 
+void addPlusOneComponent(const ResolvableUnitigGraph& resolvableGraph, phmap::flat_hash_set<size_t>& resolvables, size_t startNode)
+{
+	size_t maxLength = resolvableGraph.unitigLength(startNode);
+	phmap::flat_hash_set<size_t> checked;
+	std::vector<size_t> checkQueue;
+	checkQueue.push_back(startNode);
+	while (checkQueue.size() > 0)
+	{
+		size_t node = checkQueue.back();
+		checkQueue.pop_back();
+		if (checked.count(node) == 1) continue;
+		checked.emplace(node);
+		for (auto edge : resolvableGraph.edges[std::make_pair(node, true)])
+		{
+			if (resolvableGraph.unitigLength(node) == resolvableGraph.getBpOverlap(std::make_pair(node, true), edge)+1 || resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(std::make_pair(node, true), edge)+1)
+			{
+				if (resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(std::make_pair(node, true), edge)+1 && resolvableGraph.unitigLength(edge.first) > maxLength)
+				{
+					return;
+				}
+				if (resolvableGraph.unitigLength(node) == resolvableGraph.getBpOverlap(std::make_pair(node, true), edge)+1 && resolvableGraph.unitigLength(node) > maxLength)
+				{
+					return;
+				}
+				checkQueue.push_back(edge.first);
+			}
+		}
+		for (auto edge : resolvableGraph.edges[std::make_pair(node, false)])
+		{
+			if (resolvableGraph.unitigLength(node) == resolvableGraph.getBpOverlap(std::make_pair(node, false), edge)+1 || resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(std::make_pair(node, false), edge)+1)
+			{
+				if (resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(std::make_pair(node, false), edge)+1 && resolvableGraph.unitigLength(edge.first) > maxLength)
+				{
+					return;
+				}
+				if (resolvableGraph.unitigLength(node) == resolvableGraph.getBpOverlap(std::make_pair(node, false), edge)+1 && resolvableGraph.unitigLength(node) > maxLength)
+				{
+					return;
+				}
+				checkQueue.push_back(edge.first);
+			}
+		}
+	}
+	if (checked.size() == 1) return;
+	resolvables.insert(checked.begin(), checked.end());
+}
+
 void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork)
 {
 	checkValidity(resolvableGraph, readPaths);
@@ -3828,6 +3876,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		{
 			if (!resolvableGraph.unitigRemoved[queue.top()])
 			{
+				addPlusOneComponent(resolvableGraph, resolvables, queue.top());
 				if (resolvableGraph.edges[std::make_pair(queue.top(), true)].size() >= 2 || resolvableGraph.edges[std::make_pair(queue.top(), false)].size() >= 2)
 				{
 					resolvables.emplace(queue.top());
@@ -4053,6 +4102,21 @@ void resolveDiploidBubbleChains(ResolvableUnitigGraph& resolvableGraph, std::vec
 	std::cerr << std::endl;
 }
 
+bool operator==(const std::vector<std::pair<size_t, bool>>& left, const std::vector<Node>& right)
+{
+	if (left.size() != right.size()) return false;
+	for (size_t i = 0; i < left.size(); i++)
+	{
+		if (left[i] != (std::pair<size_t, bool>)right[i]) return false;
+	}
+	return true;
+}
+
+bool operator!=(const std::vector<std::pair<size_t, bool>>& left, const std::vector<Node>& right)
+{
+	return !(left == right);
+}
+
 std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork)
 {
 	auto resolvableGraph = getUnitigs(initial, minCoverage, hashlist, kmerSize, keepGaps);
@@ -4071,10 +4135,10 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 			if (readPaths.size() == 0 || readPaths.back().path != rawReadPaths[i].path)
 			{
 				readPaths.emplace_back();
-				readPaths.back().path = rawReadPaths[i].path;
+				readPaths.back().path.insert(readPaths.back().path.end(), rawReadPaths[i].path.begin(), rawReadPaths[i].path.end());
 				for (auto pos : rawReadPaths[i].path)
 				{
-					resolvableGraph.readsCrossingNode[pos.first].insert(readPaths.size()-1);
+					resolvableGraph.readsCrossingNode[pos.id()].insert(readPaths.size()-1);
 				}
 			}
 			assert(readPaths.size() > 0);

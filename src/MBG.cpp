@@ -146,15 +146,15 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 		{
 			size_t skip = 0;
 			if (i > 0) skip = unitigs.edgeOverlap(path.path[i-1], path.path[i]);
-			for (size_t j = skip; j < unitigs.unitigs[path.path[i].first].size(); j++)
+			for (size_t j = skip; j < unitigs.unitigs[path.path[i].id()].size(); j++)
 			{
-				if (!path.path[i].second)
+				if (!path.path[i].forward())
 				{
-					kmerPath.push_back(reverse(unitigs.unitigs[path.path[i].first][unitigs.unitigs[path.path[i].first].size() - 1 - j]));
+					kmerPath.push_back(reverse(unitigs.unitigs[path.path[i].id()][unitigs.unitigs[path.path[i].id()].size() - 1 - j]));
 				}
 				else
 				{
-					kmerPath.push_back(unitigs.unitigs[path.path[i].first][j]);
+					kmerPath.push_back(unitigs.unitigs[path.path[i].id()][j]);
 				}
 			}
 		}
@@ -174,8 +174,8 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 		{
 			pathRightClipRLE += kmerSize - hashlist.getOverlap(kmerPath[kmerPath.size()-2-i], kmerPath[kmerPath.size()-1-i]);
 		}
-		size_t pathUnitigLeftClipRLE = path.path[0].second ? unitigs.leftClip[path.path[0].first] : unitigs.rightClip[path.path[0].first];
-		size_t pathUnitigRightClipRLE = path.path.back().second ? unitigs.rightClip[path.path.back().first] : unitigs.leftClip[path.path.back().first];
+		size_t pathUnitigLeftClipRLE = path.path[0].forward() ? unitigs.leftClip[path.path[0].id()] : unitigs.rightClip[path.path[0].id()];
+		size_t pathUnitigRightClipRLE = path.path.back().forward() ? unitigs.rightClip[path.path.back().id()] : unitigs.leftClip[path.path.back().id()];
 		assert(pathLengthRLE > pathUnitigRightClipRLE + pathUnitigLeftClipRLE);
 		pathLengthRLE -= pathUnitigLeftClipRLE + pathUnitigRightClipRLE;
 		size_t readLeftClip = 0;
@@ -200,9 +200,9 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 		}
 		for (size_t i = 0; i < path.path.size(); i++)
 		{
-			pathStr += (path.path[i].second ? ">" : "<");
+			pathStr += (path.path[i].forward() ? ">" : "<");
 			pathStr += nodeNamePrefix;
-			pathStr += std::to_string(path.path[i].first+1);
+			pathStr += std::to_string(path.path[i].id()+1);
 		}
 		assert(readEnd - readStart > readRightClip + readLeftClip);
 		// todo fix: readLeftClip and readRightClip are rle, readStart and readEnd are not
@@ -222,14 +222,14 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 			if (i > 0)
 			{
 				overlap = getUnitigOverlap(hashlist, kmerSize, unitigs, path.path[i-1], path.path[i]);
-				size_t fromClip = path.path[i-1].second ? unitigs.rightClip[path.path[i-1].first] : unitigs.leftClip[path.path[i-1].first];
-				size_t toClip = path.path[i].second ? unitigs.leftClip[path.path[i].first] : unitigs.rightClip[path.path[i].first];
+				size_t fromClip = path.path[i-1].forward() ? unitigs.rightClip[path.path[i-1].id()] : unitigs.leftClip[path.path[i-1].id()];
+				size_t toClip = path.path[i].forward() ? unitigs.leftClip[path.path[i].id()] : unitigs.rightClip[path.path[i].id()];
 				assert(overlap > fromClip + toClip);
 				overlap -= fromClip + toClip;
 			}
-			updatePathRemaining(startRemaining, pathStartExpanded, path.path[i].second, unitigExpandedPoses[path.path[i].first], overlap);
-			updatePathRemaining(endRemaining, pathEndExpanded, path.path[i].second, unitigExpandedPoses[path.path[i].first], overlap);
-			updatePathRemaining(lenRemaining, pathLengthExpanded, path.path[i].second, unitigExpandedPoses[path.path[i].first], overlap);
+			updatePathRemaining(startRemaining, pathStartExpanded, path.path[i].forward(), unitigExpandedPoses[path.path[i].id()], overlap);
+			updatePathRemaining(endRemaining, pathEndExpanded, path.path[i].forward(), unitigExpandedPoses[path.path[i].id()], overlap);
+			updatePathRemaining(lenRemaining, pathLengthExpanded, path.path[i].forward(), unitigExpandedPoses[path.path[i].id()], overlap);
 		}
 		assert(startRemaining == std::numeric_limits<size_t>::max());
 		assert(endRemaining == std::numeric_limits<size_t>::max());
@@ -283,10 +283,10 @@ void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, 
 		if (edges.at(revPos).size() != 1) break;
 		if (newPos == start)
 		{
-			result.edges[std::make_pair(currentUnitig, true)].emplace(currentUnitig, true);
-			result.edges[std::make_pair(currentUnitig, false)].emplace(currentUnitig, false);
-			result.edgeCoverage(currentUnitig, true, currentUnitig, true) = old.edgeCoverage(pos.first, pos.second, newPos.first, newPos.second);
-			result.edgeOverlap(currentUnitig, true, currentUnitig, true) = old.edgeOverlap(pos.first, pos.second, newPos.first, newPos.second);
+			result.edges.addEdge(std::make_pair(currentUnitig, true), std::make_pair(currentUnitig, true));
+			result.edges.addEdge(std::make_pair(currentUnitig, false), std::make_pair(currentUnitig, false));
+			result.setEdgeCoverage(currentUnitig, true, currentUnitig, true, old.edgeCoverage(pos.first, pos.second, newPos.first, newPos.second));
+			result.setEdgeOverlap(currentUnitig, true, currentUnitig, true, old.edgeOverlap(pos.first, pos.second, newPos.first, newPos.second));
 			break;
 		}
 		if (belongsToUnitig.at(newPos.first).first != std::numeric_limits<size_t>::max())
@@ -295,9 +295,9 @@ void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, 
 			assert(newPos.second != pos.second);
 			assert(belongsToUnitig.at(newPos.first).first == currentUnitig);
 			assert(belongsToUnitig.at(newPos.first).second != newPos.second);
-			result.edges[std::make_pair(currentUnitig, belongsToUnitig.at(pos.first).second == pos.second)].emplace(currentUnitig, !(belongsToUnitig.at(pos.first).second == pos.second));
-			result.edgeCoverage(currentUnitig, belongsToUnitig.at(pos.first).second == pos.second, currentUnitig, !(belongsToUnitig.at(pos.first).second == pos.second)) = old.edgeCoverage(pos.first, pos.second, newPos.first, newPos.second);
-			result.edgeOverlap(currentUnitig, belongsToUnitig.at(pos.first).second == pos.second, currentUnitig, !(belongsToUnitig.at(pos.first).second == pos.second)) = old.edgeOverlap(pos.first, pos.second, newPos.first, newPos.second);
+			result.edges.addEdge(std::make_pair(currentUnitig, belongsToUnitig.at(pos.first).second == pos.second), std::make_pair(currentUnitig, !(belongsToUnitig.at(pos.first).second == pos.second)));
+			result.setEdgeCoverage(currentUnitig, belongsToUnitig.at(pos.first).second == pos.second, currentUnitig, !(belongsToUnitig.at(pos.first).second == pos.second), old.edgeCoverage(pos.first, pos.second, newPos.first, newPos.second));
+			result.setEdgeOverlap(currentUnitig, belongsToUnitig.at(pos.first).second == pos.second, currentUnitig, !(belongsToUnitig.at(pos.first).second == pos.second), old.edgeOverlap(pos.first, pos.second, newPos.first, newPos.second));
 			break;
 		}
 		pos = newPos;
@@ -686,10 +686,10 @@ UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const d
 			auto toUnitig = reverse(unitigTip.at(toNodeRev));
 			assert(hashlist.coverage.get(fromNode.first) >= minCoverage);
 			assert(hashlist.coverage.get(toNodeFw.first) >= minCoverage);
-			result.edges[fromUnitig].emplace(toUnitig);
-			result.edges[reverse(toUnitig)].emplace(reverse(fromUnitig));
-			result.edgeCoverage(fromUnitig, toUnitig) = hashlist.getEdgeCoverage(fromNode, toNodeFw);
-			result.edgeOverlap(fromUnitig, toUnitig) = 0;
+			result.edges.addEdge(fromUnitig, toUnitig);
+			result.edges.addEdge(reverse(toUnitig), reverse(fromUnitig));
+			result.setEdgeCoverage(fromUnitig, toUnitig, hashlist.getEdgeCoverage(fromNode, toNodeFw));
+			result.setEdgeOverlap(fromUnitig, toUnitig, 0);
 		}
 	}
 	return result;
@@ -754,7 +754,7 @@ UnitigGraph getUnitigs(const UnitigGraph& oldgraph)
 		auto fw = std::make_pair(i, true);
 		if (unitigEnd[fw])
 		{
-			for (auto curr : oldgraph.edges.at(fw))
+			for (auto curr : oldgraph.edges[fw])
 			{
 				assert(unitigStart[curr]);
 				auto from = belongsToUnitig.at(fw.first);
@@ -763,16 +763,16 @@ UnitigGraph getUnitigs(const UnitigGraph& oldgraph)
 				bool currFw = curr.second;
 				from.second = !(from.second ^ prevFw);
 				to.second = !(to.second ^ currFw);
-				result.edges[from].emplace(to);
-				result.edges[reverse(to)].emplace(reverse(from));
-				result.edgeCoverage(from, to) = oldgraph.edgeCoverage(fw, curr);
-				result.edgeOverlap(from, to) = oldgraph.edgeOverlap(fw, curr);
+				result.edges.addEdge(from, to);
+				result.edges.addEdge(reverse(to), reverse(from));
+				result.setEdgeCoverage(from, to, oldgraph.edgeCoverage(fw, curr));
+				result.setEdgeOverlap(from, to, oldgraph.edgeOverlap(fw, curr));
 			}
 		}
 		auto bw = std::make_pair(i, false);
 		if (unitigEnd[bw])
 		{
-			for (auto curr : oldgraph.edges.at(bw))
+			for (auto curr : oldgraph.edges[bw])
 			{
 				assert(unitigStart[curr]);
 				auto from = belongsToUnitig.at(bw.first);
@@ -781,10 +781,10 @@ UnitigGraph getUnitigs(const UnitigGraph& oldgraph)
 				bool currFw = curr.second;
 				from.second = !(from.second ^ prevFw);
 				to.second = !(to.second ^ currFw);
-				result.edges[from].emplace(to);
-				result.edges[reverse(to)].emplace(reverse(from));
-				result.edgeCoverage(from, to) = oldgraph.edgeCoverage(bw, curr);
-				result.edgeOverlap(from, to) = oldgraph.edgeOverlap(bw, curr);
+				result.edges.addEdge(from, to);
+				result.edges.addEdge(reverse(to), reverse(from));
+				result.setEdgeCoverage(from, to, oldgraph.edgeCoverage(bw, curr));
+				result.setEdgeOverlap(from, to, oldgraph.edgeOverlap(bw, curr));
 			}
 		}
 	}
@@ -884,7 +884,7 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 	{
 		std::pair<size_t, bool> fw { i, true };
 		std::pair<size_t, bool> bw { i, false };
-		std::vector<std::pair<size_t, bool>> fwEdges { unitigs.edges[fw].begin(), unitigs.edges[fw].end() };
+		std::vector<std::pair<size_t, bool>> fwEdges = unitigs.edges[fw];
 		std::sort(fwEdges.begin(), fwEdges.end());
 		for (auto to : fwEdges)
 		{
@@ -897,7 +897,7 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 			size_t overlap = getOverlapFromRLE(unitigSequences, stringIndex, fw, rleOverlap);
 			file << "L\t" << nodeNamePrefix << (fw.first+1) << "\t" << (fw.second ? "+" : "-") << "\t" << nodeNamePrefix << (to.first+1) << "\t" << (to.second ? "+" : "-") << "\t" << overlap << "M\tec:i:" << unitigs.edgeCoverage(fw, to) << std::endl;
 		}
-		std::vector<std::pair<size_t, bool>> bwEdges { unitigs.edges[bw].begin(), unitigs.edges[bw].end() };
+		std::vector<std::pair<size_t, bool>> bwEdges = unitigs.edges[bw];
 		std::sort(bwEdges.begin(), bwEdges.end());
 		for (auto to : bwEdges)
 		{
@@ -1106,8 +1106,8 @@ void filterKmersToUnitigKmers(UnitigGraph& unitigs, HashList& reads, const size_
 
 void verifyEdgeConsistency(const UnitigGraph& unitigs, const HashList& hashlist, const StringIndex& stringIndex, const std::vector<CompressedSequenceType>& unitigSequences, const size_t kmerSize, const std::pair<size_t, bool> from, const std::pair<size_t, bool> to)
 {
-	assert(unitigs.edges[from].count(to) == 1);
-	assert(unitigs.edges[reverse(to)].count(reverse(from)) == 1);
+	assert(unitigs.edges.hasEdge(from, to));
+	assert(unitigs.edges.hasEdge(reverse(to), reverse(from)));
 	size_t overlap = getUnitigOverlap(hashlist, kmerSize, unitigs, from, to);
 	size_t fromClip = from.second ? unitigs.rightClip[from.first] : unitigs.leftClip[from.first];
 	size_t toClip = to.second ? unitigs.leftClip[to.first] : unitigs.rightClip[to.first];
@@ -1276,8 +1276,8 @@ std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& has
 			}
 			std::pair<size_t, bool> fromEdge { std::get<0>(lastPos), std::get<2>(lastPos) };
 			std::pair<size_t, bool> toEdge { std::get<0>(pos), std::get<2>(pos) };
-			assert(graph.edges[fromEdge].count(toEdge) == graph.edges[reverse(toEdge)].count(reverse(fromEdge)));
-			if (graph.edges[fromEdge].count(toEdge) == 1 && std::get<1>(pos) == 0 && std::get<1>(lastPos) == graph.unitigs[std::get<0>(lastPos)].size()-1)
+			assert(graph.edges.hasEdge(fromEdge, toEdge) == graph.edges.hasEdge(reverse(toEdge), reverse(fromEdge)));
+			if (graph.edges.hasEdge(fromEdge, toEdge) == 1 && std::get<1>(pos) == 0 && std::get<1>(lastPos) == graph.unitigs[std::get<0>(lastPos)].size()-1)
 			{
 				assert(current.rightClip == 0);
 				current.path.emplace_back(std::get<0>(pos), std::get<2>(pos));

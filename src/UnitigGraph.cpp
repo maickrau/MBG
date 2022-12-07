@@ -11,16 +11,16 @@ size_t UnitigGraph::edgeCoverage(size_t from, bool fromFw, size_t to, bool toFw)
 size_t UnitigGraph::edgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to) const
 {
 	std::tie(from, to) = canon(from, to);
-	return edgeCov[from].at(to);
+	return edgeCov.get(from, to);
 }
-size_t& UnitigGraph::edgeCoverage(size_t from, bool fromFw, size_t to, bool toFw)
+void UnitigGraph::setEdgeCoverage(size_t from, bool fromFw, size_t to, bool toFw, size_t val)
 {
-	return edgeCoverage(std::make_pair(from, fromFw), std::make_pair(to, toFw));
+	setEdgeCoverage(std::make_pair(from, fromFw), std::make_pair(to, toFw), val);
 }
-size_t& UnitigGraph::edgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to)
+void UnitigGraph::setEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to, size_t val)
 {
 	std::tie(from, to) = canon(from, to);
-	return edgeCov[from][to];
+	edgeCov.set(from, to, val);
 }
 size_t UnitigGraph::edgeOverlap(size_t from, bool fromFw, size_t to, bool toFw) const
 {
@@ -29,16 +29,16 @@ size_t UnitigGraph::edgeOverlap(size_t from, bool fromFw, size_t to, bool toFw) 
 size_t UnitigGraph::edgeOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to) const
 {
 	std::tie(from, to) = canon(from, to);
-	return edgeOvlp[from].at(to);
+	return edgeOvlp.get(from, to);
 }
-size_t& UnitigGraph::edgeOverlap(size_t from, bool fromFw, size_t to, bool toFw)
+void UnitigGraph::setEdgeOverlap(size_t from, bool fromFw, size_t to, bool toFw, size_t val)
 {
-	return edgeOverlap(std::make_pair(from, fromFw), std::make_pair(to, toFw));
+	setEdgeOverlap(std::make_pair(from, fromFw), std::make_pair(to, toFw), val);
 }
-size_t& UnitigGraph::edgeOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to)
+void UnitigGraph::setEdgeOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, size_t val)
 {
 	std::tie(from, to) = canon(from, to);
-	return edgeOvlp[from][to];
+	edgeOvlp.set(from, to, val);
 }
 double UnitigGraph::averageCoverage(size_t i) const
 {
@@ -76,32 +76,32 @@ UnitigGraph UnitigGraph::filterNodes(const RankBitvector& kept) const
 		for (auto to : edges[fw])
 		{
 			if (!kept.get(to.first)) continue;
-			result.edges[newFw].emplace(kept.getRank(to.first), to.second);
+			result.edges.addEdge(newFw, std::make_pair(kept.getRank(to.first), to.second));
 		}
 		for (auto to : edges[bw])
 		{
 			if (!kept.get(to.first)) continue;
-			result.edges[newBw].emplace(kept.getRank(to.first), to.second);
+			result.edges.addEdge(newBw, std::make_pair(kept.getRank(to.first), to.second));
 		}
-		for (auto pair : edgeCov[fw])
+		for (auto pair : edgeCov.getValues(fw))
 		{
 			if (!kept.get(pair.first.first)) continue;
-			result.edgeCov[newFw][std::make_pair(kept.getRank(pair.first.first), pair.first.second)] = pair.second;
+			result.edgeCov.set(newFw, std::make_pair(kept.getRank(pair.first.first), pair.first.second), pair.second);
 		}
-		for (auto pair : edgeCov[bw])
+		for (auto pair : edgeCov.getValues(bw))
 		{
 			if (!kept.get(pair.first.first)) continue;
-			result.edgeCov[newBw][std::make_pair(kept.getRank(pair.first.first), pair.first.second)] = pair.second;
+			result.edgeCov.set(newBw, std::make_pair(kept.getRank(pair.first.first), pair.first.second), pair.second);
 		}
-		for (auto pair : edgeOvlp[fw])
+		for (auto pair : edgeOvlp.getValues(fw))
 		{
 			if (!kept.get(pair.first.first)) continue;
-			result.edgeOvlp[newFw][std::make_pair(kept.getRank(pair.first.first), pair.first.second)] = pair.second;
+			result.edgeOvlp.set(newFw, std::make_pair(kept.getRank(pair.first.first), pair.first.second), pair.second);
 		}
-		for (auto pair : edgeOvlp[bw])
+		for (auto pair : edgeOvlp.getValues(bw))
 		{
 			if (!kept.get(pair.first.first)) continue;
-			result.edgeOvlp[newBw][std::make_pair(kept.getRank(pair.first.first), pair.first.second)] = pair.second;
+			result.edgeOvlp.set(newBw, std::make_pair(kept.getRank(pair.first.first), pair.first.second), pair.second);
 		}
 	}
 	return result;
@@ -314,7 +314,7 @@ void UnitigGraph::sort(const std::vector<size_t>& kmerMapping)
 		assert(unitigMapping[i] < unitigs.size());
 	}
 	{
-		std::vector<std::vector<std::pair<NodeType, bool>>> newUnitigs;
+		decltype(unitigs) newUnitigs;
 		newUnitigs.resize(unitigs.size());
 		for (size_t i = 0; i < unitigs.size(); i++)
 		{
@@ -339,7 +339,7 @@ void UnitigGraph::sort(const std::vector<size_t>& kmerMapping)
 		}
 	}
 	{
-		std::vector<size_t> newLeftClip;
+		decltype(leftClip) newLeftClip;
 		newLeftClip.resize(leftClip.size());
 		for (size_t i = 0; i < leftClip.size(); i++)
 		{
@@ -348,7 +348,7 @@ void UnitigGraph::sort(const std::vector<size_t>& kmerMapping)
 		std::swap(leftClip, newLeftClip);
 	}
 	{
-		std::vector<size_t> newRightClip;
+		decltype(rightClip) newRightClip;
 		newRightClip.resize(rightClip.size());
 		for (size_t i = 0; i < rightClip.size(); i++)
 		{
@@ -357,7 +357,7 @@ void UnitigGraph::sort(const std::vector<size_t>& kmerMapping)
 		std::swap(rightClip, newRightClip);
 	}
 	{
-		std::vector<std::vector<size_t>> newUnitigCoverage;
+		decltype(unitigCoverage) newUnitigCoverage;
 		newUnitigCoverage.resize(unitigCoverage.size());
 		for (size_t i = 0; i < unitigCoverage.size(); i++)
 		{
@@ -370,61 +370,61 @@ void UnitigGraph::sort(const std::vector<size_t>& kmerMapping)
 		std::swap(unitigCoverage, newUnitigCoverage);
 	}
 	{
-		VectorWithDirection<std::unordered_set<std::pair<size_t, bool>>> newEdges;
+		decltype(edges) newEdges;
 		newEdges.resize(edges.size());
 		for (size_t i = 0; i < newEdges.size(); i++)
 		{
 			for (auto to : edges[std::make_pair(i, true)])
 			{
-				newEdges[std::make_pair(unitigMapping[i], true ^ swapOrientation[i])].emplace(unitigMapping[to.first], to.second ^ swapOrientation[to.first]);
+				newEdges.addEdge(std::make_pair(unitigMapping[i], true ^ swapOrientation[i]), std::make_pair(unitigMapping[to.first], to.second ^ swapOrientation[to.first]));
 			}
 			for (auto to : edges[std::make_pair(i, false)])
 			{
-				newEdges[std::make_pair(unitigMapping[i], false ^ swapOrientation[i])].emplace(unitigMapping[to.first], to.second ^ swapOrientation[to.first]);
+				newEdges.addEdge(std::make_pair(unitigMapping[i], false ^ swapOrientation[i]), std::make_pair(unitigMapping[to.first], to.second ^ swapOrientation[to.first]));
 			}
 		}
 		std::swap(newEdges, edges);
 	}
 	{
-		VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> newEdgeCov;
+		decltype(edgeCov) newEdgeCov;
 		newEdgeCov.resize(edgeCov.size());
 		for (size_t i = 0; i < newEdgeCov.size(); i++)
 		{
 			std::pair<size_t, bool> from { unitigMapping[i], true ^ swapOrientation[i] };
-			for (auto pair : edgeCov[std::make_pair(i, true)])
+			for (auto pair : edgeCov.getValues(std::make_pair(i, true)))
 			{
 				std::pair<size_t, bool> to { std::make_pair(unitigMapping[pair.first.first], pair.first.second ^ swapOrientation[pair.first.first]) };
 				auto key = canon(from, to);
-				newEdgeCov[key.first].emplace(key.second, pair.second);
+				newEdgeCov.set(key.first, key.second, pair.second);
 			}
 			from.second = !from.second;
-			for (auto pair : edgeCov[std::make_pair(i, false)])
+			for (auto pair : edgeCov.getValues(std::make_pair(i, false)))
 			{
 				std::pair<size_t, bool> to { std::make_pair(unitigMapping[pair.first.first], pair.first.second ^ swapOrientation[pair.first.first]) };
 				auto key = canon(from, to);
-				newEdgeCov[key.first].emplace(key.second, pair.second);
+				newEdgeCov.set(key.first, key.second, pair.second);
 			}
 		}
 		std::swap(newEdgeCov, edgeCov);
 	}
 	{
-		VectorWithDirection<phmap::flat_hash_map<std::pair<size_t, bool>, size_t>> newEdgeOvlp;
+		decltype(edgeOvlp) newEdgeOvlp;
 		newEdgeOvlp.resize(edgeOvlp.size());
 		for (size_t i = 0; i < newEdgeOvlp.size(); i++)
 		{
 			std::pair<size_t, bool> from { unitigMapping[i], true ^ swapOrientation[i] };
-			for (auto pair : edgeOvlp[std::make_pair(i, true)])
+			for (auto pair : edgeOvlp.getValues(std::make_pair(i, true)))
 			{
 				std::pair<size_t, bool> to { std::make_pair(unitigMapping[pair.first.first], pair.first.second ^ swapOrientation[pair.first.first]) };
 				auto key = canon(from, to);
-				newEdgeOvlp[key.first].emplace(key.second, pair.second);
+				newEdgeOvlp.set(key.first, key.second, pair.second);
 			}
 			from.second = !from.second;
-			for (auto pair : edgeOvlp[std::make_pair(i, false)])
+			for (auto pair : edgeOvlp.getValues(std::make_pair(i, false)))
 			{
 				std::pair<size_t, bool> to { std::make_pair(unitigMapping[pair.first.first], pair.first.second ^ swapOrientation[pair.first.first]) };
 				auto key = canon(from, to);
-				newEdgeOvlp[key.first].emplace(key.second, pair.second);
+				newEdgeOvlp.set(key.first, key.second, pair.second);
 			}
 		}
 		std::swap(newEdgeOvlp, edgeOvlp);

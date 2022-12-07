@@ -30,94 +30,103 @@ void ConsensusMaker::init(const std::vector<size_t>& unitigLengths)
 	stringIndex.init(maxCode());
 }
 
-std::tuple<size_t, size_t, bool> ConsensusMaker::find(size_t unitig, size_t index)
-{
-	if (index >= longestLeftOverlap[unitig] && index < unitigLength(unitig) - longestRightOverlap[unitig])
-	{
-		return std::make_tuple(unitig, index, true);
-	}
-	std::tuple<size_t, size_t, bool> result;
-	auto found = getParent(unitig, index);
-	if (std::get<0>(found) == unitig && std::get<1>(found) == index)
-	{
-		assert(std::get<2>(found) == true);
-		return std::make_tuple(unitig, index, true);
-	}
-	auto finalParent = find(std::get<0>(found), std::get<1>(found));
-	assert(std::get<1>(finalParent) < longestLeftOverlap[std::get<0>(finalParent)] || std::get<1>(finalParent) >= unitigLength(std::get<0>(finalParent)) - longestRightOverlap[std::get<0>(finalParent)]);
-	result = std::make_tuple(std::get<0>(finalParent), std::get<1>(finalParent), std::get<2>(finalParent) == std::get<2>(found));
-	if (longestLeftOverlap[unitig] + longestRightOverlap[unitig] < unitigLength(unitig))
-	{
-		assert(index >= longestLeftOverlap[unitig] || index < unitigLength(unitig) - longestRightOverlap[unitig]);
-		if (index < longestLeftOverlap[unitig])
-		{
-			assert(index < parent[unitig].size());
-			parent[unitig][index] = result;
-		}
-		else
-		{
-			assert(index >= unitigLength(unitig) - longestRightOverlap[unitig]);
-			size_t parentIndex = longestLeftOverlap[unitig] + index - (unitigLength(unitig) - longestRightOverlap[unitig]);
-			assert(parentIndex < parent[unitig].size());
-			parent[unitig][parentIndex] = result;
-		}
-	}
-	else
-	{
-		assert(index < parent[unitig].size());
-		parent[unitig][index] = result;
-	}
-	return result;
-}
-
-void ConsensusMaker::merge(size_t leftUnitig, size_t leftIndex, size_t rightUnitig, size_t rightIndex, bool fw)
-{
-	assert(leftIndex < longestLeftOverlap[leftUnitig] || leftIndex >= unitigLength(leftUnitig) - longestRightOverlap[leftUnitig]);
-	assert(rightIndex < longestLeftOverlap[rightUnitig] || rightIndex >= unitigLength(rightUnitig) - longestRightOverlap[rightUnitig]);
-	auto leftParent = find(leftUnitig, leftIndex);
-	auto rightParent = find(rightUnitig, rightIndex);
-	if (std::get<0>(rightParent) < std::get<0>(leftParent) || (std::get<0>(leftParent) == std::get<0>(rightParent) && std::get<1>(leftParent) > std::get<1>(rightParent)))
-	{
-		std::swap(leftParent, rightParent);
-	}
-	if (std::get<0>(leftParent) == std::get<0>(rightParent) && std::get<1>(leftParent) == std::get<1>(rightParent))
-	{
-		if (fw != (std::get<2>(leftParent) == std::get<2>(rightParent)))
-		{
-			needsComplementVerification.emplace_back(std::get<0>(leftParent), std::get<1>(leftParent));
-		}
-		return;
-	}
-	assert(std::get<0>(leftParent) < std::get<0>(rightParent) || (std::get<0>(leftParent) == std::get<0>(rightParent) && std::get<1>(leftParent) < std::get<1>(rightParent)));
-	size_t leftParentUnitig = std::get<0>(leftParent);
-	size_t leftParentIndex = std::get<1>(leftParent);
-	bool leftParentOrient = std::get<2>(leftParent);
-	size_t rightParentUnitig = std::get<0>(rightParent);
-	size_t rightParentIndex = std::get<1>(rightParent);
-	bool rightParentOrient = std::get<2>(rightParent);
-	assert(leftParentIndex < longestLeftOverlap[leftParentUnitig] || leftParentIndex >= unitigLength(leftParentUnitig) - longestRightOverlap[leftParentUnitig]);
-	assert(rightParentIndex < longestLeftOverlap[rightParentUnitig] || rightParentIndex >= unitigLength(rightParentUnitig) - longestRightOverlap[rightParentUnitig]);
-	if (longestLeftOverlap[rightParentUnitig] + longestRightOverlap[rightParentUnitig] < unitigLength(rightParentUnitig))
-	{
-		if (rightParentIndex >= longestLeftOverlap[rightParentUnitig])
-		{
-			assert(rightParentIndex >= unitigLength(rightParentUnitig) - longestRightOverlap[rightParentUnitig]);
-			rightParentIndex = longestLeftOverlap[rightParentUnitig] + rightParentIndex - (unitigLength(rightParentUnitig) - longestRightOverlap[rightParentUnitig]);
-		}
-	}
-	assert(rightParentIndex < parent[rightParentUnitig].size());
-	parent[rightParentUnitig][rightParentIndex] = std::make_tuple(leftParentUnitig, leftParentIndex, fw == (leftParentOrient == rightParentOrient));
-}
-
 void ConsensusMaker::addEdgeOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, size_t overlap)
 {
+	size_t fromUnitig = std::numeric_limits<size_t>::max();
+	size_t fromStartIndex = std::numeric_limits<size_t>::max();
+	bool fromFw = true;
+	size_t toUnitig = std::numeric_limits<size_t>::max();
+	size_t toStartIndex = std::numeric_limits<size_t>::max();
+	bool toFw = true;
+	size_t matchLength = 0;
+	size_t currentInsertUnitig = std::numeric_limits<size_t>::max();
+	size_t currentInsertIndex = std::numeric_limits<size_t>::max();
 	for (size_t i = 0; i < overlap; i++)
 	{
 		size_t fromIndex = unitigLength(from.first) - overlap + i;
 		if (!from.second) fromIndex = overlap - i - 1;
 		size_t toIndex = i;
 		if (!to.second) toIndex = unitigLength(to.first) - 1 - i;
-		merge(from.first, fromIndex, to.first, toIndex, from.second == to.second);
+		auto fromTuple = find(from.first, fromIndex);
+		auto toTuple = find(to.first, toIndex);
+		assert(getParent(std::get<0>(fromTuple), std::get<1>(fromTuple)) == std::make_tuple(std::get<0>(fromTuple), std::get<1>(fromTuple), true));
+		assert(getParent(std::get<0>(toTuple), std::get<1>(toTuple)) == std::make_tuple(std::get<0>(toTuple), std::get<1>(toTuple), true));
+		if (!from.second) std::get<2>(fromTuple) = !std::get<2>(fromTuple);
+		if (!to.second) std::get<2>(toTuple) = !std::get<2>(toTuple);
+		size_t newFromUnitig = std::get<0>(fromTuple);
+		size_t newFromPos = std::get<1>(fromTuple);
+		bool newFromFw = std::get<2>(fromTuple);
+		size_t newToUnitig = std::get<0>(toTuple);
+		size_t newToPos = std::get<1>(toTuple);
+		bool newToFw = std::get<2>(toTuple);
+		if (fromUnitig == newFromUnitig && toUnitig == newToUnitig && (newFromFw == fromFw) && (newToFw == toFw))
+		{
+			if (newFromPos == fromStartIndex + (fromFw ? 1 : -1) * matchLength && newToPos == toStartIndex + (toFw ? 1 : -1) * matchLength)
+			{
+				if (newFromUnitig != newToUnitig || newFromPos != newToPos)
+				{
+					assert(currentInsertUnitig < parent.size());
+					assert(currentInsertIndex < parent[currentInsertUnitig].size());
+					std::get<1>(parent[currentInsertUnitig][currentInsertIndex]) += 1;
+					if (!fromFw) std::get<0>(parent[currentInsertUnitig][currentInsertIndex]) -= 1;
+					if (!toFw) std::get<3>(parent[currentInsertUnitig][currentInsertIndex]) -= 1;
+					matchLength += 1;
+					continue;
+				}
+			}
+		}
+		fromUnitig = newFromUnitig;
+		fromStartIndex = newFromPos;
+		fromFw = newFromFw;
+		toUnitig = newToUnitig;
+		toStartIndex = newToPos;
+		toFw = newToFw;
+		matchLength = 1;
+		if (fromUnitig == toUnitig && fromStartIndex == toStartIndex)
+		{
+			matchLength = 0;
+			fromUnitig = std::numeric_limits<size_t>::max();
+			toUnitig = std::numeric_limits<size_t>::max();
+			currentInsertUnitig = std::numeric_limits<size_t>::max();
+		}
+		if (matchLength >= 1)
+		{
+			size_t fromRealStart = fromStartIndex;
+			if (!fromFw) fromRealStart -= matchLength - 1;
+			size_t toRealStart = toStartIndex;
+			if (!toFw) toRealStart -= matchLength - 1;
+			assert(fromRealStart < unitigLength(fromUnitig));
+			assert(toRealStart < unitigLength(toUnitig));
+			assert(fromRealStart + matchLength <= unitigLength(fromUnitig));
+			assert(toRealStart + matchLength <= unitigLength(toUnitig));
+			parent[fromUnitig].emplace_back(fromRealStart, matchLength, toUnitig, toRealStart, fromFw == toFw);
+			std::sort(parent[fromUnitig].begin(), parent[fromUnitig].end(), [](auto left, auto right) { return std::get<0>(left) < std::get<0>(right); });
+			currentInsertUnitig = fromUnitig;
+			currentInsertIndex = std::numeric_limits<size_t>::max();
+			for (size_t j = 0; j < parent[fromUnitig].size(); j++)
+			{
+				if (std::get<0>(parent[fromUnitig][j]) == fromRealStart)
+				{
+					currentInsertIndex = j;
+					break;
+				}
+			}
+			assert(currentInsertIndex != std::numeric_limits<size_t>::max());
+		}
+	}
+	for (size_t i = 0; i < overlap; i++)
+	{
+		size_t fromIndex = unitigLength(from.first) - overlap + i;
+		if (!from.second) fromIndex = overlap - i - 1;
+		size_t toIndex = i;
+		if (!to.second) toIndex = unitigLength(to.first) - 1 - i;
+		auto fromTuple = find(from.first, fromIndex);
+		auto toTuple = find(to.first, toIndex);
+		// if (!from.second) std::get<2>(fromTuple) = !std::get<2>(fromTuple);
+		// if (!to.second) std::get<2>(toTuple) = !std::get<2>(toTuple);
+		assert(std::get<0>(fromTuple) == std::get<0>(toTuple));
+		assert(std::get<1>(fromTuple) == std::get<1>(toTuple));
+		// assert((std::get<2>(fromTuple) == std::get<2>(toTuple)) == (from.second == to.second));
 	}
 }
 
@@ -138,32 +147,6 @@ void ConsensusMaker::prepareEdgeOverlap(std::pair<size_t, bool> from, std::pair<
 	else
 	{
 		longestRightOverlap[to.first] = std::max(longestRightOverlap[to.first], overlap);
-	}
-}
-
-void ConsensusMaker::allocateParent()
-{
-	for (size_t i = 0; i < parent.size(); i++)
-	{
-		parent[i].resize(std::min(unitigLength(i), longestLeftOverlap[i] + longestRightOverlap[i]));
-		if (longestLeftOverlap[i] + longestRightOverlap[i] < unitigLength(i))
-		{
-			for (size_t j = 0; j < longestLeftOverlap[i]; j++)
-			{
-				parent[i][j] = std::make_tuple(i, j, true);
-			}
-			for (size_t j = longestLeftOverlap[i]; j < parent[i].size(); j++)
-			{
-				parent[i][j] = std::make_tuple(i, (j - longestLeftOverlap[i]) + (unitigLength(i) - longestRightOverlap[i]), true);
-			}
-		}
-		else
-		{
-			for (size_t j = 0; j < parent[i].size(); j++)
-			{
-				parent[i][j] = std::make_tuple(i, j, true);
-			}
-		}
 	}
 }
 
@@ -267,57 +250,192 @@ size_t ConsensusMaker::unitigLength(size_t unitig) const
 	return simpleCounts[unitig].size();
 }
 
+std::tuple<size_t, size_t, bool> ConsensusMaker::find(size_t unitig, size_t index)
+{
+	auto result = getParent(unitig, index);
+	size_t iterations = 0;
+	while (true)
+	{
+		iterations += 1;
+		auto nextResult = getParent(std::get<0>(result), std::get<1>(result));
+		if (std::get<0>(nextResult) == std::get<0>(result) && std::get<1>(nextResult) == std::get<1>(result))
+		{
+			assert(std::get<2>(nextResult));
+			break;
+		}
+		if (!std::get<2>(result)) std::get<2>(nextResult) = !std::get<2>(nextResult);
+		result = nextResult;
+		assert(iterations < parent.size()+1000);
+	}
+	return result;
+}
+
 std::tuple<size_t, size_t, bool> ConsensusMaker::getParent(size_t unitig, size_t index) const
 {
-	if (index >= longestLeftOverlap[unitig] && index < unitigLength(unitig) - longestRightOverlap[unitig])
+	if (parent[unitig].size() == 0)
 	{
 		return std::make_tuple(unitig, index, true);
 	}
-	if (longestLeftOverlap[unitig] + longestRightOverlap[unitig] >= unitigLength(unitig))
+	size_t startIndex = 0;
+	size_t endIndex = parent[unitig].size();
+	size_t mid = (endIndex+startIndex)/2;
+	while (endIndex > startIndex+1)
 	{
-		assert(parent[unitig].size() == unitigLength(unitig));
-		assert(index < parent[unitig].size());
-		return parent[unitig][index];
+		size_t midStart = std::get<0>(parent[unitig][mid]);
+		if (midStart > index)
+		{
+			endIndex = mid;
+			mid = (endIndex+startIndex)/2;
+			continue;
+		}
+		size_t midEnd = midStart + std::get<1>(parent[unitig][mid]);
+		if (midEnd <= index)
+		{
+			startIndex = mid;
+			mid = (endIndex+startIndex)/2;
+			continue;
+		}
+		assert(midStart <= index && midEnd > index);
+		break;
 	}
-	assert(parent[unitig].size() < unitigLength(unitig));
-	assert(index >= longestLeftOverlap[unitig] || index < unitigLength(unitig) - longestRightOverlap[unitig]);
-	if (index < longestLeftOverlap[unitig])
+	size_t midStart = std::get<0>(parent[unitig][mid]);
+	size_t midEnd = midStart + std::get<1>(parent[unitig][mid]);
+	if (midEnd <= index || midStart > index)
 	{
-		assert(index < parent[unitig].size());
-		assert(std::get<1>(parent[unitig][index]) < longestLeftOverlap[std::get<0>(parent[unitig][index])] || std::get<1>(parent[unitig][index]) >= unitigLength(std::get<0>(parent[unitig][index])) - longestRightOverlap[std::get<0>(parent[unitig][index])]);
-		return parent[unitig][index];
+		return std::make_tuple(unitig, index, true);
 	}
-	assert(index >= unitigLength(unitig) - longestRightOverlap[unitig]);
-	index = longestLeftOverlap[unitig] + index - (unitigLength(unitig) - longestRightOverlap[unitig]);
-	assert(index < parent[unitig].size());
-	assert(std::get<1>(parent[unitig][index]) < longestLeftOverlap[std::get<0>(parent[unitig][index])] || std::get<1>(parent[unitig][index]) >= unitigLength(std::get<0>(parent[unitig][index])) - longestRightOverlap[std::get<0>(parent[unitig][index])]);
-	return parent[unitig][index];
+	assert(mid == parent[unitig].size()-1 || std::get<0>(parent[unitig][mid+1]) >= midEnd);
+	assert(mid == 0 || std::get<0>(parent[unitig][mid-1]) + std::get<1>(parent[unitig][mid-1]) <= midStart);
+	size_t otherUnitig = std::get<2>(parent[unitig][mid]);
+	size_t otherStart = std::get<3>(parent[unitig][mid]);
+	bool fw = std::get<4>(parent[unitig][mid]);
+	assert(otherUnitig != unitig || otherStart != midStart || !fw);
+	size_t otherOffset;
+	if (fw)
+	{
+		otherOffset = otherStart + (index - midStart);
+	}
+	else
+	{
+		otherOffset = otherStart + std::get<1>(parent[unitig][mid]) - 1 - (index - midStart);
+	}
+	return std::make_tuple(otherUnitig, otherOffset, fw);
 }
 
 void ConsensusMaker::findParentLinks()
 {
 	for (size_t i = 0; i < parent.size(); i++)
 	{
+		std::vector<std::tuple<size_t, size_t, size_t, size_t, bool>> newParent;
+		size_t unitig = std::numeric_limits<size_t>::max();
+		size_t startPos = 0;
+		size_t matchLength = 0;
+		bool fw = true;
 		if (longestLeftOverlap[i] + longestRightOverlap[i] < unitigLength(i))
 		{
-			assert(parent[i].size() < unitigLength(i));
 			for (size_t j = 0; j < longestLeftOverlap[i]; j++)
 			{
-				find(i, j);
+				auto found = find(i, j);
+				if (std::get<0>(found) == unitig && std::get<1>(found) == startPos + (fw ? 1 : -1) * matchLength && std::get<2>(found) == fw)
+				{
+					matchLength += 1;
+					continue;
+				}
+				if (matchLength > 0)
+				{
+					if (unitig != i || startPos+matchLength != j)
+					{
+						size_t realStart = startPos;
+						if (!fw) realStart -= matchLength - 1;
+						newParent.emplace_back(j-matchLength, matchLength, unitig, realStart, fw);
+					}
+				}
+				unitig = std::get<0>(found);
+				startPos = std::get<1>(found);
+				fw = std::get<2>(found);
+				matchLength = 1;
 			}
+			if (matchLength > 0)
+			{
+				if (unitig != i || startPos+matchLength != longestLeftOverlap[i])
+				{
+					size_t realStart = startPos;
+					if (!fw) realStart -= matchLength - 1;
+					newParent.emplace_back(longestLeftOverlap[i]-matchLength, matchLength, unitig, realStart, fw);
+				}
+			}
+			size_t off = unitigLength(i) - longestRightOverlap[i];
+			unitig = std::numeric_limits<size_t>::max();
+			startPos = 0;
+			fw = true;
+			matchLength = 0;
 			for (size_t j = 0; j < longestRightOverlap[i]; j++)
 			{
-				find(i, unitigLength(i) - longestRightOverlap[i] + j);
+				auto found = find(i, off+j);
+				if (std::get<0>(found) == unitig && std::get<1>(found) == startPos + (fw ? 1 : -1) * matchLength && std::get<2>(found) == fw)
+				{
+					matchLength += 1;
+					continue;
+				}
+				if (matchLength > 0)
+				{
+					if (unitig != i || startPos+matchLength != off+j)
+					{
+						size_t realStart = startPos;
+						if (!fw) realStart -= matchLength - 1;
+						newParent.emplace_back(off+j-matchLength, matchLength, unitig, realStart, fw);
+					}
+				}
+				unitig = std::get<0>(found);
+				startPos = std::get<1>(found);
+				fw = std::get<2>(found);
+				matchLength = 1;
+			}
+			if (matchLength > 0)
+			{
+				if (unitig != i || startPos+matchLength != off+longestRightOverlap[i])
+				{
+					size_t realStart = startPos;
+					if (!fw) realStart -= matchLength - 1;
+					newParent.emplace_back(off+longestRightOverlap[i]-matchLength, matchLength, unitig, realStart, fw);
+				}
 			}
 		}
 		else
 		{
-			assert(parent[i].size() == unitigLength(i));
-			for (size_t j = 0; j < parent[i].size(); j++)
+			for (size_t j = 0; j < unitigLength(i); j++)
 			{
-				find(i, j);
+				auto found = find(i, j);
+				if (std::get<0>(found) == unitig && std::get<1>(found) == startPos + (fw ? 1 : -1) * matchLength && std::get<2>(found) == fw)
+				{
+					matchLength += 1;
+					continue;
+				}
+				if (matchLength > 0)
+				{
+					if (unitig != i || startPos+matchLength != j)
+					{
+						size_t realStart = startPos;
+						if (!fw) realStart -= matchLength - 1;
+						newParent.emplace_back(j-matchLength, matchLength, unitig, realStart, fw);
+					}
+				}
+				unitig = std::get<0>(found);
+				startPos = std::get<1>(found);
+				fw = std::get<2>(found);
+				matchLength = 1;
+			}
+			if (matchLength > 0)
+			{
+				if (unitig != i || startPos+matchLength != unitigLength(i))
+				{
+					size_t realStart = startPos;
+					if (!fw) realStart -= matchLength - 1;
+					newParent.emplace_back(unitigLength(i)-matchLength, matchLength, unitig, realStart, fw);
+				}
 			}
 		}
+		std::swap(parent[i], newParent);
 	}
 }
 

@@ -75,7 +75,7 @@ void initializeHelpers(ConsensusMaker& consensusMaker, std::unordered_map<std::s
 		{
 			if (i > 0) pathKmerCount -= unitigs.edgeOverlap(path.path[i-1], path.path[i]);
 			pathKmerStarts.push_back(pathKmerCount);
-			pathKmerCount += unitigs.unitigs[path.path[i].first].size();
+			pathKmerCount += unitigs.unitigs[path.path[i].id()].size();
 			pathKmerEnds.push_back(pathKmerCount);
 		}
 		assert(pathKmerStarts[0] == 0);
@@ -106,10 +106,10 @@ void initializeHelpers(ConsensusMaker& consensusMaker, std::unordered_map<std::s
 			size_t maxMatch = std::min(wantedEnd - wantedStart - startKmerIndex, possibleEnd - possibleStart - startPosIndex);
 			endKmerIndex = startKmerIndex + maxMatch - 1;
 			endPosIndex = startPosIndex + maxMatch - 1;
-			if (!path.path[i].second)
+			if (!path.path[i].forward())
 			{
-				startKmerIndex = bpOffsets[path.path[i].first].size() - 1 - startKmerIndex;
-				endKmerIndex = bpOffsets[path.path[i].first].size() - 1 - endKmerIndex;
+				startKmerIndex = bpOffsets[path.path[i].id()].size() - 1 - startKmerIndex;
+				endKmerIndex = bpOffsets[path.path[i].id()].size() - 1 - endKmerIndex;
 				std::swap(startKmerIndex, endKmerIndex);
 			}
 			assert(i != 0 || startPosIndex == 0);
@@ -117,14 +117,14 @@ void initializeHelpers(ConsensusMaker& consensusMaker, std::unordered_map<std::s
 			assert(startKmerIndex <= endKmerIndex);
 			assert(startPosIndex <= endPosIndex);
 			assert(endPosIndex < path.readPoses.size());
-			assert(endKmerIndex < bpOffsets[path.path[i].first].size());
+			assert(endKmerIndex < bpOffsets[path.path[i].id()].size());
 			size_t readStart = path.readPoses[startPosIndex];
 			size_t readEnd = path.readPoses[endPosIndex] + kmerSize;
 			assert(readEnd <= path.readLengthHPC);
-			size_t unitigStart = bpOffsets[path.path[i].first][startKmerIndex];
-			size_t unitigEnd = bpOffsets[path.path[i].first][endKmerIndex] + kmerSize;
-			size_t unitig = path.path[i].first;
-			bool fw = path.path[i].second;
+			size_t unitigStart = bpOffsets[path.path[i].id()][startKmerIndex];
+			size_t unitigEnd = bpOffsets[path.path[i].id()][endKmerIndex] + kmerSize;
+			size_t unitig = path.path[i].id();
+			bool fw = path.path[i].forward();
 			if (unitigStart < unitigs.leftClip[unitig])
 			{
 				if (fw)
@@ -228,7 +228,6 @@ void initializeHelpers(ConsensusMaker& consensusMaker, std::unordered_map<std::s
 			consensusMaker.prepareEdgeOverlap(pos, edge, bpOverlap - fromClip - toClip);
 		}
 	}
-	consensusMaker.allocateParent();
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
 	{
 		std::pair<size_t, bool> pos { i, true };
