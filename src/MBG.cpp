@@ -138,6 +138,8 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 		size_t readLength = path.readLength;
 		size_t readStart = path.expandedReadPosStart;
 		size_t readEnd = path.expandedReadPosEnd;
+		readStart = path.readPoses[0];
+		readEnd = path.readPoses.back() + kmerSize;
 		assert(readEnd > readStart);
 		assert(readEnd <= readLength);
 		std::string pathStr;
@@ -1479,6 +1481,9 @@ void sortPaths(std::vector<ReadPath>& readPaths)
 		assert(right.expandedReadPosStart < left.readLength);
 		if (left.expandedReadPosStart < right.expandedReadPosStart) return true;
 		if (left.expandedReadPosStart > right.expandedReadPosStart) return false;
+		if (left.readPoses[0] < right.readPoses[0]) return true;
+		if (left.readPoses[0] > right.readPoses[0]) return false;
+		return false;
 		assert(false);
 	});
 }
@@ -1545,12 +1550,12 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	std::cerr << "Building unitig sequences" << std::endl;
 	std::vector<CompressedSequenceType> unitigSequences;
 	StringIndex stringIndex;
-	std::tie(unitigSequences, stringIndex) = getHPCUnitigSequences(reads, unitigs, readPaths, kmerSize, partIterator, numThreads);
+	std::tie(unitigSequences, stringIndex) = getFakeSequences(reads, unitigs, readPaths, kmerSize, partIterator, numThreads);
 	assert(unitigSequences.size() == unitigs.unitigs.size());
 	auto beforeConsistency = getTime();
 	AssemblyStats stats;
 	beforeConsistency = getTime();
-	verifyEdgeConsistency(unitigs, reads, stringIndex, unitigSequences, kmerSize);
+	// verifyEdgeConsistency(unitigs, reads, stringIndex, unitigSequences, kmerSize);
 	auto beforeWrite = getTime();
 	if (blunt)
 	{

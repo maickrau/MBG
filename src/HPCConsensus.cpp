@@ -294,6 +294,37 @@ void initializeHelpers(ConsensusMaker& consensusMaker, std::unordered_map<std::s
 	consensusMaker.findParentLinks();
 }
 
+std::pair<std::vector<CompressedSequenceType>, StringIndex> getFakeSequences(const HashList& hashlist, const UnitigGraph& unitigs, std::vector<ReadPath>& readPaths, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
+{
+	std::vector<CompressedSequenceType> fakeSeqs;
+	StringIndex fakeIndex;
+	size_t expanded = fakeIndex.getIndex(0, 1);
+	std::vector<size_t> unitigLengths;
+	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
+	{
+		size_t offset = 0;
+		for (size_t j = 1; j < unitigs.unitigs[i].size(); j++)
+		{
+			size_t rleOverlap = hashlist.getOverlap(unitigs.unitigs[i][j-1], unitigs.unitigs[i][j]);
+			assert(rleOverlap < kmerSize);
+			offset += kmerSize - rleOverlap;
+		}
+		assert(offset + kmerSize > unitigs.leftClip[i] + unitigs.rightClip[i]);
+		unitigLengths.push_back(offset + kmerSize - unitigs.leftClip[i] - unitigs.rightClip[i]);
+		fakeSeqs.emplace_back();
+		fakeSeqs.back().resize(unitigLengths.back());
+	}
+	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
+	{
+		for (size_t j = 0; j < unitigLengths[i]; j++)
+		{
+			fakeSeqs[i].setCompressed(j, 0);
+			fakeSeqs[i].setExpanded(j, expanded);
+		}
+	}
+	return std::make_pair(fakeSeqs, fakeIndex);
+}
+
 std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, std::vector<ReadPath>& readPaths, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	ConsensusMaker consensusMaker;
