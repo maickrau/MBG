@@ -20,7 +20,7 @@ void SparseEdgeContainer::addEdge(std::pair<size_t, bool> from, std::pair<size_t
 		}
 		if (firstEdge[from] == pairToInt(to)) return;
 	}
-	extraEdges[from].push_back(to);
+	extraEdges[from].insert(to);
 }
 
 std::vector<std::pair<size_t, bool>> SparseEdgeContainer::operator[](std::pair<size_t, bool> index) const
@@ -69,10 +69,7 @@ bool SparseEdgeContainer::hasEdge(std::pair<size_t, bool> from, std::pair<size_t
 	if (checkFirstFrom != std::numeric_limits<uint32_t>::max() && checkFirstTo != std::numeric_limits<uint32_t>::max() && firstEdge[from] == checkFirstTo) return true;
 	if (extraEdges.count(from) == 1)
 	{
-		for (auto edge : extraEdges.at(from))
-		{
-			if (edge == to) return true;
-		}
+		if (extraEdges.at(from).count(to) == 1) return true;
 	}
 	return false;
 }
