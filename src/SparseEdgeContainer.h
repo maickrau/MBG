@@ -22,7 +22,7 @@ private:
 	uint32_t pairToInt(std::pair<size_t, bool> value) const;
 	std::pair<size_t, bool> intToPair(uint32_t value) const;
 	VectorWithDirection<uint32_t> firstEdge;
-	phmap::flat_hash_map<std::pair<size_t, bool>, std::vector<std::pair<size_t, bool>>> extraEdges;
+	phmap::flat_hash_map<std::pair<size_t, bool>, phmap::flat_hash_set<std::pair<size_t, bool>>> extraEdges;
 };
 
 #endif
