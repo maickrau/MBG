@@ -4,6 +4,7 @@
 #include "MBGCommon.h"
 #include "VectorView.h"
 #include "ConsensusMaker.h"
+#include "KmerMatcher.h"
 
 void addCounts(ConsensusMaker& consensusMaker, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const size_t seqStart, const size_t seqEnd, const size_t unitig, const size_t unitigStart, const size_t unitigEnd, const bool fw)
 {
@@ -148,7 +149,7 @@ std::vector<std::tuple<size_t, size_t, size_t, size_t, bool, size_t, size_t>> ge
 	return result;
 }
 
-void initializeHelpers(ConsensusMaker& consensusMaker, std::vector<size_t>& unitigLengths, std::vector<std::vector<size_t>>& bpOffsets, const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<ReadPath>& readPaths, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
+void initializeHelpers(ConsensusMaker& consensusMaker, std::vector<size_t>& unitigLengths, std::vector<std::vector<size_t>>& bpOffsets, const HashList& hashlist, const UnitigGraph& unitigs, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	bpOffsets.resize(unitigs.unitigs.size());
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
@@ -300,7 +301,7 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 	ConsensusMaker consensusMaker;
 	std::vector<size_t> unitigLengths;
 	std::vector<std::vector<size_t>> bpOffsets;
-	initializeHelpers(consensusMaker, unitigLengths, bpOffsets, hashlist, unitigs, readPaths, kmerSize, partIterator, numThreads);
+	initializeHelpers(consensusMaker, unitigLengths, bpOffsets, hashlist, unitigs, kmerSize, partIterator, numThreads);
 	std::mutex expandedPosMutex;
 	std::unordered_map<std::string, std::vector<size_t>> pathsPerRead;
 	for (size_t i = 0; i < readPaths.size(); i++)
@@ -341,12 +342,12 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 	return consensusMaker.getSequences();
 }
 
-void getHpcVariants(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<ReadPath>& readPaths, const size_t kmerSize, ReadpartIterator& partIterator, const size_t numThreads, const double minUnitigCoverage, const size_t minVariantCoverage)
+void getHpcVariantsAndReadPaths(const HashList& hashlist, const UnitigGraph& unitigs, const size_t kmerSize, ReadpartIterator& partIterator, const size_t numThreads, const double minUnitigCoverage, const size_t minVariantCoverage)
 {
 	ConsensusMaker consensusMaker;
 	std::vector<size_t> unitigLengths;
 	std::vector<std::vector<size_t>> bpOffsets;
-	initializeHelpers(consensusMaker, unitigLengths, bpOffsets, hashlist, unitigs, readPaths, kmerSize, partIterator, numThreads);
+	initializeHelpers(consensusMaker, unitigLengths, bpOffsets, hashlist, unitigs, kmerSize, partIterator, numThreads);
 	std::vector<bool> checkUnitig;
 	checkUnitig.resize(unitigs.unitigs.size(), false);
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
@@ -360,29 +361,23 @@ void getHpcVariants(const HashList& hashlist, const UnitigGraph& unitigs, const 
 		double coverage = sum / count;
 		if (coverage >= minUnitigCoverage) checkUnitig[i] = true;
 	}
-	std::unordered_map<std::string, std::vector<size_t>> pathsPerRead;
-	for (size_t i = 0; i < readPaths.size(); i++)
+	std::vector<std::tuple<size_t, size_t, bool>> kmerLocator = getKmerLocator(unitigs);
+	partIterator.iterateHashes([&consensusMaker, &checkUnitig, &bpOffsets, &unitigs, &hashlist, &unitigLengths, &kmerLocator, kmerSize](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
 	{
-		pathsPerRead[readPaths[i].readName].push_back(i);
-	}
-	partIterator.iterateParts([&consensusMaker, &readPaths, &checkUnitig, &pathsPerRead, &bpOffsets, &unitigs, &unitigLengths, kmerSize](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq)
-	{
-		std::vector<std::tuple<size_t, size_t, size_t, size_t, bool, size_t, size_t>> matchBlocks;
-		for (size_t pathi : pathsPerRead[read.readName])
+		iterateReadPaths(unitigs, hashlist, kmerSize, kmerLocator, read, positions, hashes, [&consensusMaker, &bpOffsets, &unitigs, &unitigLengths, &checkUnitig, &rawSeq, &poses, &seq, kmerSize](ReadPath path)
 		{
-			auto add = getMatchBlocks(bpOffsets, unitigs, readPaths[pathi], unitigLengths, kmerSize, pathi);
-			matchBlocks.insert(matchBlocks.end(), add.begin(), add.end());
-		}
-		for (auto block : matchBlocks)
-		{
-			size_t unitig = std::get<0>(block);
-			if (!checkUnitig[unitig]) continue;
-			size_t readStartPos = std::get<1>(block);
-			size_t unitigStartPos = std::get<2>(block);
-			size_t matchLength = std::get<3>(block);
-			bool forward = std::get<4>(block);
-			addCounts(consensusMaker, seq, poses, rawSeq, readStartPos, readStartPos + matchLength, unitig, unitigStartPos, unitigStartPos + matchLength, forward);
-		}
+			auto blocks = getMatchBlocks(bpOffsets, unitigs, path, unitigLengths, kmerSize, 0);
+			for (auto& block : blocks)
+			{
+				size_t unitig = std::get<0>(block);
+				if (!checkUnitig[unitig]) continue;
+				size_t readStartPos = std::get<1>(block);
+				size_t unitigStartPos = std::get<2>(block);
+				size_t matchLength = std::get<3>(block);
+				bool forward = std::get<4>(block);
+				addCounts(consensusMaker, seq, poses, rawSeq, readStartPos, readStartPos + matchLength, unitig, unitigStartPos, unitigStartPos + matchLength, forward);
+			}
+		});
 	});
 	std::vector<HashType> nodeToHash;
 	nodeToHash.resize(hashlist.hashToNode.size(), 0);
