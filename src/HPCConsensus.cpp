@@ -47,7 +47,108 @@ void addCounts(ConsensusMaker& consensusMaker, const SequenceCharType& seq, cons
 	});
 }
 
-void initializeHelpers(ConsensusMaker& consensusMaker, std::unordered_map<std::string, std::vector<std::tuple<size_t, size_t, size_t, size_t, bool, size_t, size_t>>>& matchBlocks, std::vector<size_t>& unitigLengths, std::vector<std::vector<size_t>>& bpOffsets, const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<ReadPath>& readPaths, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
+std::vector<std::tuple<size_t, size_t, size_t, size_t, bool, size_t, size_t>> getMatchBlocks(const std::vector<std::vector<size_t>>& bpOffsets, const UnitigGraph& unitigs, const ReadPath& path, const std::vector<size_t> unitigLengths, const size_t kmerSize, const size_t readi)
+{
+	std::vector<std::tuple<size_t, size_t, size_t, size_t, bool, size_t, size_t>> result;
+	size_t pathKmerCount = 0;
+	std::vector<size_t> pathKmerStarts;
+	std::vector<size_t> pathKmerEnds;
+	for (size_t i = 0; i < path.path.size(); i++)
+	{
+		if (i > 0) pathKmerCount -= unitigs.edgeOverlap(path.path[i-1], path.path[i]);
+		pathKmerStarts.push_back(pathKmerCount);
+		pathKmerCount += unitigs.unitigs[path.path[i].id()].size();
+		pathKmerEnds.push_back(pathKmerCount);
+	}
+	assert(pathKmerStarts[0] == 0);
+	assert(pathKmerEnds.back() == pathKmerCount);
+	assert(pathKmerCount == path.readPoses.size() + path.leftClip + path.rightClip);
+	for (size_t i = 0; i < path.path.size(); i++)
+	{
+		size_t wantedStart = pathKmerStarts[i];
+		size_t wantedEnd = pathKmerEnds[i];
+		size_t possibleStart = path.leftClip;
+		size_t possibleEnd = pathKmerCount - path.rightClip;
+		size_t startKmerIndex = 0;
+		size_t endKmerIndex = 0;
+		size_t startPosIndex = 0;
+		size_t endPosIndex = 0;
+		if (wantedStart < possibleStart)
+		{
+			startPosIndex = 0;
+			startKmerIndex = possibleStart - wantedStart;
+		}
+		else
+		{
+			startPosIndex = wantedStart - possibleStart;
+			startKmerIndex = 0;
+		}
+		assert(wantedEnd > wantedStart + startKmerIndex);
+		assert(possibleEnd > possibleStart + startPosIndex);
+		size_t maxMatch = std::min(wantedEnd - wantedStart - startKmerIndex, possibleEnd - possibleStart - startPosIndex);
+		endKmerIndex = startKmerIndex + maxMatch - 1;
+		endPosIndex = startPosIndex + maxMatch - 1;
+		if (!path.path[i].forward())
+		{
+			startKmerIndex = bpOffsets[path.path[i].id()].size() - 1 - startKmerIndex;
+			endKmerIndex = bpOffsets[path.path[i].id()].size() - 1 - endKmerIndex;
+			std::swap(startKmerIndex, endKmerIndex);
+		}
+		assert(i != 0 || startPosIndex == 0);
+		assert(i != path.path.size()-1 || endPosIndex == path.readPoses.size()-1);
+		assert(startKmerIndex <= endKmerIndex);
+		assert(startPosIndex <= endPosIndex);
+		assert(endPosIndex < path.readPoses.size());
+		assert(endKmerIndex < bpOffsets[path.path[i].id()].size());
+		size_t readStart = path.readPoses[startPosIndex];
+		size_t readEnd = path.readPoses[endPosIndex] + kmerSize;
+		assert(readEnd <= path.readLengthHPC);
+		size_t unitigStart = bpOffsets[path.path[i].id()][startKmerIndex];
+		size_t unitigEnd = bpOffsets[path.path[i].id()][endKmerIndex] + kmerSize;
+		size_t unitig = path.path[i].id();
+		bool fw = path.path[i].forward();
+		if (unitigStart < unitigs.leftClip[unitig])
+		{
+			if (fw)
+			{
+				readStart += unitigs.leftClip[unitig] - unitigStart;
+			}
+			else
+			{
+				readEnd -= unitigs.leftClip[unitig] - unitigStart;
+			}
+			unitigStart = 0;
+		}
+		else
+		{
+			unitigStart -= unitigs.leftClip[unitig];
+		}
+		assert(readEnd <= path.readLengthHPC);
+		assert(unitigEnd >= unitigs.leftClip[unitig]);
+		unitigEnd -= unitigs.leftClip[unitig];
+		if (unitigEnd > unitigLengths[unitig])
+		{
+			if (fw)
+			{
+				readEnd -= unitigEnd - unitigLengths[unitig];
+			}
+			else
+			{
+				readStart += unitigEnd - unitigLengths[unitig];
+			}
+			unitigEnd = unitigLengths[unitig];
+		}
+		assert(readEnd <= path.readLengthHPC);
+		assert(readEnd > readStart);
+		assert(unitigEnd > unitigStart);
+		assert(readEnd - readStart == unitigEnd - unitigStart);
+		assert(readEnd <= path.readLengthHPC);
+		result.emplace_back(unitig, readStart, unitigStart, readEnd - readStart, fw, i == 0 ? readi : std::numeric_limits<size_t>::max(), i == path.path.size()-1 ? readi : std::numeric_limits<size_t>::max());
+	}
+	return result;
+}
+
+void initializeHelpers(ConsensusMaker& consensusMaker, std::vector<size_t>& unitigLengths, std::vector<std::vector<size_t>>& bpOffsets, const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<ReadPath>& readPaths, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	bpOffsets.resize(unitigs.unitigs.size());
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
@@ -63,106 +164,6 @@ void initializeHelpers(ConsensusMaker& consensusMaker, std::unordered_map<std::s
 		}
 		assert(offset + kmerSize > unitigs.leftClip[i] + unitigs.rightClip[i]);
 		unitigLengths.push_back(offset + kmerSize - unitigs.leftClip[i] - unitigs.rightClip[i]);
-	}
-	for (size_t readi = 0; readi < readPaths.size(); readi++)
-	{
-		const auto& path = readPaths[readi];
-		if (path.path.size() == 0) continue;
-		size_t pathKmerCount = 0;
-		std::vector<size_t> pathKmerStarts;
-		std::vector<size_t> pathKmerEnds;
-		for (size_t i = 0; i < path.path.size(); i++)
-		{
-			if (i > 0) pathKmerCount -= unitigs.edgeOverlap(path.path[i-1], path.path[i]);
-			pathKmerStarts.push_back(pathKmerCount);
-			pathKmerCount += unitigs.unitigs[path.path[i].id()].size();
-			pathKmerEnds.push_back(pathKmerCount);
-		}
-		assert(pathKmerStarts[0] == 0);
-		assert(pathKmerEnds.back() == pathKmerCount);
-		assert(pathKmerCount == path.readPoses.size() + path.leftClip + path.rightClip);
-		for (size_t i = 0; i < path.path.size(); i++)
-		{
-			size_t wantedStart = pathKmerStarts[i];
-			size_t wantedEnd = pathKmerEnds[i];
-			size_t possibleStart = path.leftClip;
-			size_t possibleEnd = pathKmerCount - path.rightClip;
-			size_t startKmerIndex = 0;
-			size_t endKmerIndex = 0;
-			size_t startPosIndex = 0;
-			size_t endPosIndex = 0;
-			if (wantedStart < possibleStart)
-			{
-				startPosIndex = 0;
-				startKmerIndex = possibleStart - wantedStart;
-			}
-			else
-			{
-				startPosIndex = wantedStart - possibleStart;
-				startKmerIndex = 0;
-			}
-			assert(wantedEnd > wantedStart + startKmerIndex);
-			assert(possibleEnd > possibleStart + startPosIndex);
-			size_t maxMatch = std::min(wantedEnd - wantedStart - startKmerIndex, possibleEnd - possibleStart - startPosIndex);
-			endKmerIndex = startKmerIndex + maxMatch - 1;
-			endPosIndex = startPosIndex + maxMatch - 1;
-			if (!path.path[i].forward())
-			{
-				startKmerIndex = bpOffsets[path.path[i].id()].size() - 1 - startKmerIndex;
-				endKmerIndex = bpOffsets[path.path[i].id()].size() - 1 - endKmerIndex;
-				std::swap(startKmerIndex, endKmerIndex);
-			}
-			assert(i != 0 || startPosIndex == 0);
-			assert(i != path.path.size()-1 || endPosIndex == path.readPoses.size()-1);
-			assert(startKmerIndex <= endKmerIndex);
-			assert(startPosIndex <= endPosIndex);
-			assert(endPosIndex < path.readPoses.size());
-			assert(endKmerIndex < bpOffsets[path.path[i].id()].size());
-			size_t readStart = path.readPoses[startPosIndex];
-			size_t readEnd = path.readPoses[endPosIndex] + kmerSize;
-			assert(readEnd <= path.readLengthHPC);
-			size_t unitigStart = bpOffsets[path.path[i].id()][startKmerIndex];
-			size_t unitigEnd = bpOffsets[path.path[i].id()][endKmerIndex] + kmerSize;
-			size_t unitig = path.path[i].id();
-			bool fw = path.path[i].forward();
-			if (unitigStart < unitigs.leftClip[unitig])
-			{
-				if (fw)
-				{
-					readStart += unitigs.leftClip[unitig] - unitigStart;
-				}
-				else
-				{
-					readEnd -= unitigs.leftClip[unitig] - unitigStart;
-				}
-				unitigStart = 0;
-			}
-			else
-			{
-				unitigStart -= unitigs.leftClip[unitig];
-			}
-			assert(readEnd <= path.readLengthHPC);
-			assert(unitigEnd >= unitigs.leftClip[unitig]);
-			unitigEnd -= unitigs.leftClip[unitig];
-			if (unitigEnd > unitigLengths[unitig])
-			{
-				if (fw)
-				{
-					readEnd -= unitigEnd - unitigLengths[unitig];
-				}
-				else
-				{
-					readStart += unitigEnd - unitigLengths[unitig];
-				}
-				unitigEnd = unitigLengths[unitig];
-			}
-			assert(readEnd <= path.readLengthHPC);
-			assert(readEnd > readStart);
-			assert(unitigEnd > unitigStart);
-			assert(readEnd - readStart == unitigEnd - unitigStart);
-			assert(readEnd <= path.readLengthHPC);
-			matchBlocks[path.readName].emplace_back(unitig, readStart, unitigStart, readEnd - readStart, fw, i == 0 ? readi : std::numeric_limits<size_t>::max(), i == path.path.size()-1 ? readi : std::numeric_limits<size_t>::max());
-		}
 	}
 	consensusMaker.init(unitigLengths);
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
@@ -297,15 +298,24 @@ void initializeHelpers(ConsensusMaker& consensusMaker, std::unordered_map<std::s
 std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, std::vector<ReadPath>& readPaths, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
 {
 	ConsensusMaker consensusMaker;
-	std::unordered_map<std::string, std::vector<std::tuple<size_t, size_t, size_t, size_t, bool, size_t, size_t>>> matchBlocks;
 	std::vector<size_t> unitigLengths;
 	std::vector<std::vector<size_t>> bpOffsets;
-	initializeHelpers(consensusMaker, matchBlocks, unitigLengths, bpOffsets, hashlist, unitigs, readPaths, kmerSize, partIterator, numThreads);
+	initializeHelpers(consensusMaker, unitigLengths, bpOffsets, hashlist, unitigs, readPaths, kmerSize, partIterator, numThreads);
 	std::mutex expandedPosMutex;
-	partIterator.iterateParts([&consensusMaker, &readPaths, &expandedPosMutex, &hashlist, &unitigLengths, &unitigs, &bpOffsets, &matchBlocks, kmerSize](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq)
+	std::unordered_map<std::string, std::vector<size_t>> pathsPerRead;
+	for (size_t i = 0; i < readPaths.size(); i++)
 	{
-		if (matchBlocks.count(read.readName) == 0) return;
-		for (auto block : matchBlocks.at(read.readName))
+		pathsPerRead[readPaths[i].readName].push_back(i);
+	}
+	partIterator.iterateParts([&consensusMaker, &readPaths, &expandedPosMutex, &hashlist, &unitigLengths, &unitigs, &bpOffsets, &pathsPerRead, kmerSize](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq)
+	{
+		std::vector<std::tuple<size_t, size_t, size_t, size_t, bool, size_t, size_t>> matchBlocks;
+		for (size_t pathi : pathsPerRead[read.readName])
+		{
+			auto add = getMatchBlocks(bpOffsets, unitigs, readPaths[pathi], unitigLengths, kmerSize, pathi);
+			matchBlocks.insert(matchBlocks.end(), add.begin(), add.end());
+		}
+		for (auto block : matchBlocks)
 		{
 			size_t unitig = std::get<0>(block);
 			size_t readStartPos = std::get<1>(block);
@@ -334,10 +344,9 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 void getHpcVariants(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<ReadPath>& readPaths, const size_t kmerSize, ReadpartIterator& partIterator, const size_t numThreads, const double minUnitigCoverage, const size_t minVariantCoverage)
 {
 	ConsensusMaker consensusMaker;
-	std::unordered_map<std::string, std::vector<std::tuple<size_t, size_t, size_t, size_t, bool, size_t, size_t>>> matchBlocks;
 	std::vector<size_t> unitigLengths;
 	std::vector<std::vector<size_t>> bpOffsets;
-	initializeHelpers(consensusMaker, matchBlocks, unitigLengths, bpOffsets, hashlist, unitigs, readPaths, kmerSize, partIterator, numThreads);
+	initializeHelpers(consensusMaker, unitigLengths, bpOffsets, hashlist, unitigs, readPaths, kmerSize, partIterator, numThreads);
 	std::vector<bool> checkUnitig;
 	checkUnitig.resize(unitigs.unitigs.size(), false);
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
@@ -351,10 +360,20 @@ void getHpcVariants(const HashList& hashlist, const UnitigGraph& unitigs, const 
 		double coverage = sum / count;
 		if (coverage >= minUnitigCoverage) checkUnitig[i] = true;
 	}
-	partIterator.iterateParts([&consensusMaker, &matchBlocks, &checkUnitig](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq)
+	std::unordered_map<std::string, std::vector<size_t>> pathsPerRead;
+	for (size_t i = 0; i < readPaths.size(); i++)
 	{
-		if (matchBlocks.count(read.readName) == 0) return;
-		for (auto block : matchBlocks.at(read.readName))
+		pathsPerRead[readPaths[i].readName].push_back(i);
+	}
+	partIterator.iterateParts([&consensusMaker, &readPaths, &checkUnitig, &pathsPerRead, &bpOffsets, &unitigs, &unitigLengths, kmerSize](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq)
+	{
+		std::vector<std::tuple<size_t, size_t, size_t, size_t, bool, size_t, size_t>> matchBlocks;
+		for (size_t pathi : pathsPerRead[read.readName])
+		{
+			auto add = getMatchBlocks(bpOffsets, unitigs, readPaths[pathi], unitigLengths, kmerSize, pathi);
+			matchBlocks.insert(matchBlocks.end(), add.begin(), add.end());
+		}
+		for (auto block : matchBlocks)
 		{
 			size_t unitig = std::get<0>(block);
 			if (!checkUnitig[unitig]) continue;
