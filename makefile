@@ -9,10 +9,10 @@ SRCDIR=src
 
 LIBS=`pkg-config --libs zlib`
 
-_DEPS = fastqloader.h CommonUtils.h MBGCommon.h VectorWithDirection.h FastHasher.h SparseEdgeContainer.h HashList.h UnitigGraph.h BluntGraph.h ReadHelper.h HPCConsensus.h ErrorMaskHelper.h CompressedSequence.h ConsensusMaker.h StringIndex.h LittleBigVector.h MostlySparse2DHashmap.h RankBitvector.h TwobitLittleBigVector.h UnitigResolver.h CumulativeVector.h UnitigHelper.h BigVectorSet.h Serializer.h DumbSelect.h MsatValueVector.h Node.h
+_DEPS = fastqloader.h CommonUtils.h MBGCommon.h VectorWithDirection.h FastHasher.h SparseEdgeContainer.h HashList.h UnitigGraph.h BluntGraph.h ReadHelper.h HPCConsensus.h ErrorMaskHelper.h CompressedSequence.h ConsensusMaker.h StringIndex.h LittleBigVector.h MostlySparse2DHashmap.h RankBitvector.h TwobitLittleBigVector.h UnitigResolver.h CumulativeVector.h UnitigHelper.h BigVectorSet.h Serializer.h DumbSelect.h MsatValueVector.h Node.h KmerMatcher.h
 DEPS = $(patsubst %, $(SRCDIR)/%, $(_DEPS))
 
-_OBJ = MBG.o fastqloader.o CommonUtils.o MBGCommon.o FastHasher.o SparseEdgeContainer.o HashList.o UnitigGraph.o BluntGraph.o HPCConsensus.o ErrorMaskHelper.o CompressedSequence.o ConsensusMaker.o StringIndex.o RankBitvector.o UnitigResolver.o UnitigHelper.o BigVectorSet.o ReadHelper.o Serializer.o DumbSelect.o MsatValueVector.o Node.o
+_OBJ = MBG.o fastqloader.o CommonUtils.o MBGCommon.o FastHasher.o SparseEdgeContainer.o HashList.o UnitigGraph.o BluntGraph.o HPCConsensus.o ErrorMaskHelper.o CompressedSequence.o ConsensusMaker.o StringIndex.o RankBitvector.o UnitigResolver.o UnitigHelper.o BigVectorSet.o ReadHelper.o Serializer.o DumbSelect.o MsatValueVector.o Node.o KmerMatcher.o
 OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 
 ifeq ($(PLATFORM),Linux)
