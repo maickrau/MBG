@@ -2077,14 +2077,14 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			{
 				bool bwFake = false;
 				bool fwFake = false;
-				if (triplet.first.first != std::numeric_limits<size_t>::max() && (resolvables.count(triplet.first.first) == 0 || unresolvables.count(triplet.first.first) == 1))
+				if (triplet.first.first != std::numeric_limits<size_t>::max())
 				{
 					if (resolvableGraph.unitigLength(triplet.first.first) == resolvableGraph.getBpOverlap(std::make_pair(node, false), reverse(triplet.first))+1)
 					{
 						bwFake = true;
 					}
 				}
-				if (triplet.second.first != std::numeric_limits<size_t>::max() && (resolvables.count(triplet.second.first) == 0 || unresolvables.count(triplet.second.first) == 1))
+				if (triplet.second.first != std::numeric_limits<size_t>::max())
 				{
 					if (resolvableGraph.unitigLength(triplet.second.first) == resolvableGraph.getBpOverlap(std::make_pair(node, true), triplet.second)+1)
 					{
@@ -3395,7 +3395,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		{
 			if (!resolvableGraph.unitigRemoved[queue.top()])
 			{
-				addPlusOneComponent(resolvableGraph, resolvables, queue.top());
+				// addPlusOneComponent(resolvableGraph, resolvables, queue.top());
 				if (resolvableGraph.edges[std::make_pair(queue.top(), true)].size() >= 2 || resolvableGraph.edges[std::make_pair(queue.top(), false)].size() >= 2)
 				{
 					resolvables.emplace(queue.top());
