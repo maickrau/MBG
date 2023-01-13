@@ -2544,33 +2544,6 @@ void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<PathGro
 	}
 }
 
-size_t getEdgeCoverage(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const std::pair<size_t, bool> from, const std::pair<size_t, bool> to)
-{
-	std::vector<size_t> relevantReads;
-	for (auto read : resolvableGraph.readsCrossingNode[from.first])
-	{
-		if (resolvableGraph.readsCrossingNode[to.first].count(read) == 1) relevantReads.emplace_back(read);
-	}
-	size_t result = 0;
-	for (size_t i : relevantReads)
-	{
-		assert(readPaths[i].path.size() > 0);
-		assert(readPaths[i].reads.size() > 0);
-		for (size_t j = 1; j < readPaths[i].path.size(); j++)
-		{
-			if (readPaths[i].path[j-1] == from && readPaths[i].path[j] == to)
-			{
-				result += readPaths[i].reads.size();
-			}
-			else if (readPaths[i].path[j-1] == reverse(to) && readPaths[i].path[j] == reverse(from))
-			{
-				result += readPaths[i].reads.size();
-			}
-		}
-	}
-	return result;
-}
-
 void removeEdgesAndNodes(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const std::unordered_set<size_t>& removeNodes, const std::unordered_set<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>>& removeEdges)
 {
 	std::unordered_set<size_t> relevantReads;
@@ -2761,7 +2734,9 @@ void removeNode(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& 
 
 struct UntippingResult
 {
+	UntippingResult() = default;
 	size_t nodesRemoved;
+	size_t edgesRemoved;
 	phmap::flat_hash_set<size_t> maybeUnitigifiable;
 };
 
