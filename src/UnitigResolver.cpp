@@ -3629,13 +3629,9 @@ void addPlusOneComponent(const ResolvableUnitigGraph& resolvableGraph, phmap::fl
 		checked.emplace(node);
 		for (auto edge : resolvableGraph.edges[std::make_pair(node, true)])
 		{
-			if (resolvableGraph.unitigLength(node) == resolvableGraph.getBpOverlap(std::make_pair(node, true), edge)+1 || resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(std::make_pair(node, true), edge)+1)
+			if (resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(std::make_pair(node, true), edge)+1)
 			{
-				if (resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(std::make_pair(node, true), edge)+1 && resolvableGraph.unitigLength(edge.first) > maxLength)
-				{
-					return;
-				}
-				if (resolvableGraph.unitigLength(node) == resolvableGraph.getBpOverlap(std::make_pair(node, true), edge)+1 && resolvableGraph.unitigLength(node) > maxLength)
+				if (resolvableGraph.unitigLength(edge.first) > maxLength)
 				{
 					return;
 				}
@@ -3644,13 +3640,9 @@ void addPlusOneComponent(const ResolvableUnitigGraph& resolvableGraph, phmap::fl
 		}
 		for (auto edge : resolvableGraph.edges[std::make_pair(node, false)])
 		{
-			if (resolvableGraph.unitigLength(node) == resolvableGraph.getBpOverlap(std::make_pair(node, false), edge)+1 || resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(std::make_pair(node, false), edge)+1)
+			if (resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(std::make_pair(node, false), edge)+1)
 			{
-				if (resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(std::make_pair(node, false), edge)+1 && resolvableGraph.unitigLength(edge.first) > maxLength)
-				{
-					return;
-				}
-				if (resolvableGraph.unitigLength(node) == resolvableGraph.getBpOverlap(std::make_pair(node, false), edge)+1 && resolvableGraph.unitigLength(node) > maxLength)
+				if (resolvableGraph.unitigLength(edge.first) > maxLength)
 				{
 					return;
 				}
