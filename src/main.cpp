@@ -29,6 +29,7 @@ int main(int argc, char** argv)
 		("hpc-variant-onecopy-coverage", "Separate k-mers based on hpc variants, using arg as single copy coverage", cxxopts::value<double>())
 		("do-unsafe-guesswork-resolutions", "Use extra heuristics during multiplex resolution")
 		("copycount-filter-heuristic", "Use coverage based heuristic filter during multiplex resolution")
+		("only-local-resolve", "Only resolve nodes which are repetitive within a read")
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
@@ -91,6 +92,7 @@ int main(int argc, char** argv)
 	bool guesswork = false;
 	double hpcVariantOnecopyCoverage = 0;
 	bool copycountFilterHeuristic = false;
+	bool onlyLocalResolve = false;
 	std::string errorMaskingStr = "hpc";
 	std::string nodeNamePrefix = "";
 	std::string sequenceCacheFile = "";
@@ -142,6 +144,7 @@ int main(int argc, char** argv)
 	if (params.count("sequence-cache-file") == 1) sequenceCacheFile = params["sequence-cache-file"].as<std::string>();
 	if (params.count("hpc-variant-onecopy-coverage") == 1) hpcVariantOnecopyCoverage = params["hpc-variant-onecopy-coverage"].as<double>();
 	if (params.count("copycount-filter-heuristic") == 1) copycountFilterHeuristic = true;
+	if (params.count("only-local-resolve") == 1) onlyLocalResolve = true;
 
 	if (numThreads == 0)
 	{
@@ -200,8 +203,9 @@ int main(int argc, char** argv)
 	std::cerr << "keepgaps=" << (keepGaps ? "yes" : "no") << ",";
 	std::cerr << "guesswork=" << (guesswork ? "yes" : "no") << ",";
 	std::cerr << "copycountfilter=" << (copycountFilterHeuristic ? "yes" : "no") << ",";
+	std::cerr << "onlylocal=" << (onlyLocalResolve ? "yes" : "no") << ",";
 	std::cerr << "cache=" << (sequenceCacheFile.size() > 0 ? "yes" : "no");
 	std::cerr << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix, sequenceCacheFile, keepGaps, hpcVariantOnecopyCoverage, guesswork, copycountFilterHeuristic);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix, sequenceCacheFile, keepGaps, hpcVariantOnecopyCoverage, guesswork, copycountFilterHeuristic, onlyLocalResolve);
 }

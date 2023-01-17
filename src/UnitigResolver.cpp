@@ -3684,7 +3684,30 @@ void addPlusOneComponent(const ResolvableUnitigGraph& resolvableGraph, phmap::fl
 	resolvables.insert(checked.begin(), checked.end());
 }
 
-void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork, const bool copycountFilterHeuristic)
+phmap::flat_hash_set<size_t> filterToOnlyLocallyRepetitives(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const phmap::flat_hash_set<size_t>& unfilteredResolvables)
+{
+	phmap::flat_hash_set<size_t> result;
+	for (size_t node : unfilteredResolvables)
+	{
+		for (size_t pathi : resolvableGraph.readsCrossingNode[node])
+		{
+			if (readPaths[pathi].path.size() < 2) continue;
+			size_t nodeCount = 0;
+			for (std::pair<size_t, bool> pathnode : readPaths[pathi].path)
+			{
+				if (pathnode.first == node) nodeCount += 1;
+			}
+			if (nodeCount >= 2)
+			{
+				result.insert(node);
+				break;
+			}
+		}
+	}
+	return result;
+}
+
+void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve)
 {
 	checkValidity(resolvableGraph, readPaths);
 	std::priority_queue<size_t, std::vector<size_t>, UnitigLengthComparer> queue { UnitigLengthComparer { resolvableGraph } };
@@ -3727,6 +3750,10 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 			}
 			thisLengthNodes.insert(queue.top());
 			queue.pop();
+		}
+		if (onlyLocalResolve)
+		{
+			resolvables = filterToOnlyLocallyRepetitives(resolvableGraph, readPaths, resolvables);
 		}
 		if (resolvables.size() == 0) continue;
 		assert(resolvables.size() > 0);
@@ -3896,7 +3923,7 @@ bool operator!=(const std::vector<std::pair<size_t, bool>>& left, const std::vec
 	return !(left == right);
 }
 
-std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork, const bool copycountFilterHeuristic)
+std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve)
 {
 	auto resolvableGraph = getUnitigs(initial, minCoverage, hashlist, kmerSize, keepGaps);
 	std::cerr << rawReadPaths.size() << " raw read paths" << std::endl;
@@ -3974,8 +4001,8 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 			unitigifyAll(resolvableGraph, readPaths);
 		}
 	}
-	resolveRound(resolvableGraph, readPaths, hashlist, minCoverage, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic);
-	resolveRound(resolvableGraph, readPaths, hashlist, 1, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic);
+	resolveRound(resolvableGraph, readPaths, hashlist, minCoverage, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, onlyLocalResolve);
+	resolveRound(resolvableGraph, readPaths, hashlist, 1, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, onlyLocalResolve);
 	checkValidity(resolvableGraph, readPaths);
 	return resolvableToUnitigs(resolvableGraph, readPaths, readInfos);
 }
