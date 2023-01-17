@@ -68,7 +68,7 @@ public:
 	VectorWithDirection<phmap::flat_hash_set<std::pair<size_t, bool>>> edges;
 	phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t> overlaps;
 	std::vector<bool> unitigRemoved;
-	std::vector<phmap::flat_hash_set<uint32_t>> readsCrossingNode;
+	std::vector<phmap::flat_hash_set<std::pair<uint32_t, uint32_t>>> readsCrossingNode;
 	std::vector<size_t> everTippable;
 	size_t lastTippableChecked;
 	mutable std::vector<size_t> precalcedUnitigLengths;
@@ -150,8 +150,10 @@ public:
 	double calculateCoverage(const std::vector<PathGroup>& readPaths, size_t unitig) const
 	{
 		double result = 0;
-		for (auto i : readsCrossingNode[unitig])
+		for (const std::pair<uint32_t, uint32_t> pospair : readsCrossingNode[unitig])
 		{
+			const size_t i = pospair.first;
+			const size_t j = pospair.second;
 			assert(readPaths[i].path.size() > 0);
 			assert(readPaths[i].reads.size() > 0);
 			if (readPaths[i].path.size() == 1)
@@ -165,25 +167,21 @@ public:
 			}
 			else
 			{
-				for (size_t j = 0; j < readPaths[i].path.size(); j++)
+				if (j == 0)
 				{
-					if (readPaths[i].path[j].first != unitig) continue;
-					if (j == 0)
+					for (const auto& read : readPaths[i].reads)
 					{
-						for (const auto& read : readPaths[i].reads)
-						{
-							assert(read.leftClip < unitigs[unitig].size());
-							result += (double)(unitigs[unitig].size() - read.leftClip) / (double)(unitigs[unitig].size());
-						}
+						assert(read.leftClip < unitigs[unitig].size());
+						result += (double)(unitigs[unitig].size() - read.leftClip) / (double)(unitigs[unitig].size());
 					}
-					if (j > 0 && j < readPaths[i].path.size()-1) result += readPaths[i].reads.size();
-					if (j == readPaths[i].path.size()-1)
+				}
+				if (j > 0 && j < readPaths[i].path.size()-1) result += readPaths[i].reads.size();
+				if (j == readPaths[i].path.size()-1)
+				{
+					for (const auto& read : readPaths[i].reads)
 					{
-						for (const auto& read : readPaths[i].reads)
-						{
-							assert(read.rightClip < unitigs[unitig].size());
-							result += (double)(unitigs[unitig].size() - read.rightClip) / (double)(unitigs[unitig].size());
-						}
+						assert(read.rightClip < unitigs[unitig].size());
+						result += (double)(unitigs[unitig].size() - read.rightClip) / (double)(unitigs[unitig].size());
 					}
 				}
 			}
@@ -199,9 +197,9 @@ void printReads(const ResolvableUnitigGraph& graph, const std::vector<PathGroup>
 	std::unordered_set<size_t> closeReads;
 	std::unordered_set<size_t> semiCloseReads;
 	std::cerr << "around center node " << node << std::endl;
-	for (auto readi : graph.readsCrossingNode[node])
+	for (const std::pair<uint32_t, uint32_t> pospair : graph.readsCrossingNode[node])
 	{
-		for (auto read : paths[readi].reads)
+		for (const auto read : paths[pospair.first].reads)
 		{
 			if (closeReads.count(read.readNameIndex) == 1) continue;
 			std::cerr << "Read close to assertion: " << graph.readNames[read.readNameIndex] << std::endl;
@@ -211,9 +209,9 @@ void printReads(const ResolvableUnitigGraph& graph, const std::vector<PathGroup>
 	for (auto edge : graph.edges[std::make_pair(node, true)])
 	{
 		std::cerr << "around edge node " << edge.first << std::endl;
-		for (auto readi : graph.readsCrossingNode[edge.first])
+		for (const std::pair<uint32_t, uint32_t> pospair : graph.readsCrossingNode[edge.first])
 		{
-			for (auto read : paths[readi].reads)
+			for (const auto read : paths[pospair.first].reads)
 			{
 				if (closeReads.count(read.readNameIndex) == 1 || semiCloseReads.count(read.readNameIndex) == 1) continue;
 				std::cerr << "Read semi-close to assertion: " << graph.readNames[read.readNameIndex] << std::endl;
@@ -224,9 +222,9 @@ void printReads(const ResolvableUnitigGraph& graph, const std::vector<PathGroup>
 	for (auto edge : graph.edges[std::make_pair(node, false)])
 	{
 		std::cerr << "around edge node " << edge.first << std::endl;
-		for (auto readi : graph.readsCrossingNode[edge.first])
+		for (const std::pair<uint32_t, uint32_t> pospair : graph.readsCrossingNode[edge.first])
 		{
-			for (auto read : paths[readi].reads)
+			for (auto read : paths[pospair.first].reads)
 			{
 				if (closeReads.count(read.readNameIndex) == 1 || semiCloseReads.count(read.readNameIndex) == 1) continue;
 				std::cerr << "Read semi-close to assertion: " << graph.readNames[read.readNameIndex] << std::endl;
@@ -239,7 +237,7 @@ void printReads(const ResolvableUnitigGraph& graph, const std::vector<PathGroup>
 void compact(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& paths, std::vector<size_t>& queueNodes)
 {
 	{
-		std::vector<phmap::flat_hash_set<uint32_t>> tmp;
+		decltype(resolvableGraph.readsCrossingNode) tmp;
 		std::swap(resolvableGraph.readsCrossingNode, tmp);
 	}
 	RankBitvector kept { resolvableGraph.unitigs.size() };
@@ -394,9 +392,9 @@ void compact(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& pat
 	resolvableGraph.readsCrossingNode.resize(newSize);
 	for (size_t i = 0; i < paths.size(); i++)
 	{
-		for (auto pair : paths[i].path)
+		for (size_t j = 0; j < paths[i].path.size(); j++)
 		{
-			resolvableGraph.readsCrossingNode[pair.first].insert(i);
+			resolvableGraph.readsCrossingNode[paths[i].path[j].first].emplace(i, j);
 		}
 	}
 	for (size_t i = 0; i < resolvableGraph.unitigRemoved.size(); i++)
@@ -795,10 +793,10 @@ std::vector<std::pair<size_t, bool>> extend(const ResolvableUnitigGraph& resolva
 void erasePath(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const size_t i)
 {
 	assert(readPaths[i].path.size() > 0);
-	for (auto node : readPaths[i].path)
+	for (size_t j = 0; j < readPaths[i].path.size(); j++)
 	{
-		if (resolvableGraph.readsCrossingNode[node.first].count(i) == 1) resolvableGraph.readsCrossingNode[node.first].erase(i);
-		if (resolvableGraph.precalcedUnitigCoverages.size() > node.first) resolvableGraph.precalcedUnitigCoverages[node.first] = 0;
+		resolvableGraph.readsCrossingNode[readPaths[i].path[j].first].erase(std::make_pair(i, j));
+		if (resolvableGraph.precalcedUnitigCoverages.size() > readPaths[i].path[j].first) resolvableGraph.precalcedUnitigCoverages[readPaths[i].path[j].first] = 0;
 	}
 	readPaths[i].path.clear();
 	readPaths[i].reads.clear();
@@ -868,10 +866,10 @@ void addPath(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& rea
 		}
 	}
 	size_t newIndex = readPaths.size();
-	for (auto pos : newPath.path)
+	for (size_t j = 0; j < newPath.path.size(); j++)
 	{
-		resolvableGraph.readsCrossingNode[pos.first].insert(newIndex);
-		if (resolvableGraph.precalcedUnitigCoverages.size() > pos.first) resolvableGraph.precalcedUnitigCoverages[pos.first] = 0;
+		resolvableGraph.readsCrossingNode[newPath.path[j].first].emplace(newIndex, j);
+		if (resolvableGraph.precalcedUnitigCoverages.size() > newPath.path[j].first) resolvableGraph.precalcedUnitigCoverages[newPath.path[j].first] = 0;
 	}
 	readPaths.emplace_back(std::move(newPath));
 }
@@ -1029,7 +1027,7 @@ void replacePathNodes(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGr
 		{
 			for (auto pos : newUnitigs[i].first)
 			{
-				relevantReads.insert(resolvableGraph.readsCrossingNode[pos.first].begin(), resolvableGraph.readsCrossingNode[pos.first].end());
+				for (auto pospair : resolvableGraph.readsCrossingNode[pos.first]) relevantReads.insert(pospair.first);
 			}
 		}
 	}
@@ -1540,12 +1538,15 @@ size_t getTrimAmountToCheck(const ResolvableUnitigGraph& resolvableGraph, const 
 std::vector<ResolveTriplet> getRawTriplets(const ResolvableUnitigGraph& resolvableGraph, const phmap::flat_hash_set<size_t>& resolvables, const std::vector<PathGroup>& readPaths, size_t node, size_t minCoverage, bool partTriplets)
 {
 	phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t> tripletCoverage;
-	for (const size_t i : resolvableGraph.readsCrossingNode[node])
+	for (const std::pair<uint32_t, uint32_t> pospair : resolvableGraph.readsCrossingNode[node])
 	{
+		const size_t i = pospair.first;
+		const size_t j = pospair.second;
 		if (readPaths[i].path.size() == 0) continue;
 		if (readPaths[i].path.size() == 1) continue;
 		if (readPaths[i].reads.size() == 0) continue;
-		if (readPaths[i].path[0].first == node && resolvableGraph.edges[reverse(readPaths[i].path[0])].size() == 0)
+		assert(readPaths[i].path[j].first == node);
+		if (j == 0 && resolvableGraph.edges[reverse(readPaths[i].path[0])].size() == 0)
 		{
 			std::pair<size_t, bool> left { std::numeric_limits<size_t>::max(), true };
 			std::pair<size_t, bool> right { std::numeric_limits<size_t>::max(), true };
@@ -1580,7 +1581,7 @@ std::vector<ResolveTriplet> getRawTriplets(const ResolvableUnitigGraph& resolvab
 				tripletCoverage[std::make_pair(left, right)] += coverageHere;
 			}
 		}
-		if (readPaths[i].path.back().first == node && resolvableGraph.edges[readPaths[i].path.back()].size() == 0)
+		if (j == readPaths[i].path.size()-1 && resolvableGraph.edges[readPaths[i].path.back()].size() == 0)
 		{
 			std::pair<size_t, bool> left { std::numeric_limits<size_t>::max(), true };
 			std::pair<size_t, bool> right { std::numeric_limits<size_t>::max(), true };
@@ -1615,9 +1616,8 @@ std::vector<ResolveTriplet> getRawTriplets(const ResolvableUnitigGraph& resolvab
 				tripletCoverage[std::make_pair(left, right)] += coverageHere;
 			}
 		}
-		for (size_t j = 1; j < readPaths[i].path.size()-1; j++)
+		if (j > 0 && j < readPaths[i].path.size()-1)
 		{
-			if (readPaths[i].path[j].first != node) continue;
 			std::pair<size_t, bool> left;
 			std::pair<size_t, bool> right;
 			if (readPaths[i].path[j].second)
@@ -1671,11 +1671,13 @@ std::vector<ResolveTriplet> getRawTriplets(const ResolvableUnitigGraph& resolvab
 	{
 		std::unordered_map<size_t, std::pair<size_t, std::pair<size_t, size_t>>> fwReads;
 		std::unordered_map<size_t, std::pair<size_t, std::pair<size_t, size_t>>> bwReads;
-		for (const size_t i : resolvableGraph.readsCrossingNode[node])
+		for (const std::pair<uint32_t, uint32_t> pospair : resolvableGraph.readsCrossingNode[node])
 		{
+			const size_t i = pospair.first;
+			const size_t j = pospair.second;
 			if (readPaths[i].path.size() < 2) continue;
 			if (readPaths[i].path[0].first == node && readPaths[i].path.back().first == node) continue;
-			if (readPaths[i].path[0].first == node)
+			if (j == 0)
 			{
 				for (const auto& read : readPaths[i].reads)
 				{
@@ -1689,7 +1691,7 @@ std::vector<ResolveTriplet> getRawTriplets(const ResolvableUnitigGraph& resolvab
 					}
 				}
 			}
-			if (readPaths[i].path.back().first == node)
+			if (j == readPaths[i].path.size()-1)
 			{
 				for (const auto& read : readPaths[i].reads)
 				{
@@ -1831,34 +1833,32 @@ std::vector<ResolveTriplet> getReadSupportedTriplets(const ResolvableUnitigGraph
 size_t getAnchorSize(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const std::pair<size_t, bool> from, const std::pair<size_t, bool> to)
 {
 	size_t result = 0;
-	for (auto readi : resolvableGraph.readsCrossingNode[from.first])
+	for (const std::pair<uint32_t, uint32_t> pospair : resolvableGraph.readsCrossingNode[from.first])
 	{
-		if (resolvableGraph.readsCrossingNode[to.first].count(readi) == 0) continue;
-		for (size_t i = 1; i < readPaths[readi].path.size(); i++)
+		const size_t readi = pospair.first;
+		const size_t i = pospair.second;
+		if (i < readPaths[readi].path.size()-1 && readPaths[readi].path[i] == from && readPaths[readi].path[i+1] == to)
 		{
-			if (readPaths[readi].path[i-1] == from && readPaths[readi].path[i] == to)
+			if (i < readPaths[readi].path.size()-2)
 			{
-				if (i < readPaths[readi].path.size()-1)
-				{
-					return resolvableGraph.unitigs[to.first].size();
-				}
-				for (const auto& path : readPaths[readi].reads)
-				{
-					assert(path.rightClip < resolvableGraph.unitigs[to.first].size());
-					result = std::max(result, resolvableGraph.unitigs[to.first].size() - path.rightClip);
-				}
+				return resolvableGraph.unitigs[to.first].size();
 			}
-			if (readPaths[readi].path[i-1] == reverse(to) && readPaths[readi].path[i] == reverse(from))
+			for (const auto& path : readPaths[readi].reads)
 			{
-				if (i > 1)
-				{
-					return resolvableGraph.unitigs[to.first].size();
-				}
-				for (const auto& path : readPaths[readi].reads)
-				{
-					assert(path.leftClip < resolvableGraph.unitigs[to.first].size());
-					result = std::max(result, resolvableGraph.unitigs[to.first].size() - path.leftClip);
-				}
+				assert(path.rightClip < resolvableGraph.unitigs[to.first].size());
+				result = std::max(result, resolvableGraph.unitigs[to.first].size() - path.rightClip);
+			}
+		}
+		if (i > 0 && readPaths[readi].path[i-1] == reverse(to) && readPaths[readi].path[i] == reverse(from))
+		{
+			if (i > 1)
+			{
+				return resolvableGraph.unitigs[to.first].size();
+			}
+			for (const auto& path : readPaths[readi].reads)
+			{
+				assert(path.leftClip < resolvableGraph.unitigs[to.first].size());
+				result = std::max(result, resolvableGraph.unitigs[to.first].size() - path.leftClip);
 			}
 		}
 	}
@@ -2075,7 +2075,7 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 	phmap::flat_hash_set<size_t> relevantReads;
 	for (const auto node : actuallyResolvables)
 	{
-		relevantReads.insert(resolvableGraph.readsCrossingNode[node].begin(), resolvableGraph.readsCrossingNode[node].end());
+		for (const auto pospair : resolvableGraph.readsCrossingNode[node]) relevantReads.insert(pospair.first);
 	}
 	for (const size_t i : relevantReads)
 	{
@@ -2692,26 +2692,18 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 
 size_t getEdgeCoverage(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const std::pair<size_t, bool> from, const std::pair<size_t, bool> to)
 {
-	std::vector<size_t> relevantReads;
-	for (auto read : resolvableGraph.readsCrossingNode[from.first])
-	{
-		if (resolvableGraph.readsCrossingNode[to.first].count(read) == 1) relevantReads.emplace_back(read);
-	}
 	size_t result = 0;
-	for (size_t i : relevantReads)
+	for (const std::pair<uint32_t, uint32_t> pospair : resolvableGraph.readsCrossingNode[from.first])
 	{
-		assert(readPaths[i].path.size() > 0);
-		assert(readPaths[i].reads.size() > 0);
-		for (size_t j = 1; j < readPaths[i].path.size(); j++)
+		const size_t i = pospair.first;
+		const size_t j = pospair.second;
+		if (j < readPaths[i].path.size()-1 && readPaths[i].path[j] == from && readPaths[i].path[j+1] == to)
 		{
-			if (readPaths[i].path[j-1] == from && readPaths[i].path[j] == to)
-			{
-				result += readPaths[i].reads.size();
-			}
-			else if (readPaths[i].path[j-1] == reverse(to) && readPaths[i].path[j] == reverse(from))
-			{
-				result += readPaths[i].reads.size();
-			}
+			result += readPaths[i].reads.size();
+		}
+		if (j > 0 && readPaths[i].path[j] == reverse(from) && readPaths[i].path[j-1] == reverse(to))
+		{
+			result += readPaths[i].reads.size();
 		}
 	}
 	return result;
@@ -2882,8 +2874,8 @@ void removeEdgesAndNodes(ResolvableUnitigGraph& resolvableGraph, std::vector<Pat
 		{
 			assert(resolvableGraph.edges[reverse(edge.second)].count(reverse(edge.first)) == 0);
 		}
-		relevantReads.insert(resolvableGraph.readsCrossingNode[edge.first.first].begin(), resolvableGraph.readsCrossingNode[edge.first.first].end());
-		relevantReads.insert(resolvableGraph.readsCrossingNode[edge.second.first].begin(), resolvableGraph.readsCrossingNode[edge.second.first].end());
+		for (const auto pospair : resolvableGraph.readsCrossingNode[edge.first.first]) relevantReads.insert(pospair.first);
+		for (const auto pospair : resolvableGraph.readsCrossingNode[edge.second.first]) relevantReads.insert(pospair.first);
 	}
 	for (auto node : removeNodes)
 	{
@@ -2902,7 +2894,7 @@ void removeEdgesAndNodes(ResolvableUnitigGraph& resolvableGraph, std::vector<Pat
 		}
 		resolvableGraph.edges[std::make_pair(node, true)].clear();
 		resolvableGraph.edges[std::make_pair(node, false)].clear();
-		relevantReads.insert(resolvableGraph.readsCrossingNode[node].begin(), resolvableGraph.readsCrossingNode[node].end());
+		for (const auto pospair : resolvableGraph.readsCrossingNode[node]) relevantReads.insert(pospair.first);
 	}
 	std::vector<size_t> relevantReadsDeterministic { relevantReads.begin(), relevantReads.end() };
 	std::sort(relevantReadsDeterministic.begin(), relevantReadsDeterministic.end());
@@ -3467,29 +3459,27 @@ bool canTrimRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGr
 		}
 	}
 	size_t maxReadTrim = resolvableGraph.unitigs[pos.first].size();
-	for (const size_t i : resolvableGraph.readsCrossingNode[pos.first])
+	for (const std::pair<uint32_t, uint32_t> pospair : resolvableGraph.readsCrossingNode[pos.first])
 	{
-		for (size_t j = 0; j < readPaths[i].path.size(); j++)
+		const size_t i = pospair.first;
+		const size_t j = pospair.second;
+		if (j == 0 && readPaths[i].path[j] == reverse(pos))
 		{
-			if (readPaths[i].path[j].first != pos.first) continue;
-			if (j == 0 && readPaths[i].path[j] == reverse(pos))
+			for (size_t k = 0; k < readPaths[i].reads.size(); k++)
 			{
-				for (size_t k = 0; k < readPaths[i].reads.size(); k++)
-				{
-					maxReadTrim = std::min(maxReadTrim, readPaths[i].reads[k].leftClip);
-				}
+				maxReadTrim = std::min(maxReadTrim, readPaths[i].reads[k].leftClip);
 			}
-			else if (j == readPaths[i].path.size()-1 && readPaths[i].path[j] == pos)
+		}
+		else if (j == readPaths[i].path.size()-1 && readPaths[i].path[j] == pos)
+		{
+			for (size_t k = 0; k < readPaths[i].reads.size(); k++)
 			{
-				for (size_t k = 0; k < readPaths[i].reads.size(); k++)
-				{
-					maxReadTrim = std::min(maxReadTrim, readPaths[i].reads[k].rightClip);
-				}
+				maxReadTrim = std::min(maxReadTrim, readPaths[i].reads[k].rightClip);
 			}
-			else
-			{
-				maxReadTrim = 0;
-			}
+		}
+		else
+		{
+			maxReadTrim = 0;
 		}
 		if (maxReadTrim == 0) break;
 	}
@@ -3535,31 +3525,29 @@ void trimEndRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGr
 		resolvableGraph.unitigs[pos.first].erase(resolvableGraph.unitigs[pos.first].begin(), resolvableGraph.unitigs[pos.first].begin() + trimAmount);
 		resolvableGraph.unitigLeftClipBp[pos.first] = 0;
 	}
-	for (const size_t i : resolvableGraph.readsCrossingNode[pos.first])
+	for (const std::pair<uint32_t, uint32_t> pospair : resolvableGraph.readsCrossingNode[pos.first])
 	{
-		for (size_t j = 0; j < readPaths[i].path.size(); j++)
+		const size_t i = pospair.first;
+		const size_t j = pospair.second;
+		if (j == 0 && readPaths[i].path[j] == reverse(pos))
 		{
-			if (readPaths[i].path[j].first != pos.first) continue;
-			if (j == 0 && readPaths[i].path[j] == reverse(pos))
+			for (size_t k = 0; k < readPaths[i].reads.size(); k++)
 			{
-				for (size_t k = 0; k < readPaths[i].reads.size(); k++)
-				{
-					assert(readPaths[i].reads[k].leftClip >= trimAmount);
-					readPaths[i].reads[k].leftClip -= trimAmount;
-				}
+				assert(readPaths[i].reads[k].leftClip >= trimAmount);
+				readPaths[i].reads[k].leftClip -= trimAmount;
 			}
-			else if (j == readPaths[i].path.size()-1 && readPaths[i].path[j] == pos)
+		}
+		else if (j == readPaths[i].path.size()-1 && readPaths[i].path[j] == pos)
+		{
+			for (size_t k = 0; k < readPaths[i].reads.size(); k++)
 			{
-				for (size_t k = 0; k < readPaths[i].reads.size(); k++)
-				{
-					assert(readPaths[i].reads[k].rightClip >= trimAmount);
-					readPaths[i].reads[k].rightClip -= trimAmount;
-				}
+				assert(readPaths[i].reads[k].rightClip >= trimAmount);
+				readPaths[i].reads[k].rightClip -= trimAmount;
 			}
-			else
-			{
-				assert(false);
-			}
+		}
+		else
+		{
+			assert(false);
 		}
 	}
 }
@@ -3571,29 +3559,27 @@ void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& r
 	assertPrintReads(!resolvableGraph.unitigRemoved[pos.first], resolvableGraph, readPaths, pos.first);
 	size_t maxReadTrim = resolvableGraph.unitigs[pos.first].size();
 	assertPrintReads(resolvableGraph.readsCrossingNode[pos.first].size() > 0, resolvableGraph, readPaths, pos.first);
-	for (const size_t i : resolvableGraph.readsCrossingNode[pos.first])
+	for (const std::pair<uint32_t, uint32_t> pospair : resolvableGraph.readsCrossingNode[pos.first])
 	{
-		for (size_t j = 0; j < readPaths[i].path.size(); j++)
+		const size_t i = pospair.first;
+		const size_t j = pospair.second;
+		if (j == 0 && readPaths[i].path[j] == reverse(pos))
 		{
-			if (readPaths[i].path[j].first != pos.first) continue;
-			if (j == 0 && readPaths[i].path[j] == reverse(pos))
+			for (size_t k = 0; k < readPaths[i].reads.size(); k++)
 			{
-				for (size_t k = 0; k < readPaths[i].reads.size(); k++)
-				{
-					maxReadTrim = std::min(maxReadTrim, readPaths[i].reads[k].leftClip);
-				}
+				maxReadTrim = std::min(maxReadTrim, readPaths[i].reads[k].leftClip);
 			}
-			else if (j == readPaths[i].path.size()-1 && readPaths[i].path[j] == pos)
+		}
+		else if (j == readPaths[i].path.size()-1 && readPaths[i].path[j] == pos)
+		{
+			for (size_t k = 0; k < readPaths[i].reads.size(); k++)
 			{
-				for (size_t k = 0; k < readPaths[i].reads.size(); k++)
-				{
-					maxReadTrim = std::min(maxReadTrim, readPaths[i].reads[k].rightClip);
-				}
+				maxReadTrim = std::min(maxReadTrim, readPaths[i].reads[k].rightClip);
 			}
-			else
-			{
-				maxReadTrim = 0;
-			}
+		}
+		else
+		{
+			maxReadTrim = 0;
 		}
 		if (maxReadTrim == 0) break;
 	}
@@ -3689,8 +3675,9 @@ phmap::flat_hash_set<size_t> filterToOnlyLocallyRepetitives(const ResolvableUnit
 	phmap::flat_hash_set<size_t> result;
 	for (size_t node : unfilteredResolvables)
 	{
-		for (size_t pathi : resolvableGraph.readsCrossingNode[node])
+		for (const std::pair<uint32_t, uint32_t> pospair : resolvableGraph.readsCrossingNode[node])
 		{
+			const size_t pathi = pospair.first;
 			if (readPaths[pathi].path.size() < 2) continue;
 			size_t nodeCount = 0;
 			for (std::pair<size_t, bool> pathnode : readPaths[pathi].path)
@@ -3942,9 +3929,9 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 			{
 				readPaths.emplace_back();
 				readPaths.back().path.insert(readPaths.back().path.end(), rawReadPaths[i].path.begin(), rawReadPaths[i].path.end());
-				for (auto pos : rawReadPaths[i].path)
+				for (size_t j = 0; j < rawReadPaths[i].path.size(); j++)
 				{
-					resolvableGraph.readsCrossingNode[pos.id()].insert(readPaths.size()-1);
+					resolvableGraph.readsCrossingNode[rawReadPaths[i].path[j].id()].emplace(readPaths.size()-1, j);
 				}
 			}
 			assert(readPaths.size() > 0);
