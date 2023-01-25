@@ -3706,9 +3706,8 @@ void trimNodes(std::vector<std::pair<std::pair<size_t, bool>, size_t>> maybeTrim
 	}
 }
 
-void addPlusOneComponent(const ResolvableUnitigGraph& resolvableGraph, phmap::flat_hash_set<size_t>& resolvables, size_t startNode)
+void addPlusOneComponent(const ResolvableUnitigGraph& resolvableGraph, phmap::flat_hash_set<size_t>& resolvables, size_t startNode, size_t maxLength)
 {
-	size_t maxLength = resolvableGraph.unitigLength(startNode);
 	phmap::flat_hash_set<size_t> checked;
 	std::vector<size_t> checkQueue;
 	checkQueue.push_back(startNode);
@@ -3743,6 +3742,25 @@ void addPlusOneComponent(const ResolvableUnitigGraph& resolvableGraph, phmap::fl
 	}
 	if (checked.size() == 1) return;
 	resolvables.insert(checked.begin(), checked.end());
+}
+
+bool isLocallyRepetitive(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const size_t node)
+{
+	for (const std::pair<uint32_t, uint32_t> pospair : resolvableGraph.iterateCrossingReads(node, readPaths))
+	{
+		const size_t pathi = pospair.first;
+		if (readPaths[pathi].path.size() < 2) continue;
+		size_t nodeCount = 0;
+		for (std::pair<size_t, bool> pathnode : readPaths[pathi].path)
+		{
+			if (pathnode.first == node) nodeCount += 1;
+		}
+		if (nodeCount >= 2)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 phmap::flat_hash_set<size_t> filterToOnlyLocallyRepetitives(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const phmap::flat_hash_set<size_t>& unfilteredResolvables)
@@ -3792,7 +3810,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		{
 			if (!resolvableGraph.unitigRemoved[queue.top()])
 			{
-				addPlusOneComponent(resolvableGraph, resolvables, queue.top());
+				addPlusOneComponent(resolvableGraph, resolvables, queue.top(), topSize);
 				if (resolvableGraph.edges[std::make_pair(queue.top(), true)].size() >= 2 || resolvableGraph.edges[std::make_pair(queue.top(), false)].size() >= 2)
 				{
 					resolvables.emplace(queue.top());
@@ -3816,6 +3834,11 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		if (onlyLocalResolve)
 		{
 			resolvables = filterToOnlyLocallyRepetitives(resolvableGraph, readPaths, resolvables);
+			auto oldResolvables = resolvables;
+			for (auto node : oldResolvables)
+			{
+				addPlusOneComponent(resolvableGraph, resolvables, node, topSize);
+			}
 		}
 		if (resolvables.size() == 0) continue;
 		assert(resolvables.size() > 0);
