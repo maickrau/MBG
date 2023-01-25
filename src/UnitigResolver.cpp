@@ -97,6 +97,21 @@ public:
 		}
 		return *this;
 	}
+	void skipRemovedPaths()
+	{
+		while (index > 0 && (paths[vec[index].first].path.size() == 0 || paths[vec[index].first].reads.size() == 0))
+		{
+			std::swap(vec[index], vec.back());
+			vec.pop_back();
+			index--;
+		}
+		if (index == 0 && (paths[vec[index].first].path.size() == 0 || paths[vec[index].first].reads.size() == 0))
+		{
+			std::swap(vec[index], vec.back());
+			vec.pop_back();
+			index = std::numeric_limits<size_t>::max();
+		}
+	}
 private:
 	size_t index;
 	std::vector<std::pair<uint32_t, uint32_t>>& vec;
@@ -113,7 +128,9 @@ public:
 	}
 	ReadCrosserIterator begin()
 	{
-		return ReadCrosserIterator { vec.size()-1, vec, paths };
+		auto result = ReadCrosserIterator { vec.size()-1, vec, paths };
+		result.skipRemovedPaths();
+		return result;
 	}
 	ReadCrosserIterator end()
 	{
