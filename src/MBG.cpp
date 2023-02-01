@@ -111,28 +111,9 @@ void updatePathRemaining(size_t& rleRemaining, size_t& expanded, bool fw, const 
 	}
 }
 
-void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const std::vector<ReadPath>& readPaths, const size_t kmerSize, const std::string& outputSequencePaths, const std::string& nodeNamePrefix)
+void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const std::vector<DumbSelect>& unitigExpandedPoses, const std::vector<ReadPath>& readPaths, const size_t kmerSize, const std::string& outputSequencePaths, const std::string& nodeNamePrefix)
 {
 	std::ofstream outPaths { outputSequencePaths };
-	std::vector<DumbSelect> unitigExpandedPoses;
-	unitigExpandedPoses.reserve(unitigSequences.size());
-	for (size_t i = 0; i < unitigSequences.size(); ++i)
-	{
-		size_t sizeHere = 0;
-		for (size_t j = 0; j < unitigSequences[i].compressedSize(); j++)
-		{
-			sizeHere += unitigSequences[i].getExpandedStr(j, stringIndex).size();
-		}
-		unitigExpandedPoses.emplace_back(sizeHere+1);
-		size_t posNow = 0;
-		for (size_t j = 0; j < unitigSequences[i].compressedSize(); j++)
-		{
-			posNow += unitigSequences[i].getExpandedStr(j, stringIndex).size();
-			unitigExpandedPoses.back().bitvector.set(posNow, true);
-		}
-		assert(posNow == sizeHere);
-		unitigExpandedPoses.back().build();
-	}
 	for (const auto& path : readPaths)
 	{
 		if (path.path.size() == 0) continue;
@@ -1329,7 +1310,131 @@ void sortPaths(std::vector<ReadPath>& readPaths)
 	});
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile, const bool keepGaps, const double hpcVariantOnecopyCoverage, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve)
+void outputNodeHomology(const HashList& reads, const UnitigGraph& unitigGraph, const size_t kmerSize, const std::vector<std::vector<size_t>>& kmerStartPositions, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const std::vector<DumbSelect>& unitigExpandedPoses, std::ostream& output, std::pair<size_t, size_t> leftPosition, std::pair<size_t, size_t> rightPosition)
+{
+	assert(unitigGraph.unitigs[leftPosition.first][leftPosition.second].first == unitigGraph.unitigs[rightPosition.first][rightPosition.second].first);
+	bool matchFw = unitigGraph.unitigs[leftPosition.first][leftPosition.second].second == unitigGraph.unitigs[rightPosition.first][rightPosition.second].second;
+	size_t leftCompressedStart = kmerStartPositions[leftPosition.first][leftPosition.second];
+	size_t leftCompressedEnd = leftCompressedStart + kmerSize - 1;
+	size_t rightCompressedStart = kmerStartPositions[rightPosition.first][rightPosition.second];
+	size_t rightCompressedEnd = rightCompressedStart + kmerSize - 1;
+	size_t leftExpandedStart = unitigExpandedPoses[leftPosition.first].selectOne(leftCompressedStart);
+	size_t leftExpandedEnd = unitigExpandedPoses[leftPosition.first].selectOne(leftCompressedEnd+1)-1;
+	output << ">" << leftPosition.first+1 << "\t" << leftExpandedStart << "\t" << leftExpandedEnd << "\t";
+	size_t rightExpandedStart;
+	size_t rightExpandedEnd;
+	if (matchFw)
+	{
+		rightExpandedStart = unitigExpandedPoses[rightPosition.first].selectOne(rightCompressedStart);
+		rightExpandedEnd = unitigExpandedPoses[rightPosition.first].selectOne(rightCompressedEnd+1)-1;
+		output << ">" << rightPosition.first+1 << "\t" << rightExpandedStart << "\t" << rightExpandedEnd << std::endl;
+	}
+	else
+	{
+		rightExpandedStart = unitigExpandedPoses[rightPosition.first].selectOne(rightCompressedStart);
+		rightExpandedEnd = unitigExpandedPoses[rightPosition.first].selectOne(rightCompressedEnd+1)-1;
+		rightExpandedStart = unitigExpandedPoses[rightPosition.first].size() - 1 - 1 - rightExpandedStart; //unitigExpandedPoses.size() is one bigger than the real size
+		rightExpandedEnd = unitigExpandedPoses[rightPosition.first].size() - 1 - 1 - rightExpandedEnd;
+		std::swap(rightExpandedStart, rightExpandedEnd);
+		output << "<" << rightPosition.first+1 << "\t" << rightExpandedStart << "\t" << rightExpandedEnd << std::endl;
+	}
+}
+
+void writeHomologyMap(const HashList& reads, const UnitigGraph& unitigGraph, const size_t kmerSize, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const std::vector<DumbSelect>& unitigExpandedPoses, const std::string& outputFile)
+{
+	const std::pair<size_t, size_t> unassigned = std::make_pair(std::numeric_limits<size_t>::max(), 0);
+	const std::pair<size_t, size_t> repetitive = std::make_pair(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max());
+	std::vector<std::vector<size_t>> kmerStartPositions;
+	kmerStartPositions.resize(unitigGraph.unitigs.size());
+	for (size_t i = 0; i < unitigGraph.unitigs.size(); i++)
+	{
+		kmerStartPositions[i].reserve(unitigGraph.unitigs[i].size());
+		kmerStartPositions[i].push_back(0);
+		for (size_t j = 1; j < unitigGraph.unitigs[i].size(); j++)
+		{
+			kmerStartPositions[i].push_back(kmerStartPositions[i].back() + kmerSize - reads.getOverlap(unitigGraph.unitigs[i][j-1], unitigGraph.unitigs[i][j]));
+			if (j == 1 && unitigGraph.leftClip[i] > 0)
+			{
+				kmerStartPositions[i].back() -= unitigGraph.leftClip[i];
+			}
+		}
+	}
+	std::vector<std::pair<std::pair<size_t, size_t>, std::pair<size_t, size_t>>> uniqueKmerPosition;
+	uniqueKmerPosition.resize(reads.size(), std::make_pair(unassigned, unassigned));
+	for (size_t i = 0; i < unitigGraph.unitigs.size(); i++)
+	{
+		for (size_t j = 0; j < unitigGraph.unitigs[i].size(); j++)
+		{
+			size_t kmer = unitigGraph.unitigs[i][j].first;
+			if (uniqueKmerPosition[kmer].second != unassigned)
+			{
+				uniqueKmerPosition[kmer] = std::make_pair(repetitive, repetitive);
+			}
+			else if (uniqueKmerPosition[kmer].first == unassigned)
+			{
+				uniqueKmerPosition[kmer].first = std::make_pair(i, j);
+			}
+			else
+			{
+				assert(uniqueKmerPosition[kmer].second == unassigned);
+				uniqueKmerPosition[kmer].second = std::make_pair(i, j);
+			}
+			if (unitigGraph.leftClip[i] > 0 && j == 0)
+			{
+				uniqueKmerPosition[kmer] = std::make_pair(repetitive, repetitive);
+			}
+			if (unitigGraph.rightClip[i] > 0 && j == unitigGraph.unitigs[i].size()-1)
+			{
+				uniqueKmerPosition[kmer] = std::make_pair(repetitive, repetitive);
+			}
+		}
+	}
+	for (size_t i = 0; i < uniqueKmerPosition.size(); i++)
+	{
+		uniqueKmerPosition[i] = std::make_pair(std::min(uniqueKmerPosition[i].first, uniqueKmerPosition[i].second), std::max(uniqueKmerPosition[i].first, uniqueKmerPosition[i].second));
+	}
+	std::sort(uniqueKmerPosition.begin(), uniqueKmerPosition.end());
+	std::ofstream outfile { outputFile };
+	for (size_t i = 0; i < uniqueKmerPosition.size(); i++)
+	{
+		assert(uniqueKmerPosition[i].first <= uniqueKmerPosition[i].second);
+		if (uniqueKmerPosition[i].second == unassigned) continue;
+		assert(uniqueKmerPosition[i].first != unassigned);
+		if (uniqueKmerPosition[i].first == repetitive)
+		{
+			assert(uniqueKmerPosition[i].second == repetitive);
+			continue;
+		}
+		if (uniqueKmerPosition[i].first.first == uniqueKmerPosition[i].second.first) continue;
+		outputNodeHomology(reads, unitigGraph, kmerSize, kmerStartPositions, unitigSequences, stringIndex, unitigExpandedPoses, outfile, uniqueKmerPosition[i].first, uniqueKmerPosition[i].second);
+	}
+}
+
+std::vector<DumbSelect> getUnitigExpandedPoses(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex)
+{
+	std::vector<DumbSelect> unitigExpandedPoses;
+	unitigExpandedPoses.reserve(unitigSequences.size());
+	for (size_t i = 0; i < unitigSequences.size(); ++i)
+	{
+		size_t sizeHere = 0;
+		for (size_t j = 0; j < unitigSequences[i].compressedSize(); j++)
+		{
+			sizeHere += unitigSequences[i].getExpandedStr(j, stringIndex).size();
+		}
+		unitigExpandedPoses.emplace_back(sizeHere+1);
+		size_t posNow = 0;
+		for (size_t j = 0; j < unitigSequences[i].compressedSize(); j++)
+		{
+			posNow += unitigSequences[i].getExpandedStr(j, stringIndex).size();
+			unitigExpandedPoses.back().bitvector.set(posNow, true);
+		}
+		assert(posNow == sizeHere);
+		unitigExpandedPoses.back().build();
+	}
+	return unitigExpandedPoses;
+}
+
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile, const bool keepGaps, const double hpcVariantOnecopyCoverage, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const std::string& outputHomologyMap)
 {
 	auto beforeReading = getTime();
 	// check that all files actually exist
@@ -1410,13 +1515,24 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		stats = writeGraph(unitigs, outputGraph, reads, unitigSequences, stringIndex, kmerSize, unitigRawKmerCoverages, nodeNamePrefix);
 	}
 	auto afterWrite = getTime();
+	std::vector<DumbSelect> unitigExpandedPoses;
+	if (outputSequencePaths != "" || outputHomologyMap != "")
+	{
+		unitigExpandedPoses = getUnitigExpandedPoses(reads, unitigs, unitigSequences, stringIndex);
+	}
 	if (outputSequencePaths != "")
 	{
 		std::cerr << "Writing paths to " << outputSequencePaths << std::endl;
 		sortPaths(readPaths);
-		writePaths(reads, unitigs, unitigSequences, stringIndex, readPaths, kmerSize, outputSequencePaths, nodeNamePrefix);
+		writePaths(reads, unitigs, unitigSequences, stringIndex, unitigExpandedPoses, readPaths, kmerSize, outputSequencePaths, nodeNamePrefix);
 	}
 	auto afterPaths = getTime();
+	if (outputHomologyMap != "")
+	{
+		std::cerr << "Writing homology map to " << outputHomologyMap << std::endl;
+		writeHomologyMap(reads, unitigs, kmerSize, unitigSequences, stringIndex, unitigExpandedPoses, outputHomologyMap);
+	}
+	auto afterHomologyMap = getTime();
 	if (hpcVariantOnecopyCoverage != 0) std::cerr << "selecting hpc variant k-mers took " << formatTime(beforeVariants, beforeKmers) << std::endl;
 	std::cerr << "selecting k-mers and building graph topology took " << formatTime(beforeKmers, beforeUnitigs) << std::endl;
 	std::cerr << "unitigifying took " << formatTime(beforeUnitigs, beforeFilter) << std::endl;
@@ -1427,6 +1543,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	if (errorMasking != ErrorMasking::No && errorMasking != ErrorMasking::Collapse) std::cerr << "forcing edge consistency took " << formatTime(beforeConsistency, beforeWrite) << std::endl;
 	std::cerr << "writing the graph and calculating stats took " << formatTime(beforeWrite, afterWrite) << std::endl;
 	if (outputSequencePaths != "") std::cerr << "writing sequence paths took " << formatTime(afterWrite, afterPaths) << std::endl;
+	if (outputHomologyMap != "") std::cerr << "writing homology map took " << formatTime(afterPaths, afterHomologyMap) << std::endl;
 	std::cerr << "nodes: " << stats.nodes << std::endl;
 	std::cerr << "edges: " << stats.edges << std::endl;
 	std::cerr << "assembly size " << stats.size << " bp, N50 " << stats.N50 << std::endl;

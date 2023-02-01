@@ -30,6 +30,7 @@ int main(int argc, char** argv)
 		("do-unsafe-guesswork-resolutions", "Use extra heuristics during multiplex resolution")
 		("copycount-filter-heuristic", "Use coverage based heuristic filter during multiplex resolution")
 		("only-local-resolve", "Only resolve nodes which are repetitive within a read")
+		("output-homology-map", "Output a list of homologous k-mer locations", cxxopts::value<std::string>())
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
@@ -96,6 +97,7 @@ int main(int argc, char** argv)
 	std::string errorMaskingStr = "hpc";
 	std::string nodeNamePrefix = "";
 	std::string sequenceCacheFile = "";
+	std::string outputHomologyMap = "";
 	if (params.count("r") == 1) maxResolveLength = params["r"].as<size_t>();
 	if (params.count("R") == 1) maxUnconditionalResolveLength = params["R"].as<size_t>();
 	if (params.count("blunt") == 1) blunt = true;
@@ -145,6 +147,7 @@ int main(int argc, char** argv)
 	if (params.count("hpc-variant-onecopy-coverage") == 1) hpcVariantOnecopyCoverage = params["hpc-variant-onecopy-coverage"].as<double>();
 	if (params.count("copycount-filter-heuristic") == 1) copycountFilterHeuristic = true;
 	if (params.count("only-local-resolve") == 1) onlyLocalResolve = true;
+	if (params.count("output-homology-map") == 1) outputHomologyMap = params["output-homology-map"].as<std::string>();
 
 	if (numThreads == 0)
 	{
@@ -207,5 +210,5 @@ int main(int argc, char** argv)
 	std::cerr << "cache=" << (sequenceCacheFile.size() > 0 ? "yes" : "no");
 	std::cerr << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix, sequenceCacheFile, keepGaps, hpcVariantOnecopyCoverage, guesswork, copycountFilterHeuristic, onlyLocalResolve);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix, sequenceCacheFile, keepGaps, hpcVariantOnecopyCoverage, guesswork, copycountFilterHeuristic, onlyLocalResolve, outputHomologyMap);
 }

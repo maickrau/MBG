@@ -10,6 +10,7 @@ public:
 	size_t selectOne(size_t count) const;
 	size_t countOnes() const;
 	void build();
+	size_t size() const;
 	RankBitvector bitvector;
 private:
 	size_t numOnes;

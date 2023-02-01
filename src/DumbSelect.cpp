@@ -42,3 +42,8 @@ void DumbSelect::build()
 	bitvector.buildRanks();
 	numOnes = bitvector.getRank(bitvector.size()-1) + (bitvector.get(bitvector.size()-1) ? 1 : 0);
 }
+
+size_t DumbSelect::size() const
+{
+	return bitvector.size();
+}
