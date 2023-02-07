@@ -6,7 +6,7 @@
 #include <tuple>
 #include "MBGCommon.h"
 
-std::vector<std::pair<SequenceCharType, SequenceLengthType>> multiRLECompress(const SequenceCharType& str, const SequenceLengthType& poses, const size_t maxMaskLength);
+std::pair<SequenceCharType, SequenceLengthType> multiRLECompress(const SequenceCharType& str, const SequenceLengthType& poses, const size_t maxMaskLength);
 size_t maxCode();
 SequenceCharType revCompRLE(const SequenceCharType& str);
 CharType complement(const CharType original);

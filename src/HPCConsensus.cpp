@@ -303,7 +303,7 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 	std::vector<std::vector<size_t>> bpOffsets;
 	initializeHelpers(consensusMaker, unitigLengths, bpOffsets, hashlist, unitigs, kmerSize, partIterator, numThreads);
 	std::mutex expandedPosMutex;
-	std::unordered_map<std::string, std::vector<size_t>> pathsPerRead;
+	std::unordered_map<ReadName, std::vector<size_t>> pathsPerRead;
 	for (size_t i = 0; i < readPaths.size(); i++)
 	{
 		pathsPerRead[readPaths[i].readName].push_back(i);

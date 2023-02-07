@@ -14,6 +14,7 @@ using LengthType = size_t;
 using SequenceCharType = std::vector<CharType>;
 using SequenceLengthType = std::vector<LengthType>;
 using CompressedSequenceType = CompressedSequence;
+using ReadName = std::pair<std::string, size_t>;
 
 HashType hash(VectorView<uint16_t> sequence);
 HashType hash(VectorView<uint16_t> sequence, VectorView<uint16_t> reverseSequence);
@@ -51,6 +52,13 @@ namespace std
 		}
 	};
 #endif
+	template <> struct hash<std::pair<std::string, size_t>>
+	{
+		size_t operator()(const std::pair<std::string, size_t>& x) const
+		{
+			return hash<std::string>{}(x.first) ^ hash<size_t>{}(x.second);
+		}
+	};
 	template <> struct hash<std::pair<HashType, bool>>
 	{
 		size_t operator()(std::pair<HashType, bool> x) const

@@ -233,7 +233,7 @@ public:
 		return precalcedUnitigCoverages[unitig];
 	}
 	const HashList& hashlist;
-	std::vector<std::string> readNames;
+	std::vector<ReadName> readNames;
 	double averageCoverage;
 	double calculateCoverage(const std::vector<PathGroup>& readPaths, size_t unitig) const
 	{
@@ -294,7 +294,7 @@ void printReads(const ResolvableUnitigGraph& graph, const std::vector<PathGroup>
 		for (const auto read : paths[pospair.first].reads)
 		{
 			if (closeReads.count(read.readNameIndex) == 1) continue;
-			std::cerr << "Read close to assertion: " << graph.readNames[read.readNameIndex] << std::endl;
+			std::cerr << "Read close to assertion: " << graph.readNames[read.readNameIndex].first << std::endl;
 			closeReads.insert(read.readNameIndex);
 		}
 	}
@@ -306,7 +306,7 @@ void printReads(const ResolvableUnitigGraph& graph, const std::vector<PathGroup>
 			for (const auto read : paths[pospair.first].reads)
 			{
 				if (closeReads.count(read.readNameIndex) == 1 || semiCloseReads.count(read.readNameIndex) == 1) continue;
-				std::cerr << "Read semi-close to assertion: " << graph.readNames[read.readNameIndex] << std::endl;
+				std::cerr << "Read semi-close to assertion: " << graph.readNames[read.readNameIndex].first << std::endl;
 				semiCloseReads.insert(read.readNameIndex);
 			}
 		}
@@ -319,7 +319,7 @@ void printReads(const ResolvableUnitigGraph& graph, const std::vector<PathGroup>
 			for (auto read : paths[pospair.first].reads)
 			{
 				if (closeReads.count(read.readNameIndex) == 1 || semiCloseReads.count(read.readNameIndex) == 1) continue;
-				std::cerr << "Read semi-close to assertion: " << graph.readNames[read.readNameIndex] << std::endl;
+				std::cerr << "Read semi-close to assertion: " << graph.readNames[read.readNameIndex].first << std::endl;
 				semiCloseReads.insert(read.readNameIndex);
 			}
 		}
@@ -3263,6 +3263,7 @@ UntippingResult removeLowCoverageCrosslinks(ResolvableUnitigGraph& resolvableGra
 
 UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const double maxRemovableCoverage, const double minSafeCoverage, const size_t maxRemovableLength, const phmap::flat_hash_set<size_t>& maybeUntippable)
 {
+	UntippingResult result;
 	for (size_t i = resolvableGraph.lastTippableChecked; i < resolvableGraph.unitigs.size(); i++)
 	{
 		if (resolvableGraph.edges[std::make_pair(i, true)].size() >= 2) continue;
@@ -3289,7 +3290,6 @@ UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, st
 		resolvableGraph.everTippable.push_back(i);
 	}
 	resolvableGraph.lastTippableChecked = resolvableGraph.unitigs.size();
-	UntippingResult result;
 	for (size_t index = resolvableGraph.everTippable.size()-1; index < resolvableGraph.everTippable.size(); index--)
 	{
 		size_t i = resolvableGraph.everTippable[index];
@@ -3409,8 +3409,8 @@ CleaningResult cleanComponent(ResolvableUnitigGraph& resolvableGraph, std::vecto
 
 CleaningResult cleanComponentsByCopynumber(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const size_t minLongLength, const size_t minUnresolvableLength, const size_t maxUnresolvableLength, const phmap::flat_hash_set<size_t>& checkThese, const size_t minNew)
 {
-	std::unordered_set<std::pair<size_t, bool>> checked;
 	CleaningResult result;
+	std::unordered_set<std::pair<size_t, bool>> checked;
 	std::vector<size_t> checkTheseDeterministic { checkThese.begin(), checkThese.end() };
 	std::sort(checkTheseDeterministic.begin(), checkTheseDeterministic.end());
 	for (auto i : checkTheseDeterministic)
@@ -4035,7 +4035,7 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 	std::vector<ReadPathInfo> readInfos;
 	std::vector<PathGroup> readPaths;
 	{
-		std::unordered_map<std::string, size_t> nameLookup;
+		std::unordered_map<ReadName, size_t> nameLookup;
 		for (size_t i = 0; i < rawReadPaths.size(); i++)
 		{
 			if (rawReadPaths[i].path.size() == 0) continue;

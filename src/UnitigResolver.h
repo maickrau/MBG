@@ -13,7 +13,7 @@
 class ReadPath
 {
 public:
-	std::string readName;
+	ReadName readName;
 	std::vector<Node> path;
 	std::vector<uint32_t> readPoses;
 	size_t expandedReadPosStart;

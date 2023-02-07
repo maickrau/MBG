@@ -80,7 +80,7 @@ class ReadInfo
 {
 public:
 	ReadInfo() = default;
-	std::string readName;
+	ReadName readName;
 	size_t readLength;
 	size_t readLengthHpc;
 };
@@ -209,7 +209,8 @@ private:
 			cache.peek();
 			if (!cache.good()) break;
 			std::shared_ptr<ReadBundle> readInfo { new ReadBundle };
-			Serializer::read(cache, readInfo->readInfo.readName);
+			Serializer::read(cache, readInfo->readInfo.readName.first);
+			Serializer::read(cache, readInfo->readInfo.readName.second);
 			Serializer::readMostlyTwobits(cache, readInfo->seq);
 			Serializer::readMonotoneIncreasing(cache, readInfo->poses);
 			Serializer::readTwobits(cache, readInfo->rawSeq);
@@ -220,7 +221,8 @@ private:
 				readInfo->positions = positions;
 				readInfo->hashes = hashes;
 			});
-			Serializer::write(cachePart2, readInfo->readInfo.readName);
+			Serializer::write(cachePart2, readInfo->readInfo.readName.first);
+			Serializer::write(cachePart2, readInfo->readInfo.readName.second);
 			Serializer::write(cachePart2, readInfo->rawSeq.size());
 			Serializer::write(cachePart2, readInfo->seq.size());
 			Serializer::writeMonotoneIncreasing(cachePart2, readInfo->positions);
@@ -274,11 +276,13 @@ private:
 		{
 			callback(read, seq, poses, rawSeq, positions, hashes);
 			std::lock_guard<std::mutex> lock { writeMutex };
-			Serializer::write(cache, read.readName);
+			Serializer::write(cache, read.readName.first);
+			Serializer::write(cache, read.readName.second);
 			Serializer::writeMostlyTwobits(cache, seq);
 			Serializer::writeMonotoneIncreasing(cache, poses);
 			Serializer::writeTwobits(cache, rawSeq);
-			Serializer::write(cachePart2, read.readName);
+			Serializer::write(cachePart2, read.readName.first);
+			Serializer::write(cachePart2, read.readName.second);
 			Serializer::write(cachePart2, rawSeq.size());
 			Serializer::write(cachePart2, seq.size());
 			Serializer::writeMonotoneIncreasing(cachePart2, positions);
@@ -358,7 +362,8 @@ private:
 			cachePart2.peek();
 			if (!cachePart2.good()) break;
 			std::shared_ptr<ReadBundle> readInfo { new ReadBundle };
-			Serializer::read(cachePart2, readInfo->readInfo.readName);
+			Serializer::read(cachePart2, readInfo->readInfo.readName.first);
+			Serializer::read(cachePart2, readInfo->readInfo.readName.second);
 			Serializer::read(cachePart2, readInfo->readInfo.readLength);
 			Serializer::read(cachePart2, readInfo->readInfo.readLengthHpc);
 			Serializer::readMonotoneIncreasing(cachePart2, readInfo->positions);
@@ -443,18 +448,25 @@ private:
 			cache.peek();
 			if (!cache.good()) break;
 			std::shared_ptr<ReadBundle> readInfo { new ReadBundle };
-			Serializer::read(cache, readInfo->readInfo.readName);
+			Serializer::read(cache, readInfo->readInfo.readName.first);
+			Serializer::read(cache, readInfo->readInfo.readName.second);
 			Serializer::readMostlyTwobits(cache, readInfo->seq);
 			Serializer::readMonotoneIncreasing(cache, readInfo->poses);
 			Serializer::readTwobits(cache, readInfo->rawSeq);
 			std::string tmp;
 			Serializer::read(cachePart2, tmp);
-			if (tmp != readInfo->readInfo.readName)
+			if (tmp != readInfo->readInfo.readName.first)
 			{
 				std::cerr << "Sequence cache has been corrupted. Try re-running, or running without sequence cache." << std::endl;
 				std::abort();
 			}
 			size_t tmp2;
+			Serializer::read(cachePart2, tmp2);
+			if (tmp2 != readInfo->readInfo.readName.second)
+			{
+				std::cerr << "Sequence cache has been corrupted. Try re-running, or running without sequence cache." << std::endl;
+				std::abort();
+			}
 			Serializer::read(cachePart2, tmp2);
 			if (tmp2 != readInfo->rawSeq.size())
 			{
@@ -608,13 +620,13 @@ private:
 						else
 						{
 							std::cerr << "The genome has a palindromic k-mer. Cannot build a graph. Try running with a different -w" << std::endl;
-							std::cerr << "Example read around the palindromic k-mer: " << read.readName << std::endl;
+							std::cerr << "Example read around the palindromic k-mer: " << read.readName.first << std::endl;
 							std::abort();
 						}
 					}
 					else
 					{
-						std::cerr << "Unhashable k-mer around read: " << read.readName << std::endl;
+						std::cerr << "Unhashable k-mer around read: " << read.readName.first << std::endl;
 						std::abort();
 					}
 				}
@@ -674,11 +686,8 @@ private:
 		iterateRLE(read, seq, [callback](ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
 			auto pieces = multiRLECompress(seq, poses, 6);
-			for (const auto& pair : pieces)
-			{
-				read.readLengthHpc = pair.first.size();
-				callback(read, pair.first, pair.second, raw);
-			}
+			read.readLengthHpc = pieces.first.size();
+			callback(read, pieces.first, pieces.second, raw);
 		});
 	}
 	template <typename F>
@@ -687,11 +696,8 @@ private:
 		iterateCollapse(read, seq, [callback](ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
 			auto pieces = multiRLECompress(seq, poses, 6);
-			for (const auto& pair : pieces)
-			{
-				read.readLengthHpc = pair.first.size();
-				callback(read, pair.first, pair.second, raw);
-			}
+			read.readLengthHpc = pieces.first.size();
+			callback(read, pieces.first, pieces.second, raw);
 		});
 	}
 	template <typename F>
@@ -713,11 +719,8 @@ private:
 		iterateRLE(read, seq, [callback](ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
 			auto pieces = multiRLECompress(seq, poses, 2);
-			for (const auto& pair : pieces)
-			{
-				read.readLengthHpc = pair.first.size();
-				callback(read, pair.first, pair.second, raw);
-			}
+			read.readLengthHpc = pieces.first.size();
+			callback(read, pieces.first, pieces.second, raw);
 		});
 	}
 	template <typename F>
@@ -726,11 +729,8 @@ private:
 		iterateCollapse(read, seq, [callback](ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
 			auto pieces = multiRLECompress(seq, poses, 2);
-			for (const auto& pair : pieces)
-			{
-				read.readLengthHpc = pair.first.size();
-				callback(read, pair.first, pair.second, raw);
-			}
+			read.readLengthHpc = pieces.first.size();
+			callback(read, pieces.first, pieces.second, raw);
 		});
 	}
 	template <typename F>
@@ -745,6 +745,7 @@ private:
 		assert(currentPos.size() == 0);
 		while (i < seq.size() && seq[i] != 'a' && seq[i] != 'A' && seq[i] != 'c' && seq[i] != 'C' && seq[i] != 'g' && seq[i] != 'G' && seq[i] != 't' && seq[i] != 'T') i += 1;
 		if (i == seq.size()) return;
+		size_t lastStart = i;
 		switch(seq[i])
 		{
 			case 'a':
@@ -810,10 +811,12 @@ private:
 				default:
 					currentPos.push_back(i);
 					read.readLengthHpc = currentSeq.size();
+					read.readName.second = lastStart;
 					callback(read, currentSeq, currentPos, seq);
 					currentSeq.clear();
 					currentPos.clear();
 					while (i < seq.size() && seq[i] != 'a' && seq[i] != 'A' && seq[i] != 'c' && seq[i] != 'C' && seq[i] != 'g' && seq[i] != 'G' && seq[i] != 't' && seq[i] != 'T') i += 1;
+					lastStart = i;
 					if (i == seq.size()) return;
 					switch(seq[i])
 					{
@@ -846,6 +849,7 @@ private:
 		{
 			currentPos.push_back(seq.size());
 			read.readLengthHpc = currentSeq.size();
+			read.readName.second = lastStart;
 			callback(read, currentSeq, currentPos, seq);
 		}
 	}
@@ -857,6 +861,7 @@ private:
 		currentSeq.reserve(seq.size());
 		currentPos.reserve(seq.size());
 		size_t i = 0;
+		size_t lastStart = 0;
 		assert(currentSeq.size() == 0);
 		assert(currentPos.size() == 0);
 		for (; i < seq.size(); i++)
@@ -888,16 +893,19 @@ private:
 					{
 						currentPos.push_back(i);
 						read.readLengthHpc = currentSeq.size();
+						read.readName.second = lastStart;
 						callback(read, currentSeq, currentPos, seq);
 					}
 					currentSeq.clear();
 					currentPos.clear();
+					lastStart = i;
 			}
 		}
 		if (currentSeq.size() > 0)
 		{
 			currentPos.push_back(i);
 			read.readLengthHpc = currentSeq.size();
+			read.readName.second = lastStart;
 			callback(read, currentSeq, currentPos, seq);
 		}
 	}
@@ -955,7 +963,8 @@ private:
 					}
 					assert(read != nullptr);
 					ReadInfo info;
-					info.readName = read->seq_id;
+					info.readName.first = read->seq_id;
+					info.readName.second = 0;
 					info.readLength = read->sequence.size();
 					readCallback(info, read->sequence);
 				}

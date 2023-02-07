@@ -328,28 +328,16 @@ std::pair<SequenceCharType, SequenceLengthType> multiRLECompressOne(const Sequen
 	return result;
 }
 
-std::vector<std::pair<SequenceCharType, SequenceLengthType>> multiRLECompress(const SequenceCharType& str, const SequenceLengthType& poses, const size_t maxMaskLength)
+std::pair<SequenceCharType, SequenceLengthType> multiRLECompress(const SequenceCharType& str, const SequenceLengthType& poses, const size_t maxMaskLength)
 {
 	assert(maxMaskLength <= MaxMotifLength);
 	std::vector<std::pair<SequenceCharType, SequenceLengthType>> result;
 	size_t lastBreak = 0;
 	for (size_t i = 0; i < str.size(); i++)
 	{
-		switch(str[i])
-		{
-			case 0:
-			case 1:
-			case 2:
-			case 3:
-				break;
-			default:
-				if (lastBreak+32 < i) result.emplace_back(multiRLECompressOne(SequenceCharType { str.begin() + lastBreak, str.begin() + i }, poses, maxMaskLength));
-				lastBreak = i;
-				break;
-		}
+		assert(str[i] <= 3);
 	}
-	if (lastBreak+32 < str.size()) result.emplace_back(multiRLECompressOne(SequenceCharType { str.begin() + lastBreak, str.end() }, poses, maxMaskLength));
-	return result;
+	return multiRLECompressOne(SequenceCharType { str.begin() + lastBreak, str.end() }, poses, maxMaskLength);
 }
 
 SequenceCharType revCompRLE(const SequenceCharType& codes)

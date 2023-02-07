@@ -223,7 +223,7 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 		assert(pathEndExpanded <= pathLengthExpanded);
 		assert(pathLengthExpanded >= pathLengthRLE);
 		size_t mapq = 60;
-		outPaths << path.readName << "\t" << readLength << "\t" << readStart << "\t" << readEnd << "\t+\t" << pathStr << "\t" << pathLengthExpanded << "\t" << pathStartExpanded << "\t" << pathEndExpanded << "\t" << (pathEndExpanded - pathStartExpanded) << "\t" << (pathEndExpanded - pathStartExpanded) << "\t" << mapq << std::endl;
+		outPaths << path.readName.first << "\t" << readLength << "\t" << readStart << "\t" << readEnd << "\t+\t" << pathStr << "\t" << pathLengthExpanded << "\t" << pathStartExpanded << "\t" << pathEndExpanded << "\t" << (pathEndExpanded - pathStartExpanded) << "\t" << (pathEndExpanded - pathStartExpanded) << "\t" << mapq << std::endl;
 	}
 }
 
