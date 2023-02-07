@@ -529,8 +529,109 @@ void keepTipGaps(RankBitvector& kept, const SparseEdgeContainer& edges, const Ha
 
 }
 
-UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const double minUnitigCoverage, const bool keepGaps)
+std::pair<size_t, bool> extendOneCoverageKmers(HashList& hashlist, std::pair<size_t, bool> pos, const SparseEdgeContainer& edges)
 {
+	auto start = pos;
+	size_t iterations = 0;
+	while (true)
+	{
+		auto edgesHere = edges[pos];
+		if (edgesHere.size() != 1) return pos;
+		auto next = edgesHere[0];
+		if (edges[reverse(next)].size() != 1) return pos;
+		if (next.first == pos.first) return pos;
+		if (next.first == start.first) return pos;
+		pos = next;
+		if (hashlist.coverage.get(pos.first) != 1) return pos;
+		iterations += 1;
+		assert(iterations < hashlist.size() + 1);
+	}
+}
+
+void removeOnecovTips(HashList& hashlist)
+{
+	auto edges = getCoveredEdges(hashlist, 1);
+	RankBitvector kept { hashlist.size() };
+	std::vector<bool> checked;
+	checked.resize(hashlist.size(), false);
+	for (size_t i = 0; i < hashlist.size(); i++)
+	{
+		kept.set(i, true);
+	}
+	bool removedAny = false;
+	for (size_t i = 0; i < hashlist.size(); i++)
+	{
+		if (hashlist.coverage.get(i) != 1) continue;
+		if (checked[i]) continue;
+		auto fwNode = extendOneCoverageKmers(hashlist, std::pair<size_t, bool> { i, true }, edges);
+		auto bwNode = extendOneCoverageKmers(hashlist, std::pair<size_t, bool> { i, false }, edges);
+		auto check = reverse(bwNode);
+		while (check != fwNode)
+		{
+			assert(edges[check].size() == 1);
+			assert(!checked[check.first]);
+			checked[check.first] = true;
+			check = edges[check][0];
+		}
+		checked[fwNode.first] = true;
+		if (hashlist.coverage.get(fwNode.first) != 1) continue;
+		if (hashlist.coverage.get(bwNode.first) != 1) continue;
+		if (edges[fwNode].size() != 0 && edges[bwNode].size() != 0) continue;
+		if (edges[fwNode].size() == 0 && edges[bwNode].size() == 0) continue;
+		bool valid = true;
+		for (auto edge : edges[fwNode])
+		{
+			bool hasValidOther = false;
+			for (auto edge2 : edges[reverse(edge)])
+			{
+				if (edge2 == reverse(fwNode)) continue;
+				if (hashlist.coverage.get(edge2.first) >= 2) hasValidOther = true;
+			}
+			if (!hasValidOther)
+			{
+				valid = false;
+				break;
+			}
+		}
+		if (!valid) continue;
+		for (auto edge : edges[bwNode])
+		{
+			bool hasValidOther = false;
+			for (auto edge2 : edges[reverse(edge)])
+			{
+				if (edge2 == reverse(bwNode)) continue;
+				if (hashlist.coverage.get(edge2.first) >= 2) hasValidOther = true;
+			}
+			if (!hasValidOther)
+			{
+				valid = false;
+				break;
+			}
+		}
+		if (!valid) continue;
+		check = reverse(bwNode);
+		while (check != fwNode)
+		{
+			assert(edges[check].size() == 1);
+			kept.set(check.first, false);
+			check = edges[check][0];
+		}
+		kept.set(check.first, false);
+		removedAny = true;
+	}
+	if (removedAny)
+	{
+		kept.buildRanks();
+		hashlist.filter(kept);
+	}
+}
+
+UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const double minUnitigCoverage, const bool keepGaps, const bool oneCovHeuristic)
+{
+	if (oneCovHeuristic)
+	{
+		removeOnecovTips(hashlist);
+	}
 	{
 		auto edges = getCoveredEdges(hashlist, minCoverage);
 		RankBitvector kept { hashlist.size() };
@@ -1454,7 +1555,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	{
 		std::cerr << "Collecting hpc variant k-mers" << std::endl;
 		loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads);
-		auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage, keepGaps);
+		auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage, keepGaps, false);
 		if (minUnitigCoverage > minCoverage)
 		{
 			unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage, keepGaps));
@@ -1469,7 +1570,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads);
 	auto beforeUnitigs = getTime();
 	std::cerr << "Unitigifying" << std::endl;
-	auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage, keepGaps);
+	auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage, keepGaps, (minUnitigCoverage >= 2) && (maxResolveLength > 0) && guesswork);
 	auto beforeFilter = getTime();
 	if (minUnitigCoverage > minCoverage)
 	{
