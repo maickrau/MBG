@@ -548,7 +548,7 @@ std::pair<size_t, bool> extendOneCoverageKmers(HashList& hashlist, std::pair<siz
 	}
 }
 
-void removeOnecovTips(HashList& hashlist)
+void removeOnecovNodes(HashList& hashlist, const bool onlyTips)
 {
 	auto edges = getCoveredEdges(hashlist, 1);
 	RankBitvector kept { hashlist.size() };
@@ -576,8 +576,11 @@ void removeOnecovTips(HashList& hashlist)
 		checked[fwNode.first] = true;
 		if (hashlist.coverage.get(fwNode.first) != 1) continue;
 		if (hashlist.coverage.get(bwNode.first) != 1) continue;
-		if (edges[fwNode].size() != 0 && edges[bwNode].size() != 0) continue;
-		if (edges[fwNode].size() == 0 && edges[bwNode].size() == 0) continue;
+		if (onlyTips)
+		{
+			if (edges[fwNode].size() != 0 && edges[bwNode].size() != 0) continue;
+			if (edges[fwNode].size() == 0 && edges[bwNode].size() == 0) continue;
+		}
 		bool valid = true;
 		for (auto edge : edges[fwNode])
 		{
@@ -630,7 +633,8 @@ UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const d
 {
 	if (oneCovHeuristic)
 	{
-		removeOnecovTips(hashlist);
+		removeOnecovNodes(hashlist, true);
+		removeOnecovNodes(hashlist, false);
 	}
 	{
 		auto edges = getCoveredEdges(hashlist, minCoverage);
