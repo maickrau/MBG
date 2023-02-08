@@ -541,8 +541,8 @@ std::pair<size_t, bool> extendOneCoverageKmers(HashList& hashlist, std::pair<siz
 		if (edges[reverse(next)].size() != 1) return pos;
 		if (next.first == pos.first) return pos;
 		if (next.first == start.first) return pos;
+		if (hashlist.coverage.get(next.first) != 1) return pos;
 		pos = next;
-		if (hashlist.coverage.get(pos.first) != 1) return pos;
 		iterations += 1;
 		assert(iterations < hashlist.size() + 1);
 	}
