@@ -1073,7 +1073,7 @@ void sortKmersByHashes(UnitigGraph& unitigs, HashList& reads)
 	unitigs.sort(kmerMapping);
 }
 
-void filterKmersToUnitigKmers(UnitigGraph& unitigs, HashList& reads, const size_t kmerSize)
+void filterKmersToUnitigKmers(UnitigGraph& unitigs, HashList& reads, const size_t kmerSize, const bool filterWithinUnitig)
 {
 	std::vector<bool> reverseContig;
 	reverseContig.resize(unitigs.unitigs.size(), false);
@@ -1129,7 +1129,7 @@ void filterKmersToUnitigKmers(UnitigGraph& unitigs, HashList& reads, const size_
 		for (size_t j = 0; j < unitigs.unitigs[i].size(); j++)
 		{
 			if (j > 0) currentPos += kmerSize - reads.getOverlap(unitigs.unitigs[i][j-1], unitigs.unitigs[i][j]);
-			bool skip = true;
+			bool skip = filterWithinUnitig;
 			if (j == 0 || j == unitigs.unitigs[i].size()-1)
 			{
 				skip = false;
@@ -1539,7 +1539,7 @@ std::vector<DumbSelect> getUnitigExpandedPoses(const HashList& hashlist, const U
 	return unitigExpandedPoses;
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile, const bool keepGaps, const double hpcVariantOnecopyCoverage, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const std::string& outputHomologyMap)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile, const bool keepGaps, const double hpcVariantOnecopyCoverage, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const std::string& outputHomologyMap, const bool filterWithinUnitig)
 {
 	auto beforeReading = getTime();
 	// check that all files actually exist
@@ -1581,7 +1581,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		std::cerr << "Filtering by unitig coverage" << std::endl;
 		unitigs = getUnitigs(unitigs.filterUnitigsByCoverage(minUnitigCoverage, keepGaps));
 	}
-	filterKmersToUnitigKmers(unitigs, reads, kmerSize);
+	filterKmersToUnitigKmers(unitigs, reads, kmerSize, filterWithinUnitig);
 	sortKmersByHashes(unitigs, reads);
 	printUnitigKmerCount(unitigs);
 	auto beforePaths = getTime();
