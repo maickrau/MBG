@@ -331,6 +331,7 @@ std::pair<SequenceCharType, SequenceLengthType> multiRLECompressOne(const Sequen
 std::pair<SequenceCharType, SequenceLengthType> multiRLECompress(const SequenceCharType& str, const SequenceLengthType& poses, const size_t maxMaskLength)
 {
 	assert(maxMaskLength <= MaxMotifLength);
+	assert(str.size() >= 32);
 	std::vector<std::pair<SequenceCharType, SequenceLengthType>> result;
 	size_t lastBreak = 0;
 	for (size_t i = 0; i < str.size(); i++)

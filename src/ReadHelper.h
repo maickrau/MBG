@@ -649,6 +649,7 @@ private:
 	{
 		iterateReadsMultithreaded(readFiles, numThreads, [this, callback](ReadInfo& read, const std::string& rawSeq)
 		{
+			if (rawSeq.size() < 32) return;
 			if (errorMasking == ErrorMasking::Hpc)
 			{
 				iterateRLE(read, rawSeq, callback);
@@ -685,6 +686,7 @@ private:
 	{
 		iterateRLE(read, seq, [callback](ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
+			if (seq.size() < 32) return;
 			auto pieces = multiRLECompress(seq, poses, 6);
 			read.readLengthHpc = pieces.first.size();
 			callback(read, pieces.first, pieces.second, raw);
@@ -695,6 +697,7 @@ private:
 	{
 		iterateCollapse(read, seq, [callback](ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
+			if (seq.size() < 32) return;
 			auto pieces = multiRLECompress(seq, poses, 6);
 			read.readLengthHpc = pieces.first.size();
 			callback(read, pieces.first, pieces.second, raw);
@@ -718,6 +721,7 @@ private:
 	{
 		iterateRLE(read, seq, [callback](ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
+			if (seq.size() < 32) return;
 			auto pieces = multiRLECompress(seq, poses, 2);
 			read.readLengthHpc = pieces.first.size();
 			callback(read, pieces.first, pieces.second, raw);
@@ -728,6 +732,7 @@ private:
 	{
 		iterateCollapse(read, seq, [callback](ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& raw)
 		{
+			if (seq.size() < 32) return;
 			auto pieces = multiRLECompress(seq, poses, 2);
 			read.readLengthHpc = pieces.first.size();
 			callback(read, pieces.first, pieces.second, raw);
