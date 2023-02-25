@@ -32,6 +32,7 @@ int main(int argc, char** argv)
 		("only-local-resolve", "Only resolve nodes which are repetitive within a read")
 		("output-homology-map", "Output a list of homologous k-mer locations", cxxopts::value<std::string>())
 		("no-kmer-filter-inside-unitig", "Don't filter out k-mers which are completely contained by two other k-mers")
+		("no-multiplex-cleaning", "Don't clean low coverage tips and structures during multiplex resolution")
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
@@ -96,6 +97,7 @@ int main(int argc, char** argv)
 	bool copycountFilterHeuristic = false;
 	bool onlyLocalResolve = false;
 	bool filterWithinUnitig = true;
+	bool doCleaning = true;
 	std::string errorMaskingStr = "hpc";
 	std::string nodeNamePrefix = "";
 	std::string sequenceCacheFile = "";
@@ -151,6 +153,7 @@ int main(int argc, char** argv)
 	if (params.count("only-local-resolve") == 1) onlyLocalResolve = true;
 	if (params.count("output-homology-map") == 1) outputHomologyMap = params["output-homology-map"].as<std::string>();
 	if (params.count("no-kmer-filter-inside-unitig") == 1) filterWithinUnitig = false;
+	if (params.count("no-multiplex-cleaning")) doCleaning = false;
 
 	if (numThreads == 0)
 	{
@@ -211,8 +214,9 @@ int main(int argc, char** argv)
 	std::cerr << "copycountfilter=" << (copycountFilterHeuristic ? "yes" : "no") << ",";
 	std::cerr << "onlylocal=" << (onlyLocalResolve ? "yes" : "no") << ",";
 	std::cerr << "filterwithinunitig=" << (filterWithinUnitig ? "yes" : "no") << ",";
+	std::cerr << "cleaning=" << (doCleaning ? "yes" : "no") << ",";
 	std::cerr << "cache=" << (sequenceCacheFile.size() > 0 ? "yes" : "no");
 	std::cerr << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix, sequenceCacheFile, keepGaps, hpcVariantOnecopyCoverage, guesswork, copycountFilterHeuristic, onlyLocalResolve, outputHomologyMap, filterWithinUnitig);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix, sequenceCacheFile, keepGaps, hpcVariantOnecopyCoverage, guesswork, copycountFilterHeuristic, onlyLocalResolve, outputHomologyMap, filterWithinUnitig, doCleaning);
 }

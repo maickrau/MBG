@@ -3804,7 +3804,7 @@ phmap::flat_hash_set<size_t> filterToOnlyLocallyRepetitives(const ResolvableUnit
 	return result;
 }
 
-void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve)
+void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const bool doCleaning)
 {
 	checkValidity(resolvableGraph, readPaths);
 	std::priority_queue<size_t, std::vector<size_t>, UnitigLengthComparer> queue { UnitigLengthComparer { resolvableGraph } };
@@ -3921,7 +3921,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 			}
 			trimNodes(maybeTrimmable, resolvableGraph, readPaths);
 		}
-		if (guesswork)
+		if (guesswork && doCleaning)
 		{
 			phmap::flat_hash_set<size_t> cleanables = thisLengthNodes;
 			cleanables.insert(resolutionResult.maybeUnitigifiable.begin(), resolutionResult.maybeUnitigifiable.end());
@@ -3948,33 +3948,36 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 				}
 			}
 		}
-		auto removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, 10000, resolutionResult.maybeUnitigifiable);
-		resolutionResult.maybeUnitigifiable.insert(removed.maybeUnitigifiable.begin(), removed.maybeUnitigifiable.end());
-		auto removed2 = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 2, 5, 10000, resolutionResult.maybeUnitigifiable);
-		auto removed3 = removeLowCoverageCrosslinks(resolvableGraph, readPaths, 1, 5);
-		auto removed4 = removeLowCoverageCrosslinks(resolvableGraph, readPaths, 2, 10);
-		nodesRemoved += removed.nodesRemoved + removed2.nodesRemoved;
-		if (removed.nodesRemoved + removed2.nodesRemoved > 0 || removed.edgesRemoved + removed2.edgesRemoved + removed3.edgesRemoved + removed4.edgesRemoved > 0)
+		if (doCleaning)
 		{
-			std::cerr << "removed " << removed.nodesRemoved + removed2.nodesRemoved << " tips and " << removed.edgesRemoved + removed2.edgesRemoved + removed3.edgesRemoved + removed4.edgesRemoved << " edges" << std::endl;
-			removed.maybeUnitigifiable.insert(removed2.maybeUnitigifiable.begin(), removed2.maybeUnitigifiable.end());
-			std::vector<size_t> maybeUnitigifiable2 { removed.maybeUnitigifiable.begin(), removed.maybeUnitigifiable.end() };
-			maybeUnitigifiable2.insert(maybeUnitigifiable2.end(), removed3.maybeUnitigifiable.begin(), removed3.maybeUnitigifiable.end());
-			maybeUnitigifiable2.insert(maybeUnitigifiable2.end(), removed4.maybeUnitigifiable.begin(), removed4.maybeUnitigifiable.end());
-			std::sort(maybeUnitigifiable2.begin(), maybeUnitigifiable2.end());
-			auto unitigifiedHere = unitigifySet(resolvableGraph, readPaths, maybeUnitigifiable2);
-			for (size_t i = 0; i < unitigifiedHere.size(); i++)
+			auto removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, 10000, resolutionResult.maybeUnitigifiable);
+			resolutionResult.maybeUnitigifiable.insert(removed.maybeUnitigifiable.begin(), removed.maybeUnitigifiable.end());
+			auto removed2 = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 2, 5, 10000, resolutionResult.maybeUnitigifiable);
+			auto removed3 = removeLowCoverageCrosslinks(resolvableGraph, readPaths, 1, 5);
+			auto removed4 = removeLowCoverageCrosslinks(resolvableGraph, readPaths, 2, 10);
+			nodesRemoved += removed.nodesRemoved + removed2.nodesRemoved;
+			if (removed.nodesRemoved + removed2.nodesRemoved > 0 || removed.edgesRemoved + removed2.edgesRemoved + removed3.edgesRemoved + removed4.edgesRemoved > 0)
 			{
-				assert(unitigifiedHere[i].first.size() > 0);
-				if (unitigifiedHere[i].first.size() >= 2)
+				std::cerr << "removed " << removed.nodesRemoved + removed2.nodesRemoved << " tips and " << removed.edgesRemoved + removed2.edgesRemoved + removed3.edgesRemoved + removed4.edgesRemoved << " edges" << std::endl;
+				removed.maybeUnitigifiable.insert(removed2.maybeUnitigifiable.begin(), removed2.maybeUnitigifiable.end());
+				std::vector<size_t> maybeUnitigifiable2 { removed.maybeUnitigifiable.begin(), removed.maybeUnitigifiable.end() };
+				maybeUnitigifiable2.insert(maybeUnitigifiable2.end(), removed3.maybeUnitigifiable.begin(), removed3.maybeUnitigifiable.end());
+				maybeUnitigifiable2.insert(maybeUnitigifiable2.end(), removed4.maybeUnitigifiable.begin(), removed4.maybeUnitigifiable.end());
+				std::sort(maybeUnitigifiable2.begin(), maybeUnitigifiable2.end());
+				auto unitigifiedHere = unitigifySet(resolvableGraph, readPaths, maybeUnitigifiable2);
+				for (size_t i = 0; i < unitigifiedHere.size(); i++)
 				{
-					nodesRemoved += unitigifiedHere[i].first.size();
-				}
-				else
-				{
-					assert(unitigifiedHere[i].first[0] == std::make_pair(unitigifiedHere[i].second, true));
-					queue.emplace(unitigifiedHere[i].second);
-					if (resolvableGraph.precalcedUnitigCoverages.size() > unitigifiedHere[i].second) resolvableGraph.precalcedUnitigCoverages[unitigifiedHere[i].second] = 0;
+					assert(unitigifiedHere[i].first.size() > 0);
+					if (unitigifiedHere[i].first.size() >= 2)
+					{
+						nodesRemoved += unitigifiedHere[i].first.size();
+					}
+					else
+					{
+						assert(unitigifiedHere[i].first[0] == std::make_pair(unitigifiedHere[i].second, true));
+						queue.emplace(unitigifiedHere[i].second);
+						if (resolvableGraph.precalcedUnitigCoverages.size() > unitigifiedHere[i].second) resolvableGraph.precalcedUnitigCoverages[unitigifiedHere[i].second] = 0;
+					}
 				}
 			}
 		}
@@ -4025,7 +4028,7 @@ bool operator!=(const std::vector<std::pair<size_t, bool>>& left, const std::vec
 	return !(left == right);
 }
 
-std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve)
+std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const bool doCleaning)
 {
 	auto resolvableGraph = getUnitigs(initial, minCoverage, hashlist, kmerSize, keepGaps);
 	std::cerr << rawReadPaths.size() << " raw read paths" << std::endl;
@@ -4082,29 +4085,32 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 		assert(resolvableGraph.readsCrossingNode[i].size() >= 1);
 	}
 	unitigifyAll(resolvableGraph, readPaths);
-	auto removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, 10000, phmap::flat_hash_set<size_t> {});
-	if (removed.nodesRemoved > 0)
+	if (doCleaning)
 	{
-		std::cerr << "removed " << removed.nodesRemoved << " tips" << std::endl;
-		unitigifyAll(resolvableGraph, readPaths);
-	}
-	auto removedEdges = removeLowCoverageCrosslinks(resolvableGraph, readPaths, 2, 10);
-	if (removedEdges.edgesRemoved > 0)
-	{
-		std::cerr << "removed " << removedEdges.edgesRemoved << " crosslinks" << std::endl;
-		unitigifyAll(resolvableGraph, readPaths);
-	}
-	if (guesswork)
-	{
-		auto removed2 = cleanComponentsByCopynumber(resolvableGraph, readPaths, 50000, 0, maxResolveLength);
-		if (removed2.nodesRemoved > 0 || removed2.edgesRemoved > 0)
+		auto removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, 10000, phmap::flat_hash_set<size_t> {});
+		if (removed.nodesRemoved > 0)
 		{
-			std::cerr << "removed " << removed2.nodesRemoved << " nodes and " << removed2.edgesRemoved << " edges" << std::endl;
+			std::cerr << "removed " << removed.nodesRemoved << " tips" << std::endl;
 			unitigifyAll(resolvableGraph, readPaths);
 		}
+		auto removedEdges = removeLowCoverageCrosslinks(resolvableGraph, readPaths, 2, 10);
+		if (removedEdges.edgesRemoved > 0)
+		{
+			std::cerr << "removed " << removedEdges.edgesRemoved << " crosslinks" << std::endl;
+			unitigifyAll(resolvableGraph, readPaths);
+		}
+		if (guesswork)
+		{
+			auto removed2 = cleanComponentsByCopynumber(resolvableGraph, readPaths, 50000, 0, maxResolveLength);
+			if (removed2.nodesRemoved > 0 || removed2.edgesRemoved > 0)
+			{
+				std::cerr << "removed " << removed2.nodesRemoved << " nodes and " << removed2.edgesRemoved << " edges" << std::endl;
+				unitigifyAll(resolvableGraph, readPaths);
+			}
+		}
 	}
-	resolveRound(resolvableGraph, readPaths, hashlist, minCoverage, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, onlyLocalResolve);
-	resolveRound(resolvableGraph, readPaths, hashlist, 1, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, onlyLocalResolve);
+	resolveRound(resolvableGraph, readPaths, hashlist, minCoverage, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, onlyLocalResolve, doCleaning);
+	resolveRound(resolvableGraph, readPaths, hashlist, 1, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, onlyLocalResolve, doCleaning);
 	checkValidity(resolvableGraph, readPaths);
 	return resolvableToUnitigs(resolvableGraph, readPaths, readInfos);
 }
