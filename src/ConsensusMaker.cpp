@@ -21,8 +21,10 @@ void ConsensusMaker::init(const std::vector<size_t>& unitigLengths)
 	parent.resize(unitigLengths.size());
 	longestLeftOverlap.resize(unitigLengths.size(), 0);
 	longestRightOverlap.resize(unitigLengths.size(), 0);
+	totalLength = 0;
 	for (size_t i = 0; i < unitigLengths.size(); i++)
 	{
+		totalLength += unitigLengths[i];
 		assert(unitigLengths[i] >= 1);
 		compressedSequences[i].resize(unitigLengths[i]);
 		simpleCounts[i].resize(unitigLengths[i]);
@@ -265,7 +267,7 @@ std::tuple<size_t, size_t, bool> ConsensusMaker::find(size_t unitig, size_t inde
 		}
 		if (!std::get<2>(result)) std::get<2>(nextResult) = !std::get<2>(nextResult);
 		result = nextResult;
-		assert(iterations < parent.size()+1000);
+		assert(iterations < totalLength);
 	}
 	return result;
 }

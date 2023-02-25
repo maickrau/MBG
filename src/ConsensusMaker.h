@@ -109,6 +109,7 @@ private:
 	mutable std::vector<std::vector<std::tuple<size_t, size_t, size_t, size_t, bool>>> parent;
 	std::vector<size_t> longestLeftOverlap;
 	std::vector<size_t> longestRightOverlap;
+	size_t totalLength;
 };
 
 #endif
