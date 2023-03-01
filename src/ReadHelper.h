@@ -97,6 +97,66 @@ public:
 	std::vector<HashType> hashes;
 };
 
+template <typename F>
+void iterateReadsMultithreaded(const std::vector<std::string>& files, const size_t numThreads, F readCallback)
+{
+	std::atomic<bool> readDone;
+	readDone = false;
+	std::vector<std::thread> threads;
+	moodycamel::ConcurrentQueue<std::shared_ptr<FastQ>> sequenceQueue;
+	for (size_t i = 0; i < numThreads; i++)
+	{
+		threads.emplace_back([&readDone, &sequenceQueue, readCallback, i]()
+		{
+			while (true)
+			{
+				std::shared_ptr<FastQ> read;
+				if (!sequenceQueue.try_dequeue(read))
+				{
+					bool tryBreaking = readDone;
+					if (!sequenceQueue.try_dequeue(read))
+					{
+						if (tryBreaking) return;
+						std::this_thread::sleep_for(std::chrono::milliseconds(10));
+						continue;
+					}
+				}
+				assert(read != nullptr);
+				ReadInfo info;
+				info.readName.first = read->seq_id;
+				info.readName.second = 0;
+				info.readLength = read->sequence.size();
+				readCallback(info, read->sequence);
+			}
+		});
+	}
+	for (const std::string& filename : files)
+	{
+		std::cerr << "Reading sequences from " << filename << std::endl;
+		FastQ::streamFastqFromFile(filename, false, [&sequenceQueue](FastQ& read)
+		{
+			std::shared_ptr<FastQ> ptr = std::make_shared<FastQ>();
+			std::swap(*ptr, read);
+			bool queued = sequenceQueue.try_enqueue(ptr);
+			if (queued) return;
+			size_t triedSleeping = 0;
+			while (triedSleeping < 1000)
+			{
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+				queued = sequenceQueue.try_enqueue(ptr);
+				if (queued) return;
+				triedSleeping += 1;
+			}
+			sequenceQueue.enqueue(ptr);
+		});
+	}
+	readDone = true;
+	for (size_t i = 0; i < threads.size(); i++)
+	{
+		threads[i].join();
+	}
+}
+
 class ReadpartIterator
 {
 public:
@@ -105,7 +165,11 @@ public:
 	template <typename F>
 	void iterateHashes(F callback) const
 	{
-		if (cacheFileName.size() > 0)
+		if (memoryReads.size() > 0)
+		{
+			iterateHashesFromMemory(callback);
+		}
+		else if (cacheFileName.size() > 0)
 		{
 			iterateHashesFromCache(callback);
 		}
@@ -117,7 +181,11 @@ public:
 	template <typename F>
 	void iterateOnlyHashes(F callback) const
 	{
-		if (cacheFileName.size() > 0)
+		if (memoryReads.size() > 0)
+		{
+			iterateOnlyHashesFromMemory(callback);
+		}
+		else if (cacheFileName.size() > 0)
 		{
 			iterateOnlyHashesFromCache(callback);
 		}
@@ -129,7 +197,11 @@ public:
 	template <typename F>
 	void iterateParts(F callback) const
 	{
-		if (cacheFileName.size() > 0)
+		if (memoryReads.size() > 0)
+		{
+			iteratePartsFromMemory(callback);
+		}
+		else if (cacheFileName.size() > 0)
 		{
 			iteratePartsFromCache(callback);
 		}
@@ -138,9 +210,31 @@ public:
 			iteratePartsFromFiles(callback);
 		}
 	}
+	template <typename F>
+	void iterateHashesOfRead(const std::string& name, const std::string& seq, F callback) const
+	{
+		ReadInfo info;
+		info.readName.first = name;
+		info.readName.second = 0;
+		info.readLength = seq.size();
+		errorMask(info, seq, [this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq)
+		{
+			iterateNonpalindromeHashes(read, seq, poses, rawSeq, callback);
+		});
+	}
+	template <typename F>
+	void iteratePartsOfRead(const std::string& name, const std::string& seq, F callback) const
+	{
+		ReadInfo info;
+		info.readName.first = name;
+		info.readName.second = 0;
+		info.readLength = seq.size();
+		errorMask(info, seq, callback);
+	}
 	void addHpcVariants(const HashType hash, const size_t offset, const std::vector<size_t>& variants);
 	void clearCache();
 	void clearCacheHashes();
+	void setMemoryReads(const std::vector<std::pair<std::string, std::string>>& rawSeqs);
 private:
 	const size_t kmerSize;
 	const size_t windowSize;
@@ -153,7 +247,32 @@ private:
 	mutable size_t cacheItems;
 	mutable bool cacheBuilt;
 	mutable bool cache2Built;
+	std::vector<ReadBundle> memoryReads;
 	void collectEndSmers();
+	template <typename F>
+	void iteratePartsFromMemory(F callback) const
+	{
+		for (size_t i = 0; i < memoryReads.size(); i++)
+		{
+			callback(memoryReads[i].readInfo, memoryReads[i].seq, memoryReads[i].poses, memoryReads[i].rawSeq);
+		}
+	}
+	template <typename F>
+	void iterateHashesFromMemory(F callback) const
+	{
+		for (size_t i = 0; i < memoryReads.size(); i++)
+		{
+			callback(memoryReads[i].readInfo, memoryReads[i].seq, memoryReads[i].poses, memoryReads[i].rawSeq, memoryReads[i].positions, memoryReads[i].hashes);
+		}
+	}
+	template <typename F>
+	void iterateOnlyHashesFromMemory(F callback) const
+	{
+		for (size_t i = 0; i < memoryReads.size(); i++)
+		{
+			callback(memoryReads[i].readInfo, memoryReads[i].positions, memoryReads[i].hashes);
+		}
+	}
 	template <typename F>
 	void iteratePartsFromCache(F callback) const
 	{
@@ -645,40 +764,45 @@ private:
 		});
 	}
 	template <typename F>
+	void errorMask(ReadInfo& read, const std::string& rawSeq, F callback) const
+	{
+		if (errorMasking == ErrorMasking::Hpc)
+		{
+			iterateRLE(read, rawSeq, callback);
+		}
+		else if (errorMasking == ErrorMasking::Collapse)
+		{
+			iterateCollapse(read, rawSeq, callback);
+		}
+		else if (errorMasking == ErrorMasking::Dinuc)
+		{
+			iterateDinuc(read, rawSeq, callback);
+		}
+		else if (errorMasking == ErrorMasking::Microsatellite)
+		{
+			iterateMicrosatellite(read, rawSeq, callback);
+		}
+		else if (errorMasking == ErrorMasking::CollapseDinuc)
+		{
+			iterateCollapseDinuc(read, rawSeq, callback);
+		}
+		else if (errorMasking == ErrorMasking::CollapseMicrosatellite)
+		{
+			iterateCollapseMicrosatellite(read, rawSeq, callback);
+		}
+		else
+		{
+			assert(errorMasking == ErrorMasking::No);
+			iterateNoRLE(read, rawSeq, callback);
+		}
+	}
+	template <typename F>
 	void iteratePartsFromFiles(F callback) const
 	{
 		iterateReadsMultithreaded(readFiles, numThreads, [this, callback](ReadInfo& read, const std::string& rawSeq)
 		{
 			if (rawSeq.size() < 32) return;
-			if (errorMasking == ErrorMasking::Hpc)
-			{
-				iterateRLE(read, rawSeq, callback);
-			}
-			else if (errorMasking == ErrorMasking::Collapse)
-			{
-				iterateCollapse(read, rawSeq, callback);
-			}
-			else if (errorMasking == ErrorMasking::Dinuc)
-			{
-				iterateDinuc(read, rawSeq, callback);
-			}
-			else if (errorMasking == ErrorMasking::Microsatellite)
-			{
-				iterateMicrosatellite(read, rawSeq, callback);
-			}
-			else if (errorMasking == ErrorMasking::CollapseDinuc)
-			{
-				iterateCollapseDinuc(read, rawSeq, callback);
-			}
-			else if (errorMasking == ErrorMasking::CollapseMicrosatellite)
-			{
-				iterateCollapseMicrosatellite(read, rawSeq, callback);
-			}
-			else
-			{
-				assert(errorMasking == ErrorMasking::No);
-				iterateNoRLE(read, rawSeq, callback);
-			}
+			errorMask(read, rawSeq, callback);
 		});
 	}
 	template <typename F>
@@ -942,66 +1066,6 @@ private:
 		}
 		callback(read, seq, poses, rawSeq, positions);
 	}
-	template <typename F>
-	void iterateReadsMultithreaded(const std::vector<std::string>& files, const size_t numThreads, F readCallback) const
-	{
-		std::atomic<bool> readDone;
-		readDone = false;
-		std::vector<std::thread> threads;
-		moodycamel::ConcurrentQueue<std::shared_ptr<FastQ>> sequenceQueue;
-		for (size_t i = 0; i < numThreads; i++)
-		{
-			threads.emplace_back([&readDone, &sequenceQueue, readCallback, i]()
-			{
-				while (true)
-				{
-					std::shared_ptr<FastQ> read;
-					if (!sequenceQueue.try_dequeue(read))
-					{
-						bool tryBreaking = readDone;
-						if (!sequenceQueue.try_dequeue(read))
-						{
-							if (tryBreaking) return;
-							std::this_thread::sleep_for(std::chrono::milliseconds(10));
-							continue;
-						}
-					}
-					assert(read != nullptr);
-					ReadInfo info;
-					info.readName.first = read->seq_id;
-					info.readName.second = 0;
-					info.readLength = read->sequence.size();
-					readCallback(info, read->sequence);
-				}
-			});
-		}
-		for (const std::string& filename : files)
-		{
-			std::cerr << "Reading sequences from " << filename << std::endl;
-			FastQ::streamFastqFromFile(filename, false, [&sequenceQueue](FastQ& read)
-			{
-				std::shared_ptr<FastQ> ptr = std::make_shared<FastQ>();
-				std::swap(*ptr, read);
-				bool queued = sequenceQueue.try_enqueue(ptr);
-				if (queued) return;
-				size_t triedSleeping = 0;
-				while (triedSleeping < 1000)
-				{
-					std::this_thread::sleep_for(std::chrono::milliseconds(10));
-					queued = sequenceQueue.try_enqueue(ptr);
-					if (queued) return;
-					triedSleeping += 1;
-				}
-				sequenceQueue.enqueue(ptr);
-			});
-		}
-		readDone = true;
-		for (size_t i = 0; i < threads.size(); i++)
-		{
-			threads[i].join();
-		}
-	}
-
 };
 
 #endif

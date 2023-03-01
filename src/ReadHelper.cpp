@@ -90,3 +90,21 @@ void ReadpartIterator::clearCacheHashes()
 	}
 	cache2Built = false;
 }
+
+void ReadpartIterator::setMemoryReads(const std::vector<std::pair<std::string, std::string>>& rawSeqs)
+{
+	memoryReads.clear();
+	for (size_t i = 0; i < rawSeqs.size(); i++)
+	{
+		iterateHashesOfRead(rawSeqs[i].first, rawSeqs[i].second, [this](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
+		{
+			memoryReads.emplace_back();
+			memoryReads.back().readInfo = read;
+			memoryReads.back().seq = seq;
+			memoryReads.back().poses = poses;
+			memoryReads.back().rawSeq = rawSeq;
+			memoryReads.back().positions = positions;
+			memoryReads.back().hashes = hashes;
+		});
+	}
+}
