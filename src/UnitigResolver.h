@@ -4,6 +4,7 @@
 #include <tuple>
 #include <string>
 #include <vector>
+#include <iostream>
 #include "UnitigGraph.h"
 #include "HashList.h"
 #include "CumulativeVector.h"
@@ -25,6 +26,6 @@ public:
 private:
 };
 
-std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& readPaths, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const bool doCleaning);
+std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& readPaths, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const bool doCleaning, std::ostream& log);
 
 #endif

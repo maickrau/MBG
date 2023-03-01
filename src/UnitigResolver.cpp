@@ -510,7 +510,7 @@ private:
 	const ResolvableUnitigGraph& resolvableGraph;
 };
 
-ResolvableUnitigGraph getUnitigs(const UnitigGraph& initial, size_t minCoverage, const HashList& hashlist, const size_t kmerSize, const bool keepGaps)
+ResolvableUnitigGraph getUnitigs(const UnitigGraph& initial, size_t minCoverage, const HashList& hashlist, const size_t kmerSize, const bool keepGaps, std::ostream& log)
 {
 	ResolvableUnitigGraph result { hashlist, kmerSize };
 	result.unitigs.resize(initial.unitigs.size());
@@ -607,7 +607,7 @@ ResolvableUnitigGraph getUnitigs(const UnitigGraph& initial, size_t minCoverage,
 			result.averageCoverage = allkmerSum / allkmerDivisor;
 		}
 	}
-	std::cerr << "estimated average coverage " << result.averageCoverage << std::endl;
+	log << "estimated average coverage " << result.averageCoverage << std::endl;
 	return result;
 }
 
@@ -2431,7 +2431,7 @@ public:
 	phmap::flat_hash_map<std::pair<size_t, bool>, size_t> maybeTrimmable;
 };
 
-ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList& hashlist, std::vector<PathGroup>& readPaths, const phmap::flat_hash_set<size_t>& resolvables, const size_t minCoverage, const bool unconditional, const bool guesswork, const bool copycountFilterHeuristic)
+ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList& hashlist, std::vector<PathGroup>& readPaths, const phmap::flat_hash_set<size_t>& resolvables, const size_t minCoverage, const bool unconditional, const bool guesswork, const bool copycountFilterHeuristic, std::ostream& log)
 {
 	static BigVectorSet actuallyResolvables;
 	ResolutionResult result;
@@ -2444,7 +2444,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 		{
 			if (edge.first == node && !edge.second)
 			{
-				std::cout << "unresolvable even length exact palindrome frozen, id: " << node << std::endl;
+				log << "unresolvable even length exact palindrome frozen, id: " << node << std::endl;
 				unresolvables.insert(node);
 			}
 		}
@@ -2452,7 +2452,7 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 		{
 			if (edge.first == node && edge.second)
 			{
-				std::cout << "unresolvable even length exact palindrome frozen, id: " << node << std::endl;
+				log << "unresolvable even length exact palindrome frozen, id: " << node << std::endl;
 				unresolvables.insert(node);
 			}
 		}
@@ -3644,7 +3644,7 @@ void trimEndRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGr
 	}
 }
 
-void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, std::pair<size_t, bool> pos, size_t maxTrim)
+void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, std::pair<size_t, bool> pos, size_t maxTrim, std::ostream& log)
 {
 	if (maxTrim == 0) return;
 	if (resolvableGraph.edges[pos].size() > 0) return;
@@ -3679,7 +3679,7 @@ void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& r
 	assertPrintReads(maxReadTrim <= maxTrim, resolvableGraph, readPaths, pos.first);
 	if (!canTrimRecursive(resolvableGraph, readPaths, pos, maxReadTrim))
 	{
-		std::cout << "removed trim problem node " << pos.first << std::endl;
+		log << "removed trim problem node " << pos.first << std::endl;
 		std::vector<std::pair<std::pair<size_t, bool>, size_t>> alsoTrim;
 		for (auto edge : resolvableGraph.edges[reverse(pos)])
 		{
@@ -3693,14 +3693,14 @@ void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& r
 		for (auto pair : alsoTrim)
 		{
 			if (resolvableGraph.unitigRemoved[pair.first.first]) continue;
-			maybeTrim(resolvableGraph, readPaths, pair.first, pair.second);
+			maybeTrim(resolvableGraph, readPaths, pair.first, pair.second, log);
 		}
 		return;
 	}
 	trimEndRecursive(resolvableGraph, readPaths, pos, maxReadTrim);
 }
 
-void trimNodes(std::vector<std::pair<std::pair<size_t, bool>, size_t>> maybeTrimmable, ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths)
+void trimNodes(std::vector<std::pair<std::pair<size_t, bool>, size_t>> maybeTrimmable, ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, std::ostream& log)
 {
 	std::sort(maybeTrimmable.begin(), maybeTrimmable.end(), [](const std::pair<std::pair<size_t, bool>, size_t>& left, const std::pair<std::pair<size_t, bool>, size_t>& right)
 	{
@@ -3719,7 +3719,7 @@ void trimNodes(std::vector<std::pair<std::pair<size_t, bool>, size_t>> maybeTrim
 	for (auto pair : maybeTrimmable)
 	{
 		if (resolvableGraph.unitigRemoved[pair.first.first]) continue;
-		maybeTrim(resolvableGraph, readPaths, pair.first, pair.second);
+		maybeTrim(resolvableGraph, readPaths, pair.first, pair.second, log);
 	}
 }
 
@@ -3804,7 +3804,7 @@ phmap::flat_hash_set<size_t> filterToOnlyLocallyRepetitives(const ResolvableUnit
 	return result;
 }
 
-void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const bool doCleaning)
+void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const bool doCleaning, std::ostream& log)
 {
 	checkValidity(resolvableGraph, readPaths);
 	std::priority_queue<size_t, std::vector<size_t>, UnitigLengthComparer> queue { UnitigLengthComparer { resolvableGraph } };
@@ -3861,14 +3861,14 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		assert(resolvables.size() > 0);
 		size_t oldSize = resolvableGraph.unitigs.size();
 		checkValidity(resolvableGraph, readPaths);
-		std::cerr << "try resolve k=" << topSize;
-		auto resolutionResult = resolve(resolvableGraph, hashlist, readPaths, resolvables, minCoverage, topSize < maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic);
-		std::cerr << ", replaced " << resolutionResult.nodesResolved << " nodes with " << resolutionResult.nodesAdded << " nodes";
+		log << "try resolve k=" << topSize;
+		auto resolutionResult = resolve(resolvableGraph, hashlist, readPaths, resolvables, minCoverage, topSize < maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, log);
+		log << ", replaced " << resolutionResult.nodesResolved << " nodes with " << resolutionResult.nodesAdded << " nodes";
 		nodesRemoved += resolutionResult.nodesResolved;
 		if (resolutionResult.nodesResolved == 0)
 		{
 			assert(resolutionResult.maybeTrimmable.size() == 0);
-			std::cerr << std::endl;
+			log << std::endl;
 			continue;
 		}
 		size_t unitigified = 0;
@@ -3901,9 +3901,9 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		}
 		if (unitigified > 0)
 		{
-			std::cerr << ", unitigified " << unitigified << " nodes to " << unitigifiedTo << " nodes";
+			log << ", unitigified " << unitigified << " nodes to " << unitigifiedTo << " nodes";
 		}
-		std::cerr << std::endl;
+		log << std::endl;
 		if (resolutionResult.maybeTrimmable.size() > 0)
 		{
 			std::vector<std::pair<std::pair<size_t, bool>, size_t>> maybeTrimmable;
@@ -3919,7 +3919,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 				if (resolvableGraph.unitigRemoved[trimIndex.first]) continue;
 				maybeTrimmable.emplace_back(trimIndex, pair.second);
 			}
-			trimNodes(maybeTrimmable, resolvableGraph, readPaths);
+			trimNodes(maybeTrimmable, resolvableGraph, readPaths, log);
 		}
 		if (guesswork && doCleaning)
 		{
@@ -3928,7 +3928,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 			auto removed = cleanComponentsByCopynumber(resolvableGraph, readPaths, 50000, topSize, 0, cleanables, oldSize);
 			if (removed.nodesRemoved > 0 || removed.edgesRemoved > 0)
 			{
-				std::cerr << "removed " << removed.nodesRemoved << " nodes and " << removed.edgesRemoved << " edges" << std::endl;
+				log << "removed " << removed.nodesRemoved << " nodes and " << removed.edgesRemoved << " edges" << std::endl;
 				std::vector<size_t> maybeUnitigifiable;
 				maybeUnitigifiable.insert(maybeUnitigifiable.end(), removed.maybeUnitigifiable.begin(), removed.maybeUnitigifiable.end());
 				std::sort(maybeUnitigifiable.begin(), maybeUnitigifiable.end());
@@ -3958,7 +3958,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 			nodesRemoved += removed.nodesRemoved + removed2.nodesRemoved;
 			if (removed.nodesRemoved + removed2.nodesRemoved > 0 || removed.edgesRemoved + removed2.edgesRemoved + removed3.edgesRemoved + removed4.edgesRemoved > 0)
 			{
-				std::cerr << "removed " << removed.nodesRemoved + removed2.nodesRemoved << " tips and " << removed.edgesRemoved + removed2.edgesRemoved + removed3.edgesRemoved + removed4.edgesRemoved << " edges" << std::endl;
+				log << "removed " << removed.nodesRemoved + removed2.nodesRemoved << " tips and " << removed.edgesRemoved + removed2.edgesRemoved + removed3.edgesRemoved + removed4.edgesRemoved << " edges" << std::endl;
 				removed.maybeUnitigifiable.insert(removed2.maybeUnitigifiable.begin(), removed2.maybeUnitigifiable.end());
 				std::vector<size_t> maybeUnitigifiable2 { removed.maybeUnitigifiable.begin(), removed.maybeUnitigifiable.end() };
 				maybeUnitigifiable2.insert(maybeUnitigifiable2.end(), removed3.maybeUnitigifiable.begin(), removed3.maybeUnitigifiable.end());
@@ -4001,7 +4001,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 			compact(resolvableGraph, readPaths, queueNodes);
 			nodesRemoved = 0;
 			size_t newSize = resolvableGraph.unitigs.size();
-			std::cerr << "compacted from " << oldSize << " to " << newSize << std::endl;
+			log << "compacted from " << oldSize << " to " << newSize << std::endl;
 			checkValidity(resolvableGraph, readPaths);
 			for (auto node : queueNodes)
 			{
@@ -4028,10 +4028,10 @@ bool operator!=(const std::vector<std::pair<size_t, bool>>& left, const std::vec
 	return !(left == right);
 }
 
-std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const bool doCleaning)
+std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const bool doCleaning, std::ostream& log)
 {
-	auto resolvableGraph = getUnitigs(initial, minCoverage, hashlist, kmerSize, keepGaps);
-	std::cerr << rawReadPaths.size() << " raw read paths" << std::endl;
+	auto resolvableGraph = getUnitigs(initial, minCoverage, hashlist, kmerSize, keepGaps, log);
+	log << rawReadPaths.size() << " raw read paths" << std::endl;
 	// todo maybe fix? or does it matter?
 	cutRemovedEdgesFromPaths(resolvableGraph, rawReadPaths);
 	std::sort(rawReadPaths.begin(), rawReadPaths.end(), [](const ReadPath& left, const ReadPath& right) { return left.path < right.path; });
@@ -4078,8 +4078,8 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 			assert(getNumberOfHashes(resolvableGraph, 0, 0, readPaths.back().path) == (readPaths.back().reads.back().readPosEndIndex - readPaths.back().reads.back().readPosStartIndex) + readPaths.back().reads.back().leftClip + readPaths.back().reads.back().rightClip);
 		}
 	}
-	std::cerr << rawReadPaths.size() << " raw read paths" << std::endl;
-	std::cerr << readPaths.size() << " read paths" << std::endl;
+	log << rawReadPaths.size() << " raw read paths" << std::endl;
+	log << readPaths.size() << " read paths" << std::endl;
 	for (size_t i = 0; i < resolvableGraph.unitigs.size(); i++)
 	{
 		assert(resolvableGraph.readsCrossingNode[i].size() >= 1);
@@ -4090,13 +4090,13 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 		auto removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, 10000, phmap::flat_hash_set<size_t> {});
 		if (removed.nodesRemoved > 0)
 		{
-			std::cerr << "removed " << removed.nodesRemoved << " tips" << std::endl;
+			log << "removed " << removed.nodesRemoved << " tips" << std::endl;
 			unitigifyAll(resolvableGraph, readPaths);
 		}
 		auto removedEdges = removeLowCoverageCrosslinks(resolvableGraph, readPaths, 2, 10);
 		if (removedEdges.edgesRemoved > 0)
 		{
-			std::cerr << "removed " << removedEdges.edgesRemoved << " crosslinks" << std::endl;
+			log << "removed " << removedEdges.edgesRemoved << " crosslinks" << std::endl;
 			unitigifyAll(resolvableGraph, readPaths);
 		}
 		if (guesswork)
@@ -4104,13 +4104,13 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 			auto removed2 = cleanComponentsByCopynumber(resolvableGraph, readPaths, 50000, 0, maxResolveLength);
 			if (removed2.nodesRemoved > 0 || removed2.edgesRemoved > 0)
 			{
-				std::cerr << "removed " << removed2.nodesRemoved << " nodes and " << removed2.edgesRemoved << " edges" << std::endl;
+				log << "removed " << removed2.nodesRemoved << " nodes and " << removed2.edgesRemoved << " edges" << std::endl;
 				unitigifyAll(resolvableGraph, readPaths);
 			}
 		}
 	}
-	resolveRound(resolvableGraph, readPaths, hashlist, minCoverage, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, onlyLocalResolve, doCleaning);
-	resolveRound(resolvableGraph, readPaths, hashlist, 1, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, onlyLocalResolve, doCleaning);
+	resolveRound(resolvableGraph, readPaths, hashlist, minCoverage, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, onlyLocalResolve, doCleaning, log);
+	resolveRound(resolvableGraph, readPaths, hashlist, 1, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, onlyLocalResolve, doCleaning, log);
 	checkValidity(resolvableGraph, readPaths);
 	return resolvableToUnitigs(resolvableGraph, readPaths, readInfos);
 }
