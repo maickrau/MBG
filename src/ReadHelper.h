@@ -235,6 +235,8 @@ public:
 	void clearCache();
 	void clearCacheHashes();
 	void setMemoryReads(const std::vector<std::pair<std::string, std::string>>& rawSeqs);
+	void addMemoryRead(const std::pair<std::string, std::string>& seq);
+	void setMemoryReadIterables(const std::vector<size_t>& iterables);
 private:
 	const size_t kmerSize;
 	const size_t windowSize;
@@ -248,29 +250,60 @@ private:
 	mutable bool cacheBuilt;
 	mutable bool cache2Built;
 	std::vector<ReadBundle> memoryReads;
+	std::vector<size_t> memoryIterables;
 	void collectEndSmers();
 	template <typename F>
 	void iteratePartsFromMemory(F callback) const
 	{
-		for (size_t i = 0; i < memoryReads.size(); i++)
+		if (memoryIterables.size() > 0)
 		{
-			callback(memoryReads[i].readInfo, memoryReads[i].seq, memoryReads[i].poses, memoryReads[i].rawSeq);
+			for (size_t i : memoryIterables)
+			{
+				callback(memoryReads[i].readInfo, memoryReads[i].seq, memoryReads[i].poses, memoryReads[i].rawSeq);
+			}
+		}
+		else
+		{
+			for (size_t i = 0; i < memoryReads.size(); i++)
+			{
+				callback(memoryReads[i].readInfo, memoryReads[i].seq, memoryReads[i].poses, memoryReads[i].rawSeq);
+			}
 		}
 	}
 	template <typename F>
 	void iterateHashesFromMemory(F callback) const
 	{
-		for (size_t i = 0; i < memoryReads.size(); i++)
+		if (memoryIterables.size() > 0)
 		{
-			callback(memoryReads[i].readInfo, memoryReads[i].seq, memoryReads[i].poses, memoryReads[i].rawSeq, memoryReads[i].positions, memoryReads[i].hashes);
+			for (size_t i : memoryIterables)
+			{
+				callback(memoryReads[i].readInfo, memoryReads[i].seq, memoryReads[i].poses, memoryReads[i].rawSeq, memoryReads[i].positions, memoryReads[i].hashes);
+			}
+		}
+		else
+		{
+			for (size_t i = 0; i < memoryReads.size(); i++)
+			{
+				callback(memoryReads[i].readInfo, memoryReads[i].seq, memoryReads[i].poses, memoryReads[i].rawSeq, memoryReads[i].positions, memoryReads[i].hashes);
+			}
 		}
 	}
 	template <typename F>
 	void iterateOnlyHashesFromMemory(F callback) const
 	{
-		for (size_t i = 0; i < memoryReads.size(); i++)
+		if (memoryIterables.size() > 0)
 		{
-			callback(memoryReads[i].readInfo, memoryReads[i].positions, memoryReads[i].hashes);
+			for (size_t i : memoryIterables)
+			{
+				callback(memoryReads[i].readInfo, memoryReads[i].positions, memoryReads[i].hashes);
+			}
+		}
+		else
+		{
+			for (size_t i = 0; i < memoryReads.size(); i++)
+			{
+				callback(memoryReads[i].readInfo, memoryReads[i].positions, memoryReads[i].hashes);
+			}
 		}
 	}
 	template <typename F>

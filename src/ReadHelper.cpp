@@ -108,3 +108,22 @@ void ReadpartIterator::setMemoryReads(const std::vector<std::pair<std::string, s
 		});
 	}
 }
+
+void ReadpartIterator::addMemoryRead(const std::pair<std::string, std::string>& seq)
+{
+	iterateHashesOfRead(seq.first, seq.second, [this](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
+	{
+		memoryReads.emplace_back();
+		memoryReads.back().readInfo = read;
+		memoryReads.back().seq = seq;
+		memoryReads.back().poses = poses;
+		memoryReads.back().rawSeq = rawSeq;
+		memoryReads.back().positions = positions;
+		memoryReads.back().hashes = hashes;
+	});
+}
+
+void ReadpartIterator::setMemoryReadIterables(const std::vector<size_t>& iterables)
+{
+	memoryIterables = iterables;
+}
