@@ -204,10 +204,6 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 			if (i > 0)
 			{
 				overlap = getUnitigOverlap(hashlist, kmerSize, unitigs, path.path[i-1], path.path[i]);
-				size_t fromClip = path.path[i-1].forward() ? unitigs.rightClip[path.path[i-1].id()] : unitigs.leftClip[path.path[i-1].id()];
-				size_t toClip = path.path[i].forward() ? unitigs.leftClip[path.path[i].id()] : unitigs.rightClip[path.path[i].id()];
-				assert(overlap > fromClip + toClip);
-				overlap -= fromClip + toClip;
 			}
 			updatePathRemaining(startRemaining, pathStartExpanded, path.path[i].forward(), unitigExpandedPoses[path.path[i].id()], overlap);
 			updatePathRemaining(endRemaining, pathEndExpanded, path.path[i].forward(), unitigExpandedPoses[path.path[i].id()], overlap);
@@ -977,10 +973,6 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 		{
 			if (canon(fw, to).first == fw) stats.edges += 1;
 			size_t rleOverlap = getUnitigOverlap(hashlist, kmerSize, unitigs, fw, to);
-			size_t fromClip = fw.second ? unitigs.rightClip[fw.first] : unitigs.leftClip[fw.first];
-			size_t toClip = to.second ? unitigs.leftClip[to.first] : unitigs.rightClip[to.first];
-			assert(rleOverlap > fromClip + toClip);
-			rleOverlap -= fromClip + toClip;
 			size_t overlap = getOverlapFromRLE(unitigSequences, stringIndex, fw, rleOverlap);
 			file << "L\t" << nodeNamePrefix << (fw.first+1) << "\t" << (fw.second ? "+" : "-") << "\t" << nodeNamePrefix << (to.first+1) << "\t" << (to.second ? "+" : "-") << "\t" << overlap << "M\tec:i:" << unitigs.edgeCoverage(fw, to) << std::endl;
 		}
@@ -990,10 +982,6 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 		{
 			if (canon(bw, to).first == bw) stats.edges += 1;
 			size_t rleOverlap = getUnitigOverlap(hashlist, kmerSize, unitigs, bw, to);
-			size_t fromClip = bw.second ? unitigs.rightClip[bw.first] : unitigs.leftClip[bw.first];
-			size_t toClip = to.second ? unitigs.leftClip[to.first] : unitigs.rightClip[to.first];
-			assert(rleOverlap > fromClip + toClip);
-			rleOverlap -= fromClip + toClip;
 			size_t overlap = getOverlapFromRLE(unitigSequences, stringIndex, bw, rleOverlap);
 			file << "L\t" << nodeNamePrefix << (bw.first+1) << "\t" << (bw.second ? "+" : "-") << "\t" << nodeNamePrefix << (to.first+1) << "\t" << (to.second ? "+" : "-") << "\t" << overlap << "M\tec:i:" << unitigs.edgeCoverage(bw, to) << std::endl;
 		}
@@ -1196,10 +1184,6 @@ void verifyEdgeConsistency(const UnitigGraph& unitigs, const HashList& hashlist,
 	assert(unitigs.edges.hasEdge(from, to));
 	assert(unitigs.edges.hasEdge(reverse(to), reverse(from)));
 	size_t overlap = getUnitigOverlap(hashlist, kmerSize, unitigs, from, to);
-	size_t fromClip = from.second ? unitigs.rightClip[from.first] : unitigs.leftClip[from.first];
-	size_t toClip = to.second ? unitigs.leftClip[to.first] : unitigs.rightClip[to.first];
-	assert(overlap > fromClip + toClip);
-	overlap -= fromClip + toClip;
 	assert(overlap > 0);
 	for (size_t i = 0; i < overlap; i++)
 	{
