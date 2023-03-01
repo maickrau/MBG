@@ -41,7 +41,7 @@ public:
 	size_t approxKmers;
 };
 
-void loadReadsAsHashesMultithread(HashList& result, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
+void loadReadsAsHashesMultithread(HashList& result, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads, std::ostream& log)
 {
 	std::atomic<size_t> totalNodes = 0;
 	partIterator.iterateHashes([&result, &totalNodes, kmerSize](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
@@ -70,8 +70,8 @@ void loadReadsAsHashesMultithread(HashList& result, const size_t kmerSize, const
 			totalNodes += 1;
 		};
 	});
-	std::cerr << totalNodes << " total selected k-mers in reads" << std::endl;
-	std::cerr << result.size() << " distinct selected k-mers in reads" << std::endl;
+	log << totalNodes << " total selected k-mers in reads" << std::endl;
+	log << result.size() << " distinct selected k-mers in reads" << std::endl;
 }
 
 void updatePathRemaining(size_t& rleRemaining, size_t& expanded, bool fw, const DumbSelect& expandedPoses, size_t overlap)
@@ -1542,7 +1542,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	if (hpcVariantOnecopyCoverage != 0)
 	{
 		std::cerr << "Collecting hpc variant k-mers" << std::endl;
-		loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads);
+		loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads, std::cerr);
 		auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage, keepGaps, false);
 		if (minUnitigCoverage > minCoverage)
 		{
@@ -1555,7 +1555,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	}
 	auto beforeKmers = getTime();
 	std::cerr << "Collecting selected k-mers" << std::endl;
-	loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads);
+	loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads, std::cerr);
 	auto beforeUnitigs = getTime();
 	std::cerr << "Unitigifying" << std::endl;
 	auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage, keepGaps, (minUnitigCoverage >= 2) && (maxResolveLength > 0) && guesswork);
