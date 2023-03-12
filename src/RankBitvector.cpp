@@ -10,8 +10,20 @@ int popcount(uint64_t x)
 	return x;
 }
 
+RankBitvector::RankBitvector() :
+	ranksBuilt(false),
+	realSize(0)
+{
+}
+
 RankBitvector::RankBitvector(size_t size) :
 	ranksBuilt(false)
+{
+	bits.resize((size + BitsPerChunk - 1) / BitsPerChunk, 0);
+	realSize = size;
+}
+
+void RankBitvector::resize(size_t size)
 {
 	bits.resize((size + BitsPerChunk - 1) / BitsPerChunk, 0);
 	realSize = size;
