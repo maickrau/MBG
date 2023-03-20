@@ -15,6 +15,8 @@
 #include "ErrorMaskHelper.h"
 #include "Serializer.h"
 
+extern thread_local std::vector<size_t> memoryIterables;
+
 enum ErrorMasking
 {
 	No,
@@ -250,7 +252,6 @@ private:
 	mutable bool cacheBuilt;
 	mutable bool cache2Built;
 	std::vector<ReadBundle> memoryReads;
-	std::vector<size_t> memoryIterables;
 	void collectEndSmers();
 	template <typename F>
 	void iteratePartsFromMemory(F callback) const

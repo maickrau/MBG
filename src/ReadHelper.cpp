@@ -3,6 +3,8 @@
 #include "ReadHelper.h"
 #include "FastHasher.h"
 
+thread_local std::vector<size_t> memoryIterables;
+
 ReadpartIterator::ReadpartIterator(const size_t kmerSize, const size_t windowSize, const ErrorMasking errorMasking, const size_t numThreads, const std::vector<std::string>& readFiles, const bool includeEndSmers, const std::string& cacheFileName) :
 	kmerSize(kmerSize),
 	windowSize(windowSize),
