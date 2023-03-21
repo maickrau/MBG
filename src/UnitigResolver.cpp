@@ -933,9 +933,10 @@ void addPath(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& rea
 			}
 		}
 	}
+	// size_t pathHashCount = getNumberOfHashes(resolvableGraph, 0, 0, newPath.path);
 	for (const auto& read : newPath.reads)
 	{
-		// assert(read.leftClip + read.rightClip + read.readPoses.size() == getNumberOfHashes(resolvableGraph, 0, 0, newPath.path));
+		// assert(read.leftClip + read.rightClip + (read.readPosEndIndex - read.readPosStartIndex) == pathHashCount);
 		if (newPath.path.size() == 1)
 		{
 			assert(resolvableGraph.unitigs[newPath.path[0].first].size() > read.leftClip + read.rightClip);
@@ -2214,6 +2215,11 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 						continue;
 					}
 				}
+			}
+			if (j > 0 && actuallyResolvables.get(readPaths[i].path[j-1].first) && newEdgeNodes.count(std::make_pair(reverse(readPaths[i].path[j]), reverse(readPaths[i].path[j-1]))) == 0 && newEdgeNodes.count(std::make_pair(readPaths[i].path[j-1], readPaths[i].path[j])) == 0)
+			{
+				if (breakFromInvalidEdge.size() == 0 || breakFromInvalidEdge.back() != newPath.path.size()) breakFromInvalidEdge.push_back(newPath.path.size());
+				continue;
 			}
 			if (j > 0 && newEdgeNodes.count(std::make_pair(reverse(readPaths[i].path[j]), reverse(readPaths[i].path[j-1]))) == 1)
 			{
