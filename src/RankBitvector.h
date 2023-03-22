@@ -20,6 +20,7 @@ public:
 	size_t getRank(size_t i) const;
 	size_t size() const;
 	void resize(size_t size);
+	void push_back(bool val);
 private:
 	bool ranksBuilt;
 	std::vector<uint64_t> bits;

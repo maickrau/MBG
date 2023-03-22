@@ -29,6 +29,19 @@ void RankBitvector::resize(size_t size)
 	realSize = size;
 }
 
+void RankBitvector::push_back(bool val)
+{
+	assert(!ranksBuilt);
+	realSize += 1;
+	size_t wantedBitsSize = (realSize + BitsPerChunk - 1) / BitsPerChunk;
+	if (wantedBitsSize > bits.size())
+	{
+		bits.resize(bits.size() * 2, 0);
+		if (bits.size() == 0) bits.resize(5, 0);
+	}
+	set(realSize-1, val);
+}
+
 size_t RankBitvector::size() const
 {
 	return realSize;
