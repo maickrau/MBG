@@ -310,8 +310,9 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 	}
 	partIterator.iterateParts([&consensusMaker, &readPaths, &expandedPosMutex, &hashlist, &unitigLengths, &unitigs, &bpOffsets, &pathsPerRead, kmerSize](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq)
 	{
+		if (pathsPerRead.count(read.readName) == 0) return;
 		std::vector<std::tuple<size_t, size_t, size_t, size_t, bool, size_t, size_t>> matchBlocks;
-		for (size_t pathi : pathsPerRead[read.readName])
+		for (size_t pathi : pathsPerRead.at(read.readName))
 		{
 			auto add = getMatchBlocks(bpOffsets, unitigs, readPaths[pathi], unitigLengths, kmerSize, pathi);
 			matchBlocks.insert(matchBlocks.end(), add.begin(), add.end());
