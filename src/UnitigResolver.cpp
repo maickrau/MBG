@@ -3650,7 +3650,7 @@ void trimEndRecursive(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGr
 	}
 }
 
-void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, std::pair<size_t, bool> pos, size_t maxTrim, std::ostream& log)
+void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, std::unordered_set<size_t>& maybeUnitigifiable, std::pair<size_t, bool> pos, size_t maxTrim, std::ostream& log)
 {
 	if (maxTrim == 0) return;
 	if (resolvableGraph.edges[pos].size() > 0) return;
@@ -3689,6 +3689,7 @@ void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& r
 		std::vector<std::pair<std::pair<size_t, bool>, size_t>> alsoTrim;
 		for (auto edge : resolvableGraph.edges[reverse(pos)])
 		{
+			maybeUnitigifiable.insert(edge.first);
 			assertPrintReads(resolvableGraph.edges[reverse(edge)].count(pos) == 1, resolvableGraph, readPaths, pos.first);
 			assertPrintReads(resolvableGraph.readsCrossingNode[edge.first].size() > 0, resolvableGraph, readPaths, pos.first);
 			size_t overlap = resolvableGraph.overlaps.at(canon(reverse(pos), edge));
@@ -3699,14 +3700,14 @@ void maybeTrim(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& r
 		for (auto pair : alsoTrim)
 		{
 			if (resolvableGraph.unitigRemoved[pair.first.first]) continue;
-			maybeTrim(resolvableGraph, readPaths, pair.first, pair.second, log);
+			maybeTrim(resolvableGraph, readPaths, maybeUnitigifiable, pair.first, pair.second, log);
 		}
 		return;
 	}
 	trimEndRecursive(resolvableGraph, readPaths, pos, maxReadTrim);
 }
 
-void trimNodes(std::vector<std::pair<std::pair<size_t, bool>, size_t>> maybeTrimmable, ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, std::ostream& log)
+std::unordered_set<size_t> trimNodes(std::vector<std::pair<std::pair<size_t, bool>, size_t>> maybeTrimmable, ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, std::ostream& log)
 {
 	std::sort(maybeTrimmable.begin(), maybeTrimmable.end(), [](const std::pair<std::pair<size_t, bool>, size_t>& left, const std::pair<std::pair<size_t, bool>, size_t>& right)
 	{
@@ -3722,11 +3723,13 @@ void trimNodes(std::vector<std::pair<std::pair<size_t, bool>, size_t>> maybeTrim
 	{
 		assertPrintReads(!resolvableGraph.unitigRemoved[pair.first.first], resolvableGraph, readPaths, pair.first.first);
 	}
+	std::unordered_set<size_t> maybeUnitigifiable;
 	for (auto pair : maybeTrimmable)
 	{
 		if (resolvableGraph.unitigRemoved[pair.first.first]) continue;
-		maybeTrim(resolvableGraph, readPaths, pair.first, pair.second, log);
+		maybeTrim(resolvableGraph, readPaths, maybeUnitigifiable, pair.first, pair.second, log);
 	}
+	return maybeUnitigifiable;
 }
 
 void addPlusOneComponent(const ResolvableUnitigGraph& resolvableGraph, phmap::flat_hash_set<size_t>& resolvables, size_t startNode, size_t maxLength)
@@ -3925,7 +3928,33 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 				if (resolvableGraph.unitigRemoved[trimIndex.first]) continue;
 				maybeTrimmable.emplace_back(trimIndex, pair.second);
 			}
-			trimNodes(maybeTrimmable, resolvableGraph, readPaths, log);
+			std::unordered_set<size_t> maybeUnitigifiable = trimNodes(maybeTrimmable, resolvableGraph, readPaths, log);
+			if (maybeUnitigifiable.size() > 0)
+			{
+				std::vector<size_t> deterministicUnitigifiable { maybeUnitigifiable.begin(), maybeUnitigifiable.end() };
+				std::sort(deterministicUnitigifiable.begin(), deterministicUnitigifiable.end());
+				auto unitigifiedHere = unitigifySet(resolvableGraph, readPaths, deterministicUnitigifiable);
+				for (size_t i = 0; i < unitigifiedHere.size(); i++)
+				{
+					assert(unitigifiedHere[i].first.size() > 0);
+					if (unitigifiedHere[i].first.size() > 1)
+					{
+						for (auto unitig : unitigifiedHere[i].first)
+						{
+							belongsToUnitig[unitig.first] = std::make_pair(unitigifiedHere[i].second, unitig.second);
+						}
+						nodesRemoved += unitigifiedHere[i].first.size();
+						unitigified += unitigifiedHere[i].first.size();
+						unitigifiedTo += 1;
+					}
+					else
+					{
+						assert(unitigifiedHere[i].first[0] == std::make_pair(unitigifiedHere[i].second, true));
+						assert(!resolvableGraph.unitigRemoved[unitigifiedHere[i].second]);
+						queue.emplace(unitigifiedHere[i].second);
+					}
+				}
+			}
 		}
 		if (guesswork && doCleaning)
 		{
