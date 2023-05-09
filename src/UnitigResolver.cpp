@@ -1621,9 +1621,46 @@ size_t getTrimAmountToCheck(const ResolvableUnitigGraph& resolvableGraph, const 
 	{
 		return resolvableGraph.unitigs[to.first].size() - resolvableGraph.overlaps.at(canon(from, to));
 	}
+	if (from.second && resolvableGraph.unitigRightClipBp[from.first] == 0)
+	{
+		assert(resolvableGraph.overlaps.at(canon(from, to)) < resolvableGraph.unitigs[to.first].size());
+		std::pair<size_t, bool> fromKmer { resolvableGraph.unitigs[from.first].back() };
+		std::pair<size_t, bool> toKmer;
+		if (to.second)
+		{
+			toKmer = resolvableGraph.unitigs[to.first][resolvableGraph.overlaps.at(canon(from, to))];
+		}
+		else
+		{
+			toKmer = reverse(resolvableGraph.unitigs[to.first][resolvableGraph.unitigs[to.first].size()-1-resolvableGraph.overlaps.at(canon(from, to))]);
+		}
+		if (resolvableGraph.hashlist.getOverlap(fromKmer, toKmer) == resolvableGraph.kmerSize-1)
+		{
+			return resolvableGraph.unitigs[to.first].size() - resolvableGraph.overlaps.at(canon(from, to)) - 1;
+		}
+	}
 	if (!from.second && resolvableGraph.unitigLeftClipBp[from.first] == 1)
 	{
 		return resolvableGraph.unitigs[to.first].size() - resolvableGraph.overlaps.at(canon(from, to));
+	}
+	if (!from.second && resolvableGraph.unitigLeftClipBp[from.first] == 0)
+	{
+		assert(resolvableGraph.overlaps.at(canon(from, to)) < resolvableGraph.unitigs[to.first].size());
+		assert(resolvableGraph.overlaps.at(canon(from, to)) < resolvableGraph.unitigs[to.first].size());
+		std::pair<size_t, bool> fromKmer { reverse(resolvableGraph.unitigs[from.first][0]) };
+		std::pair<size_t, bool> toKmer;
+		if (to.second)
+		{
+			toKmer = resolvableGraph.unitigs[to.first][resolvableGraph.overlaps.at(canon(from, to))];
+		}
+		else
+		{
+			toKmer = reverse(resolvableGraph.unitigs[to.first][resolvableGraph.unitigs[to.first].size()-1-resolvableGraph.overlaps.at(canon(from, to))]);
+		}
+		if (resolvableGraph.hashlist.getOverlap(fromKmer, toKmer) == resolvableGraph.kmerSize-1)
+		{
+			return resolvableGraph.unitigs[to.first].size() - resolvableGraph.overlaps.at(canon(from, to)) - 1;
+		}
 	}
 	return 0;
 }
@@ -2843,7 +2880,7 @@ void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<PathGro
 		}
 		for (auto edge : graph.edges[bw])
 		{
-			assert(getEdgeCoverage(graph, readPaths, bw, edge) > 0);
+			assertPrintReads(getEdgeCoverage(graph, readPaths, bw, edge) > 0, graph, readPaths, i);
 			assert(!graph.unitigRemoved[edge.first]);
 			assert(graph.edges[reverse(edge)].count(reverse(bw)) == 1);
 			assert(graph.edges[bw].size() >= 2 || graph.edges[reverse(edge)].size() >= 2 || edge.first == i);
