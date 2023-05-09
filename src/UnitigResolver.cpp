@@ -1646,7 +1646,6 @@ size_t getTrimAmountToCheck(const ResolvableUnitigGraph& resolvableGraph, const 
 	if (!from.second && resolvableGraph.unitigLeftClipBp[from.first] == 0)
 	{
 		assert(resolvableGraph.overlaps.at(canon(from, to)) < resolvableGraph.unitigs[to.first].size());
-		assert(resolvableGraph.overlaps.at(canon(from, to)) < resolvableGraph.unitigs[to.first].size());
 		std::pair<size_t, bool> fromKmer { reverse(resolvableGraph.unitigs[from.first][0]) };
 		std::pair<size_t, bool> toKmer;
 		if (to.second)
