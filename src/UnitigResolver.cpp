@@ -2247,14 +2247,18 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 				{
 					if (newEdgeNodes.count(std::make_pair(readPaths[i].path[j], readPaths[i].path[j+1])) == 0 && newEdgeNodes.count(std::make_pair(reverse(readPaths[i].path[j+1]), reverse(readPaths[i].path[j]))) == 0)
 					{
-						breakFromInvalidEdge.push_back(newPath.path.size());
+						assert(breakFromInvalidEdge.size() == 0 || breakFromInvalidEdge.back() != newPath.path.size());
+						if (newPath.path.size() >= 1) breakFromInvalidEdge.push_back(newPath.path.size());
 						continue;
 					}
 				}
 			}
 			if (j > 0 && actuallyResolvables.get(readPaths[i].path[j-1].first) && newEdgeNodes.count(std::make_pair(reverse(readPaths[i].path[j]), reverse(readPaths[i].path[j-1]))) == 0 && newEdgeNodes.count(std::make_pair(readPaths[i].path[j-1], readPaths[i].path[j])) == 0)
 			{
-				if (breakFromInvalidEdge.size() == 0 || breakFromInvalidEdge.back() != newPath.path.size()) breakFromInvalidEdge.push_back(newPath.path.size());
+				if (breakFromInvalidEdge.size() == 0 || breakFromInvalidEdge.back() != newPath.path.size())
+				{
+					if (newPath.path.size() >= 1) breakFromInvalidEdge.push_back(newPath.path.size());
+				}
 				continue;
 			}
 			if (j > 0 && newEdgeNodes.count(std::make_pair(reverse(readPaths[i].path[j]), reverse(readPaths[i].path[j-1]))) == 1)
