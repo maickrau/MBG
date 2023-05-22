@@ -3829,7 +3829,7 @@ bool isLocallyRepetitive(const ResolvableUnitigGraph& resolvableGraph, const std
 	return false;
 }
 
-phmap::flat_hash_set<size_t> filterToOnlyLocallyRepetitives(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const phmap::flat_hash_set<size_t>& unfilteredResolvables)
+phmap::flat_hash_set<size_t> filterToOnlyLocallyRepetitives(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const phmap::flat_hash_set<size_t>& unfilteredResolvables, size_t maxDist)
 {
 	phmap::flat_hash_set<size_t> result;
 	for (size_t node : unfilteredResolvables)
@@ -3838,15 +3838,27 @@ phmap::flat_hash_set<size_t> filterToOnlyLocallyRepetitives(const ResolvableUnit
 		{
 			const size_t pathi = pospair.first;
 			if (readPaths[pathi].path.size() < 2) continue;
-			size_t nodeCount = 0;
-			for (std::pair<size_t, bool> pathnode : readPaths[pathi].path)
+			size_t pos = 0;
+			size_t lastMatchPos = std::numeric_limits<size_t>::max();
+			for (size_t i = 0; i < readPaths[pathi].path.size(); i++)
 			{
-				if (pathnode.first == node) nodeCount += 1;
-			}
-			if (nodeCount >= 2)
-			{
-				result.insert(node);
-				break;
+				if (i >= 1)
+				{
+					pos += resolvableGraph.unitigLength(readPaths[pathi].path[i-1].first);
+					pos -= resolvableGraph.getBpOverlap(readPaths[pathi].path[i-1], readPaths[pathi].path[i]);
+				}
+				if (readPaths[pathi].path[i].first != node) continue;
+				if (lastMatchPos == std::numeric_limits<size_t>::max())
+				{
+					lastMatchPos = pos;
+					continue;
+				}
+				assert(pos > lastMatchPos);
+				if (pos - lastMatchPos < maxDist)
+				{
+					result.insert(node);
+					break;
+				}
 			}
 		}
 	}
@@ -3899,7 +3911,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		}
 		if (onlyLocalResolve)
 		{
-			resolvables = filterToOnlyLocallyRepetitives(resolvableGraph, readPaths, resolvables);
+			resolvables = filterToOnlyLocallyRepetitives(resolvableGraph, readPaths, resolvables, maxResolveLength);
 			auto oldResolvables = resolvables;
 			for (auto node : oldResolvables)
 			{
