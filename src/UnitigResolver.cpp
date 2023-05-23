@@ -276,6 +276,10 @@ public:
 		}
 		return result;
 	}
+	size_t getCrossingCount(size_t node) const
+	{
+		return readsCrossingNode[node].size();
+	}
 	ReadCrosserIteratorHelper iterateCrossingReads(size_t node, const std::vector<PathGroup>& paths) const
 	{
 		return ReadCrosserIteratorHelper { readsCrossingNode[node], paths };
@@ -2828,9 +2832,15 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 	return result;
 }
 
-size_t getEdgeCoverage(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const std::pair<size_t, bool> from, const std::pair<size_t, bool> to)
+size_t getEdgeCoverage(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, std::pair<size_t, bool> from, std::pair<size_t, bool> to, size_t maxCount)
 {
 	size_t result = 0;
+	if (resolvableGraph.getCrossingCount(to.first) < resolvableGraph.getCrossingCount(from.first))
+	{
+		std::swap(from, to);
+		from = reverse(from);
+		to = reverse(to);
+	}
 	for (const std::pair<uint32_t, uint32_t> pospair : resolvableGraph.iterateCrossingReads(from.first, readPaths))
 	{
 		const size_t i = pospair.first;
@@ -2838,13 +2848,20 @@ size_t getEdgeCoverage(const ResolvableUnitigGraph& resolvableGraph, const std::
 		if (j < readPaths[i].path.size()-1 && readPaths[i].path[j] == from && readPaths[i].path[j+1] == to)
 		{
 			result += readPaths[i].reads.size();
+			if (result > maxCount) return result;
 		}
 		if (j > 0 && readPaths[i].path[j] == reverse(from) && readPaths[i].path[j-1] == reverse(to))
 		{
 			result += readPaths[i].reads.size();
+			if (result > maxCount) return result;
 		}
 	}
 	return result;
+}
+
+size_t getEdgeCoverage(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, std::pair<size_t, bool> from, std::pair<size_t, bool> to)
+{
+	return getEdgeCoverage(resolvableGraph, readPaths, from, to, std::numeric_limits<size_t>::max());
 }
 
 void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<PathGroup>& readPaths)
@@ -3202,10 +3219,15 @@ void tryRemoveTip(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 	for (auto edge : resolvableGraph.edges[std::make_pair(i, true)])
 	{
 		if (resolvableGraph.getCoverage(readPaths, edge.first) < minSafeCoverage) return;
-		if (getEdgeCoverage(resolvableGraph, readPaths, std::make_pair(i, true), edge) > maxRemovableCoverage) return;
+		if (getEdgeCoverage(resolvableGraph, readPaths, std::make_pair(i, true), edge, maxRemovableCoverage) > maxRemovableCoverage) return;
 		for (auto edge2 : resolvableGraph.edges[reverse(edge)])
 		{
-			if (getEdgeCoverage(resolvableGraph, readPaths, reverse(edge), edge2) >= minSafeCoverage) fwHasSafeEdge = true;
+			if (edge2.first == i) continue;
+			if (getEdgeCoverage(resolvableGraph, readPaths, reverse(edge), edge2, minSafeCoverage) >= minSafeCoverage)
+			{
+				fwHasSafeEdge = true;
+				break;
+			}
 		}
 	}
 	if (resolvableGraph.edges[std::make_pair(i, true)].size() > 0 && !fwHasSafeEdge) return;
@@ -3213,10 +3235,15 @@ void tryRemoveTip(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 	for (auto edge : resolvableGraph.edges[std::make_pair(i, false)])
 	{
 		if (resolvableGraph.getCoverage(readPaths, edge.first) < minSafeCoverage) return;
-		if (getEdgeCoverage(resolvableGraph, readPaths, std::make_pair(i, false), edge) > maxRemovableCoverage) return;
+		if (getEdgeCoverage(resolvableGraph, readPaths, std::make_pair(i, false), edge, maxRemovableCoverage) > maxRemovableCoverage) return;
 		for (auto edge2 : resolvableGraph.edges[reverse(edge)])
 		{
-			if (getEdgeCoverage(resolvableGraph, readPaths, reverse(edge), edge2) >= minSafeCoverage) bwHasSafeEdge = true;
+			if (edge2.first == i) continue;
+			if (getEdgeCoverage(resolvableGraph, readPaths, reverse(edge), edge2, minSafeCoverage) >= minSafeCoverage)
+			{
+				bwHasSafeEdge = true;
+				break;
+			}
 		}
 	}
 	if (resolvableGraph.edges[std::make_pair(i, false)].size() > 0 && !bwHasSafeEdge) return;
