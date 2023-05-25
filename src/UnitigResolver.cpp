@@ -3861,32 +3861,34 @@ phmap::flat_hash_set<size_t> filterToOnlyLocallyRepetitives(const ResolvableUnit
 	phmap::flat_hash_set<size_t> result;
 	for (size_t node : unfilteredResolvables)
 	{
+		bool found = false;
 		for (const std::pair<uint32_t, uint32_t> pospair : resolvableGraph.iterateCrossingReads(node, readPaths))
 		{
 			const size_t pathi = pospair.first;
 			if (readPaths[pathi].path.size() < 2) continue;
-			size_t pos = 0;
-			size_t lastMatchPos = std::numeric_limits<size_t>::max();
+			size_t lastMatchIndex = std::numeric_limits<size_t>::max();
 			for (size_t i = 0; i < readPaths[pathi].path.size(); i++)
 			{
-				if (i >= 1)
-				{
-					pos += resolvableGraph.unitigLength(readPaths[pathi].path[i-1].first);
-					pos -= resolvableGraph.getBpOverlap(readPaths[pathi].path[i-1], readPaths[pathi].path[i]);
-				}
 				if (readPaths[pathi].path[i].first != node) continue;
-				if (lastMatchPos == std::numeric_limits<size_t>::max())
+				if (lastMatchIndex == std::numeric_limits<size_t>::max())
 				{
-					lastMatchPos = pos;
+					lastMatchIndex = i;
 					continue;
 				}
-				assert(pos > lastMatchPos);
-				if (pos - lastMatchPos < maxDist)
+				size_t dist = 0;
+				for (size_t j = lastMatchIndex; j <= i; j++)
+				{
+					if (j < i) dist += resolvableGraph.unitigLength(readPaths[pathi].path[i-1].first);
+					if (j > lastMatchIndex) dist -= resolvableGraph.getBpOverlap(readPaths[pathi].path[i-1], readPaths[pathi].path[i]);
+				}
+				if (dist < maxDist)
 				{
 					result.insert(node);
+					found = true;
 					break;
 				}
 			}
+			if (found) break;
 		}
 	}
 	return result;
