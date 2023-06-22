@@ -101,6 +101,13 @@ void HashList::addEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, b
 	edgeCoverage.set(from, to, edgeCoverage.get(from, to) + 1);
 }
 
+void HashList::addForcedEdge(std::pair<size_t, bool> from, std::pair<size_t, bool> to)
+{
+	std::lock_guard<std::mutex> lock { *indexMutex };
+	forcedEdges.addEdge(from, to);
+	forcedEdges.addEdge(reverse(to), reverse(from));
+}
+
 std::pair<std::pair<size_t, bool>, HashType> HashList::addNode(VectorView<CharType> sequence, VectorView<CharType> reverse)
 {
 	HashType fwHash = hash(sequence, reverse);
@@ -133,8 +140,17 @@ std::pair<size_t, bool> HashList::addNode(HashType fwHash)
 		coverage.emplace_back(1);
 		edgeCoverage.emplace_back();
 		sequenceOverlap.emplace_back();
+		forcedEdges.emplace_back();
+		forced.emplace_back(false);
 		return std::make_pair(fwNode, fw);
 	}
+}
+
+std::pair<size_t, bool> HashList::addNodeForced(HashType fwHash)
+{
+	auto result = addNode(fwHash);
+	forced[result.first] = true;
+	return result;
 }
 
 void HashList::resize(size_t size)
@@ -142,6 +158,8 @@ void HashList::resize(size_t size)
 	coverage.resize(size, 0);
 	sequenceOverlap.resize(size);
 	edgeCoverage.resize(size);
+	forcedEdges.resize(size);
+	forced.resize(size, false);
 }
 
 void HashList::filter(const RankBitvector& kept)
@@ -159,6 +177,36 @@ void HashList::filter(const RankBitvector& kept)
 			newCoverage.set(kept.getRank(i), coverage.get(i));
 		}
 		std::swap(coverage, newCoverage);
+	}
+	{
+		SparseEdgeContainer newForcedEdges;
+		newForcedEdges.resize(newSize);
+		for (size_t i = 0; i < kept.size(); i++)
+		{
+			if (!kept.get(i)) continue;
+			for (auto edge : forcedEdges.getEdges(std::make_pair(i, true)))
+			{
+				assert(kept.get(edge.first));
+				newForcedEdges.addEdge(std::make_pair(kept.getRank(i), true), std::make_pair(kept.getRank(edge.first), edge.second));
+			}
+			for (auto edge : forcedEdges.getEdges(std::make_pair(i, false)))
+			{
+				assert(kept.get(edge.first));
+				newForcedEdges.addEdge(std::make_pair(kept.getRank(i), false), std::make_pair(kept.getRank(edge.first), edge.second));
+			}
+		}
+		std::swap(forcedEdges, newForcedEdges);
+	}
+	{
+		std::vector<bool> newForced;
+		newForced.resize(newSize, false);
+		for (size_t i = 0; i < kept.size(); i++)
+		{
+			if (!kept.get(i)) continue;
+			if (!forced[i]) continue;
+			newForced[kept.getRank(i)] = true;
+		}
+		std::swap(forced, newForced);
 	}
 	{
 		phmap::flat_hash_map<HashType, size_t> newHashToNode;
@@ -327,8 +375,12 @@ void HashList::clear()
 	decltype(edgeCoverage) tmp2;
 	decltype(sequenceOverlap) tmp3;
 	decltype(coverage) tmp4;
+	decltype(forced) tmp5;
+	decltype(forcedEdges) tmp6;
 	std::swap(hashToNode, tmp);
 	std::swap(edgeCoverage, tmp2);
 	std::swap(sequenceOverlap, tmp3);
 	std::swap(coverage, tmp4);
+	std::swap(forced, tmp5);
+	std::swap(forcedEdges, tmp6);
 }

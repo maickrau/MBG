@@ -20,6 +20,7 @@ public:
 	SparseEdgeContainer edges;
 	MostlySparse2DHashmap<uint8_t, size_t> edgeCov;
 	MostlySparse2DHashmap<uint16_t, size_t> edgeOvlp;
+	std::vector<bool> forced;
 	size_t edgeCoverage(size_t from, bool fromFw, size_t to, bool toFw) const;
 	size_t edgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to) const;
 	void setEdgeCoverage(size_t from, bool fromFw, size_t to, bool toFw, size_t val);

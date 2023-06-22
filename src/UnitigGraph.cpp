@@ -269,6 +269,7 @@ UnitigGraph UnitigGraph::filterUnitigsByCoverage(const double filter, const bool
 	for (size_t i = 0; i < unitigs.size(); i++)
 	{
 		kept.set(i, averageCoverage(i) >= filter);
+		if (forced[i]) kept.set(i, true);
 	}
 	if (keepGaps) keepTipGaps(kept);
 	kept.buildRanks();

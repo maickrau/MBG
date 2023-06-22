@@ -149,7 +149,7 @@ std::vector<std::tuple<size_t, size_t, size_t, size_t, bool, size_t, size_t>> ge
 	return result;
 }
 
-void initializeHelpers(ConsensusMaker& consensusMaker, std::vector<size_t>& unitigLengths, std::vector<std::vector<size_t>>& bpOffsets, const HashList& hashlist, const UnitigGraph& unitigs, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
+void initializeHelpers(ConsensusMaker& consensusMaker, std::vector<size_t>& unitigLengths, std::vector<std::vector<size_t>>& bpOffsets, const HashList& hashlist, const UnitigGraph& unitigs, const size_t kmerSize, const size_t numThreads)
 {
 	bpOffsets.resize(unitigs.unitigs.size());
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
@@ -296,18 +296,9 @@ void initializeHelpers(ConsensusMaker& consensusMaker, std::vector<size_t>& unit
 	consensusMaker.findParentLinks();
 }
 
-std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, std::vector<ReadPath>& readPaths, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads)
+void handleBlocks(ConsensusMaker& consensusMaker, std::vector<ReadPath>& readPaths, const HashList& hashlist, const std::vector<size_t>& unitigLengths, const UnitigGraph& unitigs, const std::vector<std::vector<size_t>>& bpOffsets, const std::unordered_map<ReadName, std::vector<size_t>>& pathsPerRead, const size_t kmerSize, const ReadpartIterator& partIterator)
 {
-	ConsensusMaker consensusMaker;
-	std::vector<size_t> unitigLengths;
-	std::vector<std::vector<size_t>> bpOffsets;
-	initializeHelpers(consensusMaker, unitigLengths, bpOffsets, hashlist, unitigs, kmerSize, partIterator, numThreads);
 	std::mutex expandedPosMutex;
-	std::unordered_map<ReadName, std::vector<size_t>> pathsPerRead;
-	for (size_t i = 0; i < readPaths.size(); i++)
-	{
-		pathsPerRead[readPaths[i].readName].push_back(i);
-	}
 	partIterator.iterateParts([&consensusMaker, &readPaths, &expandedPosMutex, &hashlist, &unitigLengths, &unitigs, &bpOffsets, &pathsPerRead, kmerSize](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq)
 	{
 		if (pathsPerRead.count(read.readName) == 0) return;
@@ -340,6 +331,21 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequence
 			}
 		}
 	});
+}
+
+std::pair<std::vector<CompressedSequenceType>, StringIndex> getHPCUnitigSequences(const HashList& hashlist, const UnitigGraph& unitigs, std::vector<ReadPath>& readPaths, const size_t kmerSize, const ReadpartIterator& partIterator, const ReadpartIterator& forcedPartIterator, const size_t numThreads)
+{
+	ConsensusMaker consensusMaker;
+	std::vector<size_t> unitigLengths;
+	std::vector<std::vector<size_t>> bpOffsets;
+	initializeHelpers(consensusMaker, unitigLengths, bpOffsets, hashlist, unitigs, kmerSize, numThreads);
+	std::unordered_map<ReadName, std::vector<size_t>> pathsPerRead;
+	for (size_t i = 0; i < readPaths.size(); i++)
+	{
+		pathsPerRead[readPaths[i].readName].push_back(i);
+	}
+	handleBlocks(consensusMaker, readPaths, hashlist, unitigLengths, unitigs, bpOffsets, pathsPerRead, kmerSize, partIterator);
+	handleBlocks(consensusMaker, readPaths, hashlist, unitigLengths, unitigs, bpOffsets, pathsPerRead, kmerSize, forcedPartIterator);
 	return consensusMaker.getSequences();
 }
 
@@ -348,7 +354,7 @@ void getHpcVariantsAndReadPaths(const HashList& hashlist, const UnitigGraph& uni
 	ConsensusMaker consensusMaker;
 	std::vector<size_t> unitigLengths;
 	std::vector<std::vector<size_t>> bpOffsets;
-	initializeHelpers(consensusMaker, unitigLengths, bpOffsets, hashlist, unitigs, kmerSize, partIterator, numThreads);
+	initializeHelpers(consensusMaker, unitigLengths, bpOffsets, hashlist, unitigs, kmerSize, numThreads);
 	std::vector<bool> checkUnitig;
 	checkUnitig.resize(unitigs.unitigs.size(), false);
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)

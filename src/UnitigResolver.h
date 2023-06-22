@@ -23,6 +23,7 @@ public:
 	size_t rightClip;
 	size_t readLength;
 	size_t readLengthHPC;
+	bool forced;
 private:
 };
 

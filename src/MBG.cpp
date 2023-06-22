@@ -41,10 +41,10 @@ public:
 	size_t approxKmers;
 };
 
-void loadReadsAsHashesMultithread(HashList& result, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads, std::ostream& log)
+void loadReadsAsHashesMultithread(HashList& result, const size_t kmerSize, const ReadpartIterator& partIterator, const size_t numThreads, std::ostream& log, bool forced)
 {
 	std::atomic<size_t> totalNodes = 0;
-	partIterator.iterateHashes([&result, &totalNodes, kmerSize](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
+	partIterator.iterateHashes([&result, &totalNodes, kmerSize, forced](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
 	{
 		size_t lastMinimizerPosition = std::numeric_limits<size_t>::max();
 		std::pair<size_t, bool> last { std::numeric_limits<size_t>::max(), true };
@@ -54,7 +54,15 @@ void loadReadsAsHashesMultithread(HashList& result, const size_t kmerSize, const
 			const auto pos = positions[i];
 			const HashType fwHash = hashes[i];
 			assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
-			std::pair<size_t, bool> current = result.addNode(fwHash);
+			std::pair<size_t, bool> current;
+			if (forced)
+			{
+				current = result.addNodeForced(fwHash);
+			}
+			else
+			{
+				current = result.addNode(fwHash);
+			}
 			size_t overlap = lastMinimizerPosition + kmerSize - pos;
 			assert(pos+kmerSize <= poses.size());
 			assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition < kmerSize);
@@ -64,6 +72,7 @@ void loadReadsAsHashesMultithread(HashList& result, const size_t kmerSize, const
 				result.addSequenceOverlap(last, current, overlap);
 				auto pair = canon(last, current);
 				result.addEdgeCoverage(pair.first, pair.second);
+				if (forced) result.addForcedEdge(last, current);
 			}
 			lastMinimizerPosition = pos;
 			last = current;
@@ -233,6 +242,8 @@ void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, 
 	result.edgeOvlp.emplace_back();
 	result.leftClip.emplace_back(0);
 	result.rightClip.emplace_back(0);
+	result.forced.emplace_back(false);
+	bool hasForced = false;
 	assert(old.leftClip[start.first] == 0);
 	assert(old.rightClip[start.first] == 0);
 	std::pair<size_t, bool> pos = start;
@@ -283,6 +294,7 @@ void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, 
 		assert(old.rightClip[pos.first] == 0);
 		assert(belongsToUnitig.at(pos.first).first == std::numeric_limits<size_t>::max());
 		belongsToUnitig[pos.first] = std::make_pair(currentUnitig, pos.second);
+		if (old.forced[pos.first]) hasForced = true;
 		if (pos.second)
 		{
 			result.unitigs.back().insert(result.unitigs.back().end(), old.unitigs[pos.first].begin(), old.unitigs[pos.first].end());
@@ -297,6 +309,7 @@ void startUnitig(UnitigGraph& result, const UnitigGraph& old, std::pair<size_t, 
 			}
 		}
 	}
+	if (hasForced) result.forced.back() = true;
 	unitigEnd[pos] = true;
 	unitigStart[reverse(pos)] = true;
 }
@@ -321,10 +334,12 @@ std::vector<std::pair<size_t, bool>> getUnitigHashes(const std::pair<size_t, boo
 void checkUnitigHashes(const std::pair<size_t, bool> start, const SparseEdgeContainer& edges, std::vector<bool>& checked, const HashList& hashlist, const double minUnitigCoverage, RankBitvector& kept)
 {
 	std::vector<std::pair<size_t, bool>> hashes = getUnitigHashes(start, edges);
+	bool hasForced = false;
 	for (auto node : hashes)
 	{
 		assert(!checked[node.first]);
 		checked[node.first] = true;
+		if (hashlist.forced.at(node.first)) hasForced = true;
 	}
 	assert(hashes.size() > 0);
 	double totalCoverage = 0;
@@ -333,7 +348,7 @@ void checkUnitigHashes(const std::pair<size_t, bool> start, const SparseEdgeCont
 		totalCoverage += hashlist.coverage.get(pos.first);
 	}
 	totalCoverage /= (double)hashes.size();
-	if (totalCoverage >= minUnitigCoverage)
+	if (totalCoverage >= minUnitigCoverage || hasForced)
 	{
 		for (auto pos : hashes)
 		{
@@ -354,12 +369,16 @@ void startUnitig(UnitigGraph& result, std::pair<size_t, bool> start, const Spars
 	result.unitigCoverage.back().reserve(hashes.size());
 	result.leftClip.emplace_back(0);
 	result.rightClip.emplace_back(0);
+	result.forced.emplace_back(false);
+	assert(hashlist.forced.size() == hashlist.coverage.size());
 	for (auto pos : hashes)
 	{
 		result.unitigs.back().emplace_back(pos);
 		result.unitigCoverage.back().emplace_back(hashlist.coverage.get(pos.first));
 		assert(!belongsToUnitig[pos.first]);
 		belongsToUnitig[pos.first] = true;
+		assert(pos.first < hashlist.forced.size());
+		if (hashlist.forced.at(pos.first)) result.forced.back() = true;
 	}
 }
 
@@ -381,6 +400,14 @@ SparseEdgeContainer getCoveredEdges(const HashList& hashlist, size_t minCoverage
 			if (edge.second < minCoverage) continue;
 			result.addEdge(bw, edge.first);
 			result.addEdge(reverse(edge.first), reverse(bw));
+		}
+		for (auto edge : hashlist.forcedEdges[fw])
+		{
+			result.addEdge(fw, edge);
+		}
+		for (auto edge : hashlist.forcedEdges[bw])
+		{
+			result.addEdge(bw, edge);
 		}
 	}
 	return result;
@@ -538,6 +565,7 @@ std::pair<size_t, bool> extendOneCoverageKmers(HashList& hashlist, std::pair<siz
 		if (next.first == pos.first) return pos;
 		if (next.first == start.first) return pos;
 		if (hashlist.coverage.get(next.first) != 1) return pos;
+		if (hashlist.forced.at(next.first)) return pos;
 		pos = next;
 		iterations += 1;
 		assert(iterations < hashlist.size() + 1);
@@ -559,6 +587,7 @@ void removeOnecovNodes(HashList& hashlist, const bool onlyTips)
 	{
 		if (hashlist.coverage.get(i) != 1) continue;
 		if (checked[i]) continue;
+		if (hashlist.forced.at(i)) continue;
 		auto fwNode = extendOneCoverageKmers(hashlist, std::pair<size_t, bool> { i, true }, edges);
 		auto bwNode = extendOneCoverageKmers(hashlist, std::pair<size_t, bool> { i, false }, edges);
 		auto check = reverse(bwNode);
@@ -652,7 +681,7 @@ UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const d
 				for (auto edge : bwEdges)
 				{
 					if (checked[edge.first]) continue;
-					assert(hashlist.coverage.get(edge.first) >= minCoverage);
+					assert(hashlist.coverage.get(edge.first) >= minCoverage || hashlist.forcedEdges.hasEdge(bw, edge));
 					checkUnitigHashes(edge, edges, checked, hashlist, minUnitigCoverage, kept);
 				}
 			}
@@ -665,7 +694,7 @@ UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const d
 				for (auto edge : fwEdges)
 				{
 					if (checked[edge.first]) continue;
-					assert(hashlist.coverage.get(edge.first) >= minCoverage);
+					assert(hashlist.coverage.get(edge.first) >= minCoverage || hashlist.forcedEdges.hasEdge(fw, edge));
 					checkUnitigHashes(edge, edges, checked, hashlist, minUnitigCoverage, kept);
 				}
 			}
@@ -692,7 +721,7 @@ UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const d
 	auto edges = getCoveredEdges(hashlist, minCoverage);
 	for (size_t i = 0; i < hashlist.coverage.size(); i++)
 	{
-		if (hashlist.coverage.get(i) < minCoverage) continue;
+		if (hashlist.coverage.get(i) < minCoverage && !hashlist.forced.at(i)) continue;
 		std::pair<size_t, bool> fw { i, true };
 		std::pair<size_t, bool> bw { i, false };
 		auto fwEdges = edges[fw];
@@ -709,7 +738,7 @@ UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const d
 			for (auto edge : bwEdges)
 			{
 				if (belongsToUnitig[edge.first]) continue;
-				assert(hashlist.coverage.get(edge.first) >= minCoverage);
+				assert(hashlist.coverage.get(edge.first) >= minCoverage || hashlist.forcedEdges.hasEdge(bw, edge));
 				startUnitig(result, edge, edges, belongsToUnitig, hashlist, minCoverage);
 				assert(result.unitigs.size() > 0);
 				unitigTip[result.unitigs.back().back()] = std::make_pair(result.unitigs.size()-1, true);
@@ -728,7 +757,7 @@ UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const d
 			for (auto edge : fwEdges)
 			{
 				if (belongsToUnitig[edge.first]) continue;
-				assert(hashlist.coverage.get(edge.first) >= minCoverage);
+				assert(hashlist.coverage.get(edge.first) >= minCoverage || hashlist.forcedEdges.hasEdge(fw, edge));
 				startUnitig(result, edge, edges, belongsToUnitig, hashlist, minCoverage);
 				assert(result.unitigs.size() > 0);
 				unitigTip[result.unitigs.back().back()] = std::make_pair(result.unitigs.size()-1, true);
@@ -767,8 +796,8 @@ UnitigGraph getUnitigGraph(HashList& hashlist, const size_t minCoverage, const d
 			auto toNodeRev = reverse(edge);
 			assert(unitigTip.count(toNodeRev) == 1);
 			auto toUnitig = reverse(unitigTip.at(toNodeRev));
-			assert(hashlist.coverage.get(fromNode.first) >= minCoverage);
-			assert(hashlist.coverage.get(toNodeFw.first) >= minCoverage);
+			assert(hashlist.coverage.get(fromNode.first) >= minCoverage || hashlist.forced.at(fromNode.first));
+			assert(hashlist.coverage.get(toNodeFw.first) >= minCoverage || hashlist.forced.at(toNodeFw.first));
 			result.edges.addEdge(fromUnitig, toUnitig);
 			result.edges.addEdge(reverse(toUnitig), reverse(fromUnitig));
 			result.setEdgeCoverage(fromUnitig, toUnitig, hashlist.getEdgeCoverage(fromNode, toNodeFw));
@@ -1118,6 +1147,7 @@ void filterKmersToUnitigKmers(UnitigGraph& unitigs, HashList& reads, const size_
 		{
 			if (j > 0) currentPos += kmerSize - reads.getOverlap(unitigs.unitigs[i][j-1], unitigs.unitigs[i][j]);
 			bool skip = filterWithinUnitig;
+			if (reads.forced.at(unitigs.unitigs[i][j].first)) skip = false;
 			if (j == 0 || j == unitigs.unitigs[i].size()-1)
 			{
 				skip = false;
@@ -1161,6 +1191,10 @@ void filterKmersToUnitigKmers(UnitigGraph& unitigs, HashList& reads, const size_
 		}
 		std::swap(unitigs.unitigs[i], newUnitig);
 		std::swap(unitigs.unitigCoverage[i], newCoverage);
+	}
+	for (size_t i = 0; i < reads.coverage.size(); i++)
+	{
+		if (reads.forced.at(i)) kept.set(i, true);
 	}
 	kept.buildRanks();
 	for (size_t i = 0; i < unitigs.unitigs.size(); i++)
@@ -1220,18 +1254,19 @@ void verifyEdgeConsistency(const UnitigGraph& unitigs, const HashList& hashlist,
 	}
 }
 
-std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& hashlist, const size_t numThreads, const ReadpartIterator& partIterator, const size_t kmerSize)
+std::vector<ReadPath> getReadPaths(const UnitigGraph& graph, const HashList& hashlist, const size_t numThreads, const ReadpartIterator& partIterator, const size_t kmerSize, bool forced)
 {
 	std::vector<std::tuple<size_t, size_t, bool>> kmerLocator = getKmerLocator(graph);
 	std::vector<ReadPath> result;
 	std::mutex resultMutex;
-	partIterator.iterateOnlyHashes([&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist](const ReadInfo& read, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
+	partIterator.iterateOnlyHashes([&result, &resultMutex, &kmerLocator, kmerSize, &graph, &hashlist, forced](const ReadInfo& read, const std::vector<size_t>& positions, const std::vector<HashType>& hashes)
 	{
-		iterateReadPaths(graph, hashlist, kmerSize, kmerLocator, read, positions, hashes, [&result, &resultMutex](ReadPath path)
+		iterateReadPaths(graph, hashlist, kmerSize, kmerLocator, read, positions, hashes, [&result, &resultMutex, forced](ReadPath path)
 		{
 			std::lock_guard<std::mutex> lock { resultMutex };
 			result.emplace_back();
 			std::swap(result.back(), path);
+			result.back().forced = forced;
 		});
 	});
 
@@ -1523,7 +1558,7 @@ std::vector<DumbSelect> getUnitigExpandedPoses(const HashList& hashlist, const U
 	return unitigExpandedPoses;
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile, const bool keepGaps, const double hpcVariantOnecopyCoverage, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const std::string& outputHomologyMap, const bool filterWithinUnitig, const bool doCleaning)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile, const bool keepGaps, const double hpcVariantOnecopyCoverage, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const std::string& outputHomologyMap, const bool filterWithinUnitig, const bool doCleaning, const std::vector<std::string>& forceInlcudeSequences)
 {
 	auto beforeReading = getTime();
 	// check that all files actually exist
@@ -1537,12 +1572,14 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		}
 	}
 	ReadpartIterator partIterator { kmerSize, windowSize, errorMasking, numThreads, inputReads, includeEndKmers, sequenceCacheFile };
+	ReadpartIterator forcePartIterator { kmerSize, windowSize, errorMasking, numThreads, forceInlcudeSequences, includeEndKmers, sequenceCacheFile };
 	HashList reads { kmerSize };
 	auto beforeVariants = getTime();
 	if (hpcVariantOnecopyCoverage != 0)
 	{
 		std::cerr << "Collecting hpc variant k-mers" << std::endl;
-		loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads, std::cerr);
+		loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads, std::cerr, false);
+		loadReadsAsHashesMultithread(reads, kmerSize, forcePartIterator, numThreads, std::cerr, true);
 		auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage, keepGaps, false);
 		if (minUnitigCoverage > minCoverage)
 		{
@@ -1555,7 +1592,9 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	}
 	auto beforeKmers = getTime();
 	std::cerr << "Collecting selected k-mers" << std::endl;
-	loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads, std::cerr);
+	loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads, std::cerr, false);
+	loadReadsAsHashesMultithread(reads, kmerSize, forcePartIterator, numThreads, std::cerr, true);
+	assert(reads.forced.size() == reads.coverage.size());
 	auto beforeUnitigs = getTime();
 	std::cerr << "Unitigifying" << std::endl;
 	auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage, keepGaps, (minUnitigCoverage >= 2) && (maxResolveLength > 0) && guesswork);
@@ -1571,7 +1610,11 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	auto beforePaths = getTime();
 	std::vector<ReadPath> readPaths;
 	std::cerr << "Getting read paths" << std::endl;
-	readPaths = getReadPaths(unitigs, reads, numThreads, partIterator, kmerSize);
+	readPaths = getReadPaths(unitigs, reads, numThreads, partIterator, kmerSize, false);
+	{
+		auto forcedReadPaths = getReadPaths(unitigs, reads, numThreads, forcePartIterator, kmerSize, true);
+		readPaths.insert(readPaths.end(), forcedReadPaths.begin(), forcedReadPaths.end());
+	}
 	auto beforeResolve = getTime();
 	if (maxResolveLength > 0)
 	{
@@ -1584,7 +1627,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	std::cerr << "Building unitig sequences" << std::endl;
 	std::vector<CompressedSequenceType> unitigSequences;
 	StringIndex stringIndex;
-	std::tie(unitigSequences, stringIndex) = getHPCUnitigSequences(reads, unitigs, readPaths, kmerSize, partIterator, numThreads);
+	std::tie(unitigSequences, stringIndex) = getHPCUnitigSequences(reads, unitigs, readPaths, kmerSize, partIterator, forcePartIterator, numThreads);
 	assert(unitigSequences.size() == unitigs.unitigs.size());
 	auto beforeConsistency = getTime();
 	AssemblyStats stats;

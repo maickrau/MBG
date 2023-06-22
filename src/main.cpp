@@ -33,6 +33,7 @@ int main(int argc, char** argv)
 		("output-homology-map", "Output a list of homologous k-mer locations", cxxopts::value<std::string>())
 		("no-kmer-filter-inside-unitig", "Don't filter out k-mers which are completely contained by two other k-mers")
 		("no-multiplex-cleaning", "Don't clean low coverage tips and structures during multiplex resolution")
+		("force-include-sequences", "Include sequences from a file regardless of coverage", cxxopts::value<std::vector<std::string>>())
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
@@ -82,7 +83,7 @@ int main(int argc, char** argv)
 	}
 	else
 	{
-		windowSize = kmerSize - 30;
+		windowSize = kmerSize - 14;
 	}
 	size_t minCoverage = params["a"].as<size_t>();
 	double minUnitigCoverage = params["u"].as<double>();
@@ -102,6 +103,7 @@ int main(int argc, char** argv)
 	std::string nodeNamePrefix = "";
 	std::string sequenceCacheFile = "";
 	std::string outputHomologyMap = "";
+	std::vector<std::string> forceInlcudeSequences;
 	if (params.count("r") == 1) maxResolveLength = params["r"].as<size_t>();
 	if (params.count("R") == 1) maxUnconditionalResolveLength = params["R"].as<size_t>();
 	if (params.count("blunt") == 1) blunt = true;
@@ -154,6 +156,7 @@ int main(int argc, char** argv)
 	if (params.count("output-homology-map") == 1) outputHomologyMap = params["output-homology-map"].as<std::string>();
 	if (params.count("no-kmer-filter-inside-unitig") == 1) filterWithinUnitig = false;
 	if (params.count("no-multiplex-cleaning")) doCleaning = false;
+	if (params.count("force-include-sequences") > 0) forceInlcudeSequences = params["force-include-sequences"].as<std::vector<std::string>>();
 
 	if (numThreads == 0)
 	{
@@ -175,14 +178,14 @@ int main(int argc, char** argv)
 		std::cerr << "K-mer size must be odd" << std::endl;
 		paramError = true;
 	}
-	if (kmerSize < 31)
+	if (kmerSize < 15)
 	{
-		std::cerr << "Minimum k-mer size is 31" << std::endl;
+		std::cerr << "Minimum k-mer size is 15" << std::endl;
 		paramError = true;
 	}
-	if (params.count("w") == 1 && windowSize > kmerSize - 30)
+	if (params.count("w") == 1 && windowSize > kmerSize - 14)
 	{
-		std::cerr << "Window size must be <= k-30. With current k (" << kmerSize << ") maximum w is " << kmerSize - 30 << std::endl;
+		std::cerr << "Window size must be <= k-14. With current k (" << kmerSize << ") maximum w is " << kmerSize - 14 << std::endl;
 		paramError = true;
 	}
 	if (outputSequencePaths != "" && blunt)
@@ -218,5 +221,5 @@ int main(int argc, char** argv)
 	std::cerr << "cache=" << (sequenceCacheFile.size() > 0 ? "yes" : "no");
 	std::cerr << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix, sequenceCacheFile, keepGaps, hpcVariantOnecopyCoverage, guesswork, copycountFilterHeuristic, onlyLocalResolve, outputHomologyMap, filterWithinUnitig, doCleaning);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix, sequenceCacheFile, keepGaps, hpcVariantOnecopyCoverage, guesswork, copycountFilterHeuristic, onlyLocalResolve, outputHomologyMap, filterWithinUnitig, doCleaning, forceInlcudeSequences);
 }
