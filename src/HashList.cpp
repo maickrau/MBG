@@ -20,6 +20,16 @@ size_t HashList::numSequenceOverlaps() const
 	return total;
 }
 
+void HashList::setTipKmer(const size_t node)
+{
+	tipKmer[node] = true;
+}
+
+bool HashList::isTipKmer(const size_t node) const
+{
+	return tipKmer[node];
+}
+
 size_t HashList::getEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to) const
 {
 	std::tie(from, to) = canon(from, to);
@@ -133,6 +143,7 @@ std::pair<size_t, bool> HashList::addNode(HashType fwHash)
 		coverage.emplace_back(1);
 		edgeCoverage.emplace_back();
 		sequenceOverlap.emplace_back();
+		tipKmer.emplace_back(false);
 		return std::make_pair(fwNode, fw);
 	}
 }
@@ -142,6 +153,7 @@ void HashList::resize(size_t size)
 	coverage.resize(size, 0);
 	sequenceOverlap.resize(size);
 	edgeCoverage.resize(size);
+	tipKmer.resize(size, false);
 }
 
 void HashList::filter(const RankBitvector& kept)
@@ -150,6 +162,16 @@ void HashList::filter(const RankBitvector& kept)
 	assert(kept.size() == size());
 	size_t newSize = kept.getRank(kept.size()-1) + (kept.get(kept.size()-1) ? 1 : 0);
 	if (newSize == size()) return;
+	{
+		std::vector<bool> newTipKmer;
+		newTipKmer.resize(newSize);
+		for (size_t i = 0; i < kept.size(); i++)
+		{
+			if (!kept.get(i)) continue;
+			newTipKmer[kept.getRank(i)] = tipKmer[i];
+		}
+		std::swap(tipKmer, newTipKmer);
+	}
 	{
 		LittleBigVector<uint8_t, size_t> newCoverage;
 		newCoverage.resize(newSize);
@@ -242,6 +264,15 @@ std::vector<size_t> HashList::sortByHash()
 		assert(mapping[i] < hashes.size());
 	}
 	{
+		std::vector<bool> newTipKmer;
+		newTipKmer.resize(tipKmer.size());
+		for (size_t i = 0; i < tipKmer.size(); i++)
+		{
+			newTipKmer[mapping[i]] = tipKmer[i];
+		}
+		std::swap(tipKmer, newTipKmer);
+	}
+	{
 		phmap::flat_hash_map<HashType, size_t> newHashToNode;
 		for (size_t i = 0; i < hashes.size(); i++)
 		{
@@ -327,8 +358,10 @@ void HashList::clear()
 	decltype(edgeCoverage) tmp2;
 	decltype(sequenceOverlap) tmp3;
 	decltype(coverage) tmp4;
+	decltype(tipKmer) tmp5;
 	std::swap(hashToNode, tmp);
 	std::swap(edgeCoverage, tmp2);
 	std::swap(sequenceOverlap, tmp3);
 	std::swap(coverage, tmp4);
+	std::swap(tipKmer, tmp5);
 }

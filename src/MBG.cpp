@@ -55,6 +55,7 @@ void loadReadsAsHashesMultithread(HashList& result, const size_t kmerSize, const
 			const HashType fwHash = hashes[i];
 			assert(last.first == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition <= kmerSize);
 			std::pair<size_t, bool> current = result.addNode(fwHash);
+			if (i == 0 || i == positions.size()-1) result.setTipKmer(current.first);
 			size_t overlap = lastMinimizerPosition + kmerSize - pos;
 			assert(pos+kmerSize <= poses.size());
 			assert(lastMinimizerPosition == std::numeric_limits<size_t>::max() || pos - lastMinimizerPosition < kmerSize);
@@ -1118,7 +1119,11 @@ void filterKmersToUnitigKmers(UnitigGraph& unitigs, HashList& reads, const size_
 		{
 			if (j > 0) currentPos += kmerSize - reads.getOverlap(unitigs.unitigs[i][j-1], unitigs.unitigs[i][j]);
 			bool skip = filterWithinUnitig;
-			if (j == 0 || j == unitigs.unitigs[i].size()-1)
+			if (reads.isTipKmer(unitigs.unitigs[i][j].first))
+			{
+				skip = false;
+			}
+			else if (j == 0 || j == unitigs.unitigs[i].size()-1)
 			{
 				skip = false;
 			}

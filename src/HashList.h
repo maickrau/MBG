@@ -25,6 +25,8 @@ public:
 	bool hasSequenceOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to) const;
 	void addSequenceOverlap(std::pair<size_t, bool> from, std::pair<size_t, bool> to, const size_t overlap);
 	void addEdgeCoverage(std::pair<size_t, bool> from, std::pair<size_t, bool> to);
+	bool isTipKmer(const size_t id) const;
+	void setTipKmer(const size_t id);
 	size_t size() const;
 	void resize(size_t size);
 	std::pair<size_t, bool> getNodeOrNull(VectorView<CharType> sequence) const;
@@ -38,6 +40,7 @@ public:
 	LittleBigVector<uint8_t, size_t> coverage;
 	phmap::flat_hash_map<HashType, size_t> hashToNode;
 private:
+	std::vector<bool> tipKmer;
 	MostlySparse2DHashmap<uint8_t, size_t> edgeCoverage;
 	MostlySparse2DHashmap<uint16_t, size_t> sequenceOverlap;
 	std::shared_ptr<std::mutex> indexMutex;
