@@ -2,201 +2,208 @@
 #include <cstring>
 #include "MsatValueVector.h"
 
+int popcount(uint64_t x);
+
 MsatValueVector::MsatValueChunk::MsatValueChunk() :
-	vec(0),
-	realsize(0),
-	capacity(2)
+	filledIndices(0),
+	values(0)
 {
 }
 
 MsatValueVector::MsatValueChunk::MsatValueChunk(MsatValueChunk&& other) :
-	vec(other.vec),
-	realsize(other.realsize),
-	capacity(other.capacity)
+	filledIndices(other.filledIndices),
+	values(other.values)
 {
-	other.vec = 0;
-	other.realsize = 0;
-	other.capacity = 2;
+	other.filledIndices = 0;
+	other.values = 0;
 }
 
 MsatValueVector::MsatValueChunk::MsatValueChunk(const MsatValueChunk& other) :
-	vec(0),
-	realsize(0),
-	capacity(2)
+	filledIndices(0),
+	values(0)
 {
 	*this = other;
 }
 
 MsatValueVector::MsatValueChunk::~MsatValueChunk()
 {
-	if (capacity >= 3) delete [] vec;
+	if (size() > 4) delete [] values;
 }
 
 MsatValueVector::MsatValueChunk& MsatValueVector::MsatValueChunk::operator=(MsatValueChunk&& other)
 {
-	if (capacity >= 3) delete [] vec;
-	vec = other.vec;
-	realsize = other.realsize;
-	capacity = other.capacity;
-	other.vec = 0;
-	other.realsize = 0;
-	other.capacity = 2;
+	if (size() > 4) delete [] values;
+	values = other.values;
+	filledIndices = other.filledIndices;
+	other.values = 0;
+	other.filledIndices = 0;
 	return *this;
 }
 
 MsatValueVector::MsatValueChunk& MsatValueVector::MsatValueChunk::operator=(const MsatValueChunk& other)
 {
-	if (capacity >= 3) delete [] vec;
-	if (other.capacity <= 2)
+	if (size() > 4) delete [] values;
+	if (other.size() <= 3)
 	{
-		vec = other.vec;
-		realsize = other.realsize;
-		capacity = other.capacity;
+		values = other.values;
+		filledIndices = other.filledIndices;
 		return *this;
 	}
-	vec = new uint32_t[other.capacity];
-	realsize = other.realsize;
-	capacity = other.capacity;
-	memcpy(vec, other.vec, 4*realsize);
+	values = new uint64_t[other.capacity()/4];
+	filledIndices = other.filledIndices;
+	memcpy(values, other.values, capacity()/4);
 	return *this;
 }
 
 void MsatValueVector::MsatValueChunk::set(uint8_t index, uint16_t val)
 {
-	assert(realsize <= capacity);
 	uint16_t got = get(index);
 	if (got == val) return;
 	if (got != 65535) erase(index);
-	if (capacity <= 2 && realsize == 0)
+	uint64_t fillIndex = 1ull << (uint64_t)index;
+	assert((fillIndex & filledIndices) == 0);
+	uint64_t mask = fillIndex-1;
+	size_t position = popcount(mask & filledIndices);
+	if (size() < 4)
 	{
-		vec = (uint32_t*)(((size_t)index << 24) + (size_t)val);
-		realsize = 1;
-		return;
+		filledIndices |= fillIndex;
+		switch(position)
+		{
+		case 0:
+			values = (uint64_t*)((uint64_t)values << 16ull);
+			values = (uint64_t*)((uint64_t)values + (uint64_t)val);
+			return;
+		case 1:
+			values = (uint64_t*)((((uint64_t)values << 16ull) & 0xFFFFFFFF00000000ull) + ((uint64_t)values & 0x000000000000FFFFull));
+			values = (uint64_t*)((uint64_t)values + ((uint64_t)val << 16ull));
+			return;
+		case 2:
+			values = (uint64_t*)((((uint64_t)values << 16ull) & 0xFFFF000000000000ull) + ((uint64_t)values & 0x00000000FFFFFFFFull));
+			values = (uint64_t*)((uint64_t)values + ((uint64_t)val << 32ull));
+			return;
+		case 3:
+			values = (uint64_t*)((uint64_t)values + ((uint64_t)val << 48ull));
+			return;
+		default:
+			assert(false);
+		}
 	}
-	if (capacity <= 2 && realsize == 1)
+	if (size() == 4)
 	{
-		vec = (uint32_t*)(((size_t)vec & 0x00000000FFFFFFFF) + ((size_t)index << (size_t)56) + ((size_t)val << (size_t)32));
-		realsize = 2;
-		return;
+		uint64_t* newValues = new uint64_t[2];
+		newValues[0] = (uint64_t)values;
+		newValues[1] = 0;
+		filledIndices |= fillIndex;
+		values = newValues;
 	}
-	if (capacity <= 2 && realsize == 2)
+	else if (size() == capacity())
 	{
-		capacity = 5; // surprisingly 5 is empicirally lowest memory out of 4,5,6,7,8,9,10. you'd think otherwise but it is so.
-		uint32_t* newVec = new uint32_t[capacity];
-		realsize = 3;
-		*(newVec+0) = (size_t)vec;
-		*(newVec+1) = (size_t)vec >> 32;
-		*(newVec+2) = ((uint32_t)index << 24) + (uint32_t)val;
-		vec = newVec;
-		return;
+		uint64_t* newValues = new uint64_t[(size_t)(capacity()/4)*2];
+		for (size_t i = 0; i < capacity()/4; i++)
+		{
+			newValues[i] = values[i];
+		}
+		for (size_t i = capacity()/4; i < (size_t)(capacity()/4)*2; i++)
+		{
+			newValues[i] = 0;
+		}
+		filledIndices |= fillIndex;
+		delete [] values;
+		values = newValues;
 	}
-	assert(capacity >= 3);
-	assert(realsize < 255);
-	if (realsize < capacity)
+	else
 	{
-		*(vec+realsize) = ((uint32_t)index << 24) + (uint32_t)val;
-		realsize += 1;
-		return;
+		filledIndices |= fillIndex;
 	}
-	assert(realsize == capacity);
-	size_t newCapacity = (size_t)capacity * 2;
-	if (newCapacity >= 256) newCapacity = 255;
-	assert(newCapacity > capacity);
-	capacity = newCapacity;
-	uint32_t* newVec = new uint32_t[capacity];
-	memcpy(newVec, vec, 4*realsize);
-	delete [] vec;
-	vec = newVec;
-	*(vec+realsize) = ((uint32_t)index << 24) + (uint32_t)val;
-	realsize += 1;
+	size_t wordIndex = position/4;
+	size_t wordOffset = position%4;
+	for (size_t i = (size()+3)/4-1; i > wordIndex; i--)
+	{
+		values[i] <<= 16ull;
+		values[i] += values[i-1] >> 48ull;
+	}
+	switch(wordOffset)
+	{
+	case 0:
+		values[wordIndex] = ((values[wordIndex] << 16ull) & 0xFFFFFFFFFFFF0000ull);
+		values[wordIndex] += (uint64_t)val;
+		return;
+	case 1:
+		values[wordIndex] = ((values[wordIndex] << 16ull) & 0xFFFFFFFF00000000ull) + (values[wordIndex] & 0x000000000000FFFFull);
+		values[wordIndex] += (uint64_t)val << 16ull;
+		return;
+	case 2:
+		values[wordIndex] = ((values[wordIndex] << 16ull) & 0xFFFF000000000000ull) + (values[wordIndex] & 0x00000000FFFFFFFFull);
+		values[wordIndex] += (uint64_t)val << 32ull;
+		return;
+	case 3:
+		values[wordIndex] = (values[wordIndex] & 0x0000FFFFFFFFFFFFull);
+		values[wordIndex] += (uint64_t)val << 48ull;
+		return;
+	default:
+		assert(false);
+	}
 }
 
 void MsatValueVector::MsatValueChunk::erase(uint8_t index)
 {
-	uint16_t got = get(index);
-	assert(got != 65535);
-	assert(realsize >= 1);
-	if (capacity <= 2 && realsize >= 1)
-	{
-		if ((((size_t)vec >> (size_t)24) & 255) == index)
-		{
-			vec = (uint32_t*)((size_t)vec >> (size_t)32);
-			realsize -= 1;
-			return;
-		}
-	}
-	if (capacity <= 2 && realsize >= 2)
-	{
-		if ((((size_t)vec >> (size_t)56) & 255) == index)
-		{
-			realsize -= 1;
-			return;
-		}
-	}
-	assert(capacity >= 3);
-	for (size_t i = 0; i < realsize; i++)
-	{
-		if ((((*(vec+i)) >> 24) & 255) == index)
-		{
-			for (size_t j = i+1; j < realsize; j++)
-			{
-				*(vec+j-1) = *(vec+j);
-			}
-			realsize -= 1;
-			return;
-		}
-	}
+	//shouldn't ever be called??
 	assert(false);
 }
 
 uint16_t MsatValueVector::MsatValueChunk::get(uint8_t index) const
 {
-	if (capacity <= 2)
+	uint64_t checkIndex = (1ull) << (uint64_t)index;
+	if ((filledIndices & checkIndex) == 0) return 65535;
+	size_t position = popcount((checkIndex-1) & filledIndices);
+	if (size() <= 4)
 	{
-		if (realsize >= 1 && (((size_t)vec >> (size_t)24) & 255) == index)
-		{
-			return (size_t)vec & 65535;
-		}
-		if (realsize >= 2 && (((size_t)vec >> (size_t)56) & 255) == index)
-		{
-			return ((size_t)vec >> (size_t)32) & 65535;
-		}
-		return 65535;
+		return (((uint64_t)values) >> (16ull * position)) & 0xFFFFull;
 	}
-	for (size_t i = 0; i < realsize; i++)
-	{
-		if (((*(vec+i) >> 24) & 255) == index) return (*(vec+i)) & 65535;
-	}
-	return 65535;
+	return ((values[position/4]) >> (16ull * (position % 4))) & 0xFFFFull;
+}
+
+size_t MsatValueVector::MsatValueChunk::capacity() const
+{
+	size_t items = size();
+	if (items <= 4) return 4;
+	if (items <= 8) return 8;
+	if (items <= 16) return 16;
+	if (items <= 32) return 32;
+	if (items <= 64) return 64;
+	assert(false);
 }
 
 size_t MsatValueVector::MsatValueChunk::size() const
 {
-	return realsize;
+	return popcount(filledIndices);
 }
 
 uint16_t MsatValueVector::get(size_t index) const
 {
-	size_t vecIndex = index / 256;
-	size_t vecOffset = index % 256;
-	return chunks[vecIndex].get(vecOffset);
+	size_t vecIndex = index / 64;
+	size_t vecOffset = index % 64;
+	auto result = chunks[vecIndex].get(vecOffset);
+	assert(result >= 4);
+	return result;
 }
 
 void MsatValueVector::set(size_t index, uint16_t val)
 {
-	size_t vecIndex = index / 256;
-	size_t vecOffset = index % 256;
+	assert(val >= 4);
+	size_t vecIndex = index / 64;
+	size_t vecOffset = index % 64;
 	chunks[vecIndex].set(vecOffset, val);
 }
 
 void MsatValueVector::resize(size_t size)
 {
-	chunks.resize((size+255)/256);
+	chunks.resize((size+63)/64);
 }
 
 void MsatValueVector::erase(size_t index)
 {
-	size_t vecIndex = index / 256;
-	size_t vecOffset = index % 256;
+	size_t vecIndex = index / 64;
+	size_t vecOffset = index % 64;
 	chunks[vecIndex].erase(vecOffset);
 }

@@ -20,9 +20,9 @@ class MsatValueVector
 		void set(uint8_t index, uint16_t value);
 		void erase(uint8_t index);
 	private:
-		uint32_t* vec;
-		uint8_t realsize;
-		uint8_t capacity;
+		size_t capacity() const;
+		uint64_t filledIndices;
+		uint64_t* values;
 	};
 public:
 	MsatValueVector() = default;

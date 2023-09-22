@@ -168,10 +168,13 @@ std::pair<std::vector<CompressedSequenceType>, StringIndex> ConsensusMaker::getS
 			size_t realJ = std::get<1>(found);
 			if (realI != i || realJ != j)
 			{
-				compressedSequences[i].set(j, compressedSequences[realI].get(realJ));
-				if (!std::get<2>(found))
+				if (std::get<2>(found))
 				{
-					compressedSequences[i].set(j, complement(compressedSequences[i].get(j)));
+					compressedSequences[i].set(j, compressedSequences[realI].get(realJ));
+				}
+				else
+				{
+					compressedSequences[i].set(j, complement(compressedSequences[realI].get(realJ)));
 				}
 			}
 			else
@@ -458,10 +461,13 @@ void ConsensusMaker::prepareHpcVariants(const std::vector<bool>& checkUnitig)
 			size_t realJ = std::get<1>(found);
 			if (realI != i || realJ != j)
 			{
-				compressedSequences[i].set(j, compressedSequences[realI].get(realJ));
-				if (!std::get<2>(found))
+				if (std::get<2>(found))
 				{
-					compressedSequences[i].set(j, complement(compressedSequences[i].get(j)));
+					compressedSequences[i].set(j, compressedSequences[realI].get(realJ));
+				}
+				else
+				{
+					compressedSequences[i].set(j, complement(compressedSequences[realI].get(realJ)));
 				}
 			}
 			else
