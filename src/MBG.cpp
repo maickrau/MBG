@@ -1205,7 +1205,14 @@ void verifyEdgeConsistency(const UnitigGraph& unitigs, const HashList& hashlist,
 		else
 		{
 			assert(unitigSequences[from.first].getCompressed(fromIndex) == complement(unitigSequences[to.first].getCompressed(toIndex)));
-			assert(unitigSequences[from.first].getExpandedStr(fromIndex, stringIndex) == revCompRaw(unitigSequences[to.first].getExpandedStr(toIndex, stringIndex)));
+			if (to.first == from.first && to.second != from.second && fromIndex == toIndex && complement(unitigSequences[from.first].getCompressed(fromIndex)) == unitigSequences[from.first].getCompressed(fromIndex))
+			{
+				// palindrome with self-revcomp microsatellite, hpc-expanded reverse complement is not well defined at this point
+			}
+			else
+			{
+				assert(unitigSequences[from.first].getExpandedStr(fromIndex, stringIndex) == revCompRaw(unitigSequences[to.first].getExpandedStr(toIndex, stringIndex)));
+			}
 		}
 	}
 }
