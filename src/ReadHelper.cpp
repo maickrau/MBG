@@ -15,7 +15,8 @@ ReadpartIterator::ReadpartIterator(const size_t kmerSize, const size_t windowSiz
 	hpcVariants(),
 	cacheItems(0),
 	cacheBuilt(false),
-	cache2Built(false)
+	cache2Built(false),
+	hasContextMers(false)
 {
 	if (includeEndSmers)
 	{
@@ -128,4 +129,11 @@ void ReadpartIterator::addMemoryRead(const std::pair<std::string, std::string>& 
 void ReadpartIterator::setMemoryReadIterables(const std::vector<size_t>& iterables)
 {
 	memoryIterables = iterables;
+}
+
+void ReadpartIterator::buildContext(const size_t contextK, const size_t contextW, const size_t contextNumWindows, const size_t numThreads)
+{
+	contextMers.setParams(contextK, contextW, kmerSize, windowSize, contextNumWindows, ErrorMasking::Microsatellite, 2);
+	contextMers.constructStorage(readFiles, this, numThreads);
+	hasContextMers = true;
 }

@@ -1535,7 +1535,7 @@ std::vector<DumbSelect> getUnitigExpandedPoses(const HashList& hashlist, const U
 	return unitigExpandedPoses;
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile, const bool keepGaps, const double hpcVariantOnecopyCoverage, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const std::string& outputHomologyMap, const bool filterWithinUnitig, const bool doCleaning)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile, const bool keepGaps, const double hpcVariantOnecopyCoverage, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const std::string& outputHomologyMap, const bool filterWithinUnitig, const bool doCleaning, const size_t contextK, const size_t contextW, const size_t contextNumWindows)
 {
 	auto beforeReading = getTime();
 	// check that all files actually exist
@@ -1563,6 +1563,14 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		sortKmersByHashes(unitigs, reads);
 		getHpcVariantsAndReadPaths(reads, unitigs, kmerSize, partIterator, numThreads, hpcVariantOnecopyCoverage * 1.5, hpcVariantOnecopyCoverage * 0.5);
 		reads.clear();
+		partIterator.clearCacheHashes();
+	}
+	auto beforeContext = getTime();
+	if (contextNumWindows > 0)
+	{
+		assert(contextK > 0);
+		assert(contextW > 0);
+		partIterator.buildContext(contextK, contextW, contextNumWindows, numThreads);
 		partIterator.clearCacheHashes();
 	}
 	auto beforeKmers = getTime();
@@ -1634,7 +1642,8 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		writeHomologyMap(reads, unitigs, kmerSize, unitigSequences, stringIndex, unitigExpandedPoses, outputHomologyMap);
 	}
 	auto afterHomologyMap = getTime();
-	if (hpcVariantOnecopyCoverage != 0) std::cerr << "selecting hpc variant k-mers took " << formatTime(beforeVariants, beforeKmers) << std::endl;
+	if (hpcVariantOnecopyCoverage != 0) std::cerr << "selecting hpc variant k-mers took " << formatTime(beforeVariants, beforeContext) << std::endl;
+	if (contextNumWindows > 0) std::cerr << "getting contextmers took " << formatTime(beforeContext, beforeKmers) << std::endl;
 	std::cerr << "selecting k-mers and building graph topology took " << formatTime(beforeKmers, beforeUnitigs) << std::endl;
 	std::cerr << "unitigifying took " << formatTime(beforeUnitigs, beforeFilter) << std::endl;
 	std::cerr << "filtering unitigs took " << formatTime(beforeFilter, beforePaths) << std::endl;

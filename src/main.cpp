@@ -13,8 +13,8 @@ int main(int argc, char** argv)
 		("i,in", "Input reads. Multiple files can be input with -i file1.fa -i file2.fa etc (required)", cxxopts::value<std::vector<std::string>>())
 		("o,out", "Output graph (required)", cxxopts::value<std::string>())
 		("t", "Number of threads", cxxopts::value<size_t>()->default_value("1"))
-		("k", "K-mer size. Must be odd and >=31 (required)", cxxopts::value<size_t>())
-		("w", "Window size. Must be 1 <= w <= k-30 (default: k-30)", cxxopts::value<size_t>())
+		("k", "K-mer size. Must be odd and >=11 (required)", cxxopts::value<size_t>())
+		("w", "Window size. Must be 1 <= w <= k-5 (default: k-5)", cxxopts::value<size_t>())
 		("a,kmer-abundance", "Minimum k-mer abundance", cxxopts::value<size_t>()->default_value("1"))
 		("u,unitig-abundance", "Minimum average unitig abundance", cxxopts::value<double>()->default_value("2"))
 		("error-masking", "Error masking", cxxopts::value<std::string>()->default_value("hpc"))
@@ -33,6 +33,9 @@ int main(int argc, char** argv)
 		("output-homology-map", "Output a list of homologous k-mer locations", cxxopts::value<std::string>())
 		("no-kmer-filter-inside-unitig", "Don't filter out k-mers which are completely contained by two other k-mers")
 		("no-multiplex-cleaning", "Don't clean low coverage tips and structures during multiplex resolution")
+		("context-k", "k-mer size for contextmers", cxxopts::value<size_t>())
+		("context-w", "window size for contextmers", cxxopts::value<size_t>())
+		("context-n", "window count for contextmers", cxxopts::value<size_t>())
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
@@ -82,7 +85,7 @@ int main(int argc, char** argv)
 	}
 	else
 	{
-		windowSize = kmerSize - 30;
+		windowSize = kmerSize - 5;
 	}
 	size_t minCoverage = params["a"].as<size_t>();
 	double minUnitigCoverage = params["u"].as<double>();
@@ -98,6 +101,9 @@ int main(int argc, char** argv)
 	bool onlyLocalResolve = false;
 	bool filterWithinUnitig = true;
 	bool doCleaning = true;
+	size_t contextK = 0;
+	size_t contextW = 0;
+	size_t contextNumWindows = 0;
 	std::string errorMaskingStr = "hpc";
 	std::string nodeNamePrefix = "";
 	std::string sequenceCacheFile = "";
@@ -154,6 +160,9 @@ int main(int argc, char** argv)
 	if (params.count("output-homology-map") == 1) outputHomologyMap = params["output-homology-map"].as<std::string>();
 	if (params.count("no-kmer-filter-inside-unitig") == 1) filterWithinUnitig = false;
 	if (params.count("no-multiplex-cleaning")) doCleaning = false;
+	if (params.count("context-k") == 1) contextK = params["context-k"].as<size_t>();
+	if (params.count("context-w") == 1) contextW = params["context-w"].as<size_t>();
+	if (params.count("context-n") == 1) contextNumWindows = params["context-n"].as<size_t>();
 
 	if (numThreads == 0)
 	{
@@ -175,14 +184,14 @@ int main(int argc, char** argv)
 		std::cerr << "K-mer size must be odd" << std::endl;
 		paramError = true;
 	}
-	if (kmerSize < 31)
+	if (kmerSize < 11)
 	{
-		std::cerr << "Minimum k-mer size is 31" << std::endl;
+		std::cerr << "Minimum k-mer size is 11" << std::endl;
 		paramError = true;
 	}
-	if (params.count("w") == 1 && windowSize > kmerSize - 30)
+	if (params.count("w") == 1 && windowSize > kmerSize - 5)
 	{
-		std::cerr << "Window size must be <= k-30. With current k (" << kmerSize << ") maximum w is " << kmerSize - 30 << std::endl;
+		std::cerr << "Window size must be <= k-5. With current k (" << kmerSize << ") maximum w is " << kmerSize - 5 << std::endl;
 		paramError = true;
 	}
 	if (outputSequencePaths != "" && blunt)
@@ -193,6 +202,26 @@ int main(int argc, char** argv)
 	if (maxResolveLength > 0 && blunt)
 	{
 		std::cerr << "-r (--resolve-maxk) and --blunt are not supported together" << std::endl;
+		paramError = true;
+	}
+	if ((contextK != 0 || contextW != 0 || contextNumWindows != 0) && (params.count("hpc-variant-onecopy-coverage") == 1))
+	{
+		std::cerr << "--hpc-variant-onecopy-coverage and coverage are not supported together" << std::endl;
+		paramError = true;
+	}
+	if ((contextK != 0 || contextW != 0 || contextNumWindows != 0) && (contextK == 0 || contextW == 0 || contextNumWindows == 0))
+	{
+		std::cerr << "either all or none of --context-k, --context-w, --context-n must be set" << std::endl;
+		paramError = true;
+	}
+	if (contextK != 0 && contextK % 2 == 0)
+	{
+		std::cerr << "--context-k must be odd" << std::endl;
+		paramError = true;
+	}
+	if (contextK != 0 && contextK < 11)
+	{
+		std::cerr << "minimum --context-k is 11" << std::endl;
 		paramError = true;
 	}
 	if (paramError) std::abort();
@@ -215,8 +244,11 @@ int main(int argc, char** argv)
 	std::cerr << "onlylocal=" << (onlyLocalResolve ? "yes" : "no") << ",";
 	std::cerr << "filterwithinunitig=" << (filterWithinUnitig ? "yes" : "no") << ",";
 	std::cerr << "cleaning=" << (doCleaning ? "yes" : "no") << ",";
-	std::cerr << "cache=" << (sequenceCacheFile.size() > 0 ? "yes" : "no");
+	std::cerr << "cache=" << (sequenceCacheFile.size() > 0 ? "yes" : "no") << ",";
+	std::cerr << "contextk=" << contextK << ",";
+	std::cerr << "contextw=" << contextW << ",";
+	std::cerr << "contextn=" << contextNumWindows << ",";
 	std::cerr << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix, sequenceCacheFile, keepGaps, hpcVariantOnecopyCoverage, guesswork, copycountFilterHeuristic, onlyLocalResolve, outputHomologyMap, filterWithinUnitig, doCleaning);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix, sequenceCacheFile, keepGaps, hpcVariantOnecopyCoverage, guesswork, copycountFilterHeuristic, onlyLocalResolve, outputHomologyMap, filterWithinUnitig, doCleaning, contextK, contextW, contextNumWindows);
 }

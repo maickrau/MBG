@@ -28,6 +28,26 @@ std::vector<std::pair<size_t, bool>> revCompPath(const std::vector<std::pair<siz
 
 class PalindromicKmer : std::exception {};
 
+class ReadInfo
+{
+public:
+	ReadInfo() = default;
+	ReadName readName;
+	size_t readLength;
+	size_t readLengthHpc;
+};
+
+enum ErrorMasking
+{
+	No,
+	Hpc,
+	Collapse,
+	Dinuc,
+	Microsatellite,
+	CollapseDinuc,
+	CollapseMicrosatellite,
+};
+
 namespace std
 {
 	template <> struct hash<const std::vector<size_t>&>

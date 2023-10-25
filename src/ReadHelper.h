@@ -14,19 +14,9 @@
 #include "FastHasher.h"
 #include "ErrorMaskHelper.h"
 #include "Serializer.h"
+#include "ContextMerStorage.h"
 
 extern thread_local std::vector<size_t> memoryIterables;
-
-enum ErrorMasking
-{
-	No,
-	Hpc,
-	Collapse,
-	Dinuc,
-	Microsatellite,
-	CollapseDinuc,
-	CollapseMicrosatellite,
-};
 
 template <typename F, typename EdgeCheckFunction>
 void findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize, size_t smerSize, std::vector<std::tuple<size_t, uint64_t>>& smerOrder, EdgeCheckFunction endSmer, F callback)
@@ -77,15 +67,6 @@ void findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize, siz
 		}
 	}
 }
-
-class ReadInfo
-{
-public:
-	ReadInfo() = default;
-	ReadName readName;
-	size_t readLength;
-	size_t readLengthHpc;
-};
 
 class ReadBundle
 {
@@ -239,6 +220,7 @@ public:
 	void setMemoryReads(const std::vector<std::pair<std::string, std::string>>& rawSeqs);
 	void addMemoryRead(const std::pair<std::string, std::string>& seq);
 	void setMemoryReadIterables(const std::vector<size_t>& iterables);
+	void buildContext(const size_t contextK, const size_t contextW, const size_t contextNumWindows, const size_t numThreads);
 private:
 	const size_t kmerSize;
 	const size_t windowSize;
@@ -248,10 +230,12 @@ private:
 	const std::vector<std::string> readFiles;
 	const std::string cacheFileName;
 	phmap::flat_hash_map<HashType, std::vector<std::pair<size_t, std::vector<size_t>>>> hpcVariants;
+	ContextMerStorage contextMers;
 	mutable size_t cacheItems;
 	mutable bool cacheBuilt;
 	mutable bool cache2Built;
 	std::vector<ReadBundle> memoryReads;
+	bool hasContextMers;
 	void collectEndSmers();
 	template <typename F>
 	void iteratePartsFromMemory(F callback) const
@@ -671,7 +655,14 @@ private:
 	template <typename F>
 	void iterateHashesFromFiles(F callback) const
 	{
-		if (hpcVariants.size() == 0)
+		if (hasContextMers)
+		{
+			iterateHashesFromFilesInternal([this, callback](const ReadInfo& read, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const std::vector<size_t>& positions, std::vector<HashType>& hashes)
+			{
+				contextMers.iterateHashesInContext(read, seq, poses, rawSeq, positions, hashes, callback);
+			});
+		}
+		else if (hpcVariants.size() == 0)
 		{
 			iterateHashesFromFilesInternal(callback);
 		}
