@@ -21,6 +21,7 @@ public:
 	size_t size() const;
 	void resize(size_t size);
 	void push_back(bool val);
+	std::vector<uint64_t>& getBits();
 private:
 	bool ranksBuilt;
 	std::vector<uint64_t> bits;

@@ -111,3 +111,8 @@ size_t RankBitvector::getRank(size_t index) const
 	size_t bigChunk = chunk / SmallRanksPerBig;
 	return chunkSum + smallRanks[chunk] + bigRanks[bigChunk];
 }
+
+std::vector<uint64_t>& RankBitvector::getBits()
+{
+	return bits;
+}
