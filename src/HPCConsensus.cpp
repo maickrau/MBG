@@ -21,7 +21,7 @@ void addCounts(ConsensusMaker& consensusMaker, const SequenceCharType& seq, cons
 			size_t expandedStart = poses[seqOff];
 			size_t expandedEnd = poses[seqOff+1];
 			assert(expandedEnd > expandedStart);
-			if (compressed >= 0 && compressed <= 3)
+			if (compressed <= 3)
 			{
 				expanded = expandedEnd - expandedStart;
 			}
@@ -35,7 +35,7 @@ void addCounts(ConsensusMaker& consensusMaker, const SequenceCharType& seq, cons
 			size_t expandedStart = poses[seqOff];
 			size_t expandedEnd = poses[seqOff+1];
 			assert(expandedEnd > expandedStart);
-			if (compressed >= 0 && compressed <= 3)
+			if (compressed <= 3)
 			{
 				expanded = expandedEnd - expandedStart;
 			}

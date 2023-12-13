@@ -2319,7 +2319,6 @@ void replacePaths(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		std::swap(readPaths[i].reads, newPath.reads);
 		assert(nodePosStarts.size() == nodePosEnds.size());
 		assert(nodePosEnds.size() == newPath.path.size());
-		assert(nodePosStarts[0] >= 0);
 		assert(nodePosEnds.back() <= kmerPathLength);
 		if (nodePosStarts[0] != 0 || nodePosEnds.back() != kmerPathLength)
 		{

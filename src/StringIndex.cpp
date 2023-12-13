@@ -27,7 +27,7 @@ void StringIndex::buildReverseIndex()
 
 std::string StringIndex::getString(uint16_t compressed, uint32_t index) const
 {
-	if (compressed >= 0 && compressed <= 3)
+	if (compressed <= 3)
 	{
 		std::string result;
 		for (size_t i = 0; i < index; i++)
@@ -67,7 +67,7 @@ uint32_t StringIndex::getReverseIndex(uint16_t compressed, uint32_t index) const
 
 uint32_t StringIndex::getIndex(uint16_t compressed, std::variant<size_t, std::string> expanded)
 {
-	if (compressed >= 0 && compressed <= 3)
+	if (compressed <= 3)
 	{
 		return std::get<size_t>(expanded);
 	}
