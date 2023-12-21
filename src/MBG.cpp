@@ -1537,7 +1537,6 @@ std::vector<DumbSelect> getUnitigExpandedPoses(const HashList& hashlist, const U
 
 void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile, const bool keepGaps, const double hpcVariantOnecopyCoverage, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const std::string& outputHomologyMap, const bool filterWithinUnitig, const bool doCleaning)
 {
-	auto beforeReading = getTime();
 	// check that all files actually exist
 	for (const std::string& name : inputReads)
 	{
@@ -1600,7 +1599,6 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	assert(unitigSequences.size() == unitigs.unitigs.size());
 	auto beforeConsistency = getTime();
 	AssemblyStats stats;
-	beforeConsistency = getTime();
 	verifyEdgeConsistency(unitigs, reads, stringIndex, unitigSequences, kmerSize);
 	auto beforeWrite = getTime();
 	if (blunt)

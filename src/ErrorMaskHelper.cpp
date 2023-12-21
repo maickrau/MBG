@@ -113,7 +113,7 @@ std::pair<CharType, LengthType> getCodeAndRunlength(const SequenceCharType& str,
 	for (size_t i = start; i < start+motifLength; i++)
 	{
 		uint16_t mask = 0;
-		assert(str[i] >= 0 && str[i] <= 3);
+		assert(str[i] <= 3);
 		mask = str[i];
 		motif <<= 2;
 		motif |= mask;
