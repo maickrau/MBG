@@ -35,8 +35,11 @@ _OBJ = MBG.o fastqloader.o CommonUtils.o MBGCommon.o FastHasher.o SparseEdgeCont
 OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 
 #  MacOS isn't happy with static/dynamic flags.
+#  FreeBSD is very unhappy with --as-needed.
 ifeq ($(PLATFORM),Darwin)
    LINKFLAGS = $(LIBS) -pthread -static-libstdc++
+else ifeq ($(PLATFORM),FreeBSD)
+   LINKFLAGS = $(LIBS) -pthread
 else
    LINKFLAGS = -Wl,-Bstatic $(LIBS) -Wl,-Bdynamic -Wl,--as-needed -pthread -static-libstdc++
 endif
