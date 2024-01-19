@@ -112,7 +112,7 @@ void updatePathRemaining(size_t& rleRemaining, size_t& expanded, bool fw, const 
 	}
 }
 
-void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const std::vector<DumbSelect>& unitigExpandedPoses, const std::vector<ReadPath>& readPaths, const size_t kmerSize, const std::string& outputSequencePaths, const std::string& nodeNamePrefix)
+void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std::vector<CompressedSequenceType>& unitigSequences, const StringIndex& stringIndex, const std::vector<DumbSelect>& unitigExpandedPoses, const std::vector<ReadPath>& readPaths, const size_t kmerSize, const std::string& outputSequencePaths, const std::string& nodeNamePrefix, const bool keepSequenceNameTags)
 {
 	std::ofstream outPaths { outputSequencePaths };
 	for (const auto& path : readPaths)
@@ -220,7 +220,9 @@ void writePaths(const HashList& hashlist, const UnitigGraph& unitigs, const std:
 		assert(pathEndExpanded <= pathLengthExpanded);
 		assert(pathLengthExpanded >= pathLengthRLE);
 		size_t mapq = 60;
-		outPaths << path.readName.first << "\t" << readLength << "\t" << readStart << "\t" << readEnd << "\t+\t" << pathStr << "\t" << pathLengthExpanded << "\t" << pathStartExpanded << "\t" << pathEndExpanded << "\t" << (pathEndExpanded - pathStartExpanded) << "\t" << (pathEndExpanded - pathStartExpanded) << "\t" << mapq << std::endl;
+		std::string name = path.readName.first;
+		if (!keepSequenceNameTags) name = name.substr(0, name.find_first_of(" \t\r\n"));
+		outPaths << name << "\t" << readLength << "\t" << readStart << "\t" << readEnd << "\t+\t" << pathStr << "\t" << pathLengthExpanded << "\t" << pathStartExpanded << "\t" << pathEndExpanded << "\t" << (pathEndExpanded - pathStartExpanded) << "\t" << (pathEndExpanded - pathStartExpanded) << "\t" << mapq << std::endl;
 	}
 }
 
@@ -1535,7 +1537,7 @@ std::vector<DumbSelect> getUnitigExpandedPoses(const HashList& hashlist, const U
 	return unitigExpandedPoses;
 }
 
-void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile, const bool keepGaps, const double hpcVariantOnecopyCoverage, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const std::string& outputHomologyMap, const bool filterWithinUnitig, const bool doCleaning)
+void runMBG(const std::vector<std::string>& inputReads, const std::string& outputGraph, const size_t kmerSize, const size_t windowSize, const size_t minCoverage, const double minUnitigCoverage, const ErrorMasking errorMasking, const size_t numThreads, const bool includeEndKmers, const std::string& outputSequencePaths, const size_t maxResolveLength, const bool blunt, const size_t maxUnconditionalResolveLength, const std::string& nodeNamePrefix, const std::string& sequenceCacheFile, const bool keepGaps, const double hpcVariantOnecopyCoverage, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const std::string& outputHomologyMap, const bool filterWithinUnitig, const bool doCleaning, const bool keepSequenceNameTags)
 {
 	auto beforeReading = getTime();
 	// check that all files actually exist
@@ -1625,7 +1627,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	{
 		std::cerr << "Writing paths to " << outputSequencePaths << std::endl;
 		sortPaths(readPaths);
-		writePaths(reads, unitigs, unitigSequences, stringIndex, unitigExpandedPoses, readPaths, kmerSize, outputSequencePaths, nodeNamePrefix);
+		writePaths(reads, unitigs, unitigSequences, stringIndex, unitigExpandedPoses, readPaths, kmerSize, outputSequencePaths, nodeNamePrefix, keepSequenceNameTags);
 	}
 	auto afterPaths = getTime();
 	if (outputHomologyMap != "")
