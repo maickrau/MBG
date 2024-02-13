@@ -19,6 +19,7 @@ OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 ifeq ($(PLATFORM),Linux)
    LINKFLAGS = $(CPPFLAGS) -Wl,-Bstatic $(LIBS) -Wl,-Bdynamic -Wl,--as-needed -lpthread -pthread -static-libstdc++
 else
+   CPPFLAGS += -D_LIBCPP_DISABLE_AVAILABILITY
    LINKFLAGS = $(CPPFLAGS) $(LIBS) -lpthread -pthread -static-libstdc++
 endif
 
