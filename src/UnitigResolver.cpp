@@ -161,7 +161,7 @@ public:
 	VectorWithDirection<phmap::flat_hash_set<std::pair<size_t, bool>>> edges;
 	phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t> overlaps;
 	std::vector<bool> unitigRemoved;
-	mutable std::vector<std::vector<std::pair<uint32_t, uint32_t>>> readsCrossingNode;
+	mutable std::vector<std::vector<std::pair<uint32_t, uint32_t>>> readsCrossingNode; // path, offset in path
 	std::vector<size_t> everTippable;
 	size_t lastTippableChecked;
 	mutable std::vector<size_t> precalcedUnitigLengths;
@@ -3856,6 +3856,21 @@ bool isLocallyRepetitive(const ResolvableUnitigGraph& resolvableGraph, const std
 		if (nodeCount >= 2)
 		{
 			return true;
+		}
+	}
+	phmap::flat_hash_set<std::string> readsWhichCover;
+	for (const std::pair<uint32_t, uint32_t> pospair : resolvableGraph.iterateCrossingReads(node, readPaths))
+	{
+		const size_t pathi = pospair.first;
+		if (readPaths[pathi].path.size() < 2) continue;
+		if (readPaths[pathi].reads.size() < 1) continue;
+		if (pospair.second == 0 || pospair.second == readPaths[pathi].path.size()-1) continue;
+		assert(pospair.second >= 1 && pospair.second < readPaths[pathi].path.size()-1);
+		for (auto read : readPaths[pathi].reads)
+		{
+			std::string readname = resolvableGraph.readNames[read.readNameIndex].first;
+			if (readsWhichCover.count(readname) == 1) return true;
+			readsWhichCover.insert(readname);
 		}
 	}
 	return false;
