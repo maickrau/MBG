@@ -3,6 +3,8 @@
 #include "CompressedSequence.h"
 #include "ErrorMaskHelper.h"
 
+using namespace MBG;
+
 CompressedSequence::CompressedSequence(TwobitLittleBigVector<uint16_t>&& compressed, std::vector<uint8_t>&& simpleExpanded, std::vector<std::pair<uint32_t, uint32_t>>&& complexes) :
 	compressed(std::move(compressed)),
 	simpleExpanded(std::move(simpleExpanded))

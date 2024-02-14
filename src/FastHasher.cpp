@@ -4,6 +4,8 @@
 #include "MBGCommon.h"
 #include "ErrorMaskHelper.h"
 
+using namespace MBG;
+
 // pointers so modifying map doesn't invalidate references
 phmap::flat_hash_map<size_t, std::vector<uint64_t>*> fwAddsPerKmerSize;
 phmap::flat_hash_map<size_t, std::vector<uint64_t>*> bwAddsPerKmerSize;

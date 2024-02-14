@@ -12,6 +12,9 @@
 #include "MostlySparse2DHashmap.h"
 #include "RankBitvector.h"
 
+namespace MBG
+{
+
 class HashList
 {
 public:
@@ -33,6 +36,7 @@ public:
 	std::pair<size_t, bool> getNodeOrNull(HashType fwHash) const;
 	std::pair<std::pair<size_t, bool>, HashType> addNode(VectorView<CharType> sequence, VectorView<CharType> reverse);
 	std::pair<size_t, bool> addNode(HashType fwHash);
+	size_t addFakeNode();
 	void filter(const RankBitvector& kept);
 	std::pair<size_t, bool> getHashNode(HashType hash) const;
 	std::vector<size_t> sortByHash();
@@ -46,5 +50,7 @@ private:
 	std::shared_ptr<std::mutex> indexMutex;
 	size_t kmerSize;
 };
+
+}
 
 #endif

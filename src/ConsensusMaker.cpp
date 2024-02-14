@@ -2,6 +2,8 @@
 #include "ConsensusMaker.h"
 #include "ErrorMaskHelper.h"
 
+using namespace MBG;
+
 ConsensusMaker::~ConsensusMaker()
 {
 	for (size_t i = 0; i < simpleSequenceMutexes.size(); i++)

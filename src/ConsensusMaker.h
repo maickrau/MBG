@@ -10,6 +10,9 @@
 #include "StringIndex.h"
 #include "ErrorMaskHelper.h"
 
+namespace MBG
+{
+
 class ConsensusMaker
 {
 private:
@@ -111,5 +114,7 @@ private:
 	std::vector<size_t> longestRightOverlap;
 	size_t totalLength;
 };
+
+}
 
 #endif

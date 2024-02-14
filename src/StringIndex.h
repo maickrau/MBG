@@ -6,6 +6,9 @@
 #include <string>
 #include <phmap.h>
 
+namespace MBG
+{
+
 class StringIndex
 {
 public:
@@ -18,5 +21,7 @@ private:
 	std::vector<phmap::flat_hash_map<std::string, uint32_t>> index;
 	std::vector<std::vector<std::string>> reverseIndex;
 };
+
+}
 
 #endif

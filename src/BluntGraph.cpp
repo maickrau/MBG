@@ -6,6 +6,8 @@
 #include "ErrorMaskHelper.h"
 #include "UnitigHelper.h"
 
+using namespace MBG;
+
 template <typename F>
 void iterateEdges(const HashList& hashlist, const UnitigGraph& unitigs, const size_t kmerSize, F callback)
 {

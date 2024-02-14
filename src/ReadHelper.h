@@ -15,6 +15,9 @@
 #include "ErrorMaskHelper.h"
 #include "Serializer.h"
 
+namespace MBG
+{
+
 extern thread_local std::vector<size_t> memoryIterables;
 
 enum ErrorMasking
@@ -1101,5 +1104,7 @@ private:
 		callback(read, seq, poses, rawSeq, positions);
 	}
 };
+
+}
 
 #endif

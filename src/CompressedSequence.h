@@ -8,6 +8,9 @@
 #include "StringIndex.h"
 #include "TwobitLittleBigVector.h"
 
+namespace MBG
+{
+
 class CompressedSequence
 {
 public:
@@ -32,5 +35,7 @@ private:
 	std::vector<uint8_t> simpleExpanded;
 	phmap::flat_hash_map<uint32_t, uint32_t> complexExpanded;
 };
+
+}
 
 #endif

@@ -7,6 +7,9 @@
 #include "UnitigGraph.h"
 #include "UnitigResolver.h"
 
+namespace MBG
+{
+
 std::vector<std::tuple<size_t, size_t, bool>> getKmerLocator(const UnitigGraph& graph);
 
 template <typename F>
@@ -141,6 +144,8 @@ void iterateReadPaths(const UnitigGraph& graph, const HashList& hashlist, const 
 		assert(current.readPoses.back() + kmerSize <= current.readLengthHPC);
 		callback(current);
 	}
+}
+
 }
 
 #endif

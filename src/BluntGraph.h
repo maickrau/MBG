@@ -7,6 +7,9 @@
 #include "HashList.h"
 #include "UnitigGraph.h"
 
+namespace MBG
+{
+
 // DBG bluntifying algorithm from Hassan Nikaein (personal communication)
 // generalized to arbitrary overlaps
 class BluntGraph
@@ -21,5 +24,7 @@ private:
 	void initializeEdgesAndEdgenodes(const HashList& hashlist, const UnitigGraph& unitigs, const VectorWithDirection<size_t>& maxOverlap, const std::vector<CompressedSequenceType>& unbluntSequences, const StringIndex& stringIndex, const size_t kmerSize);
 	VectorWithDirection<size_t> getMaxOverlaps(const HashList& hashlist, const UnitigGraph& unitigs, const size_t kmerSize) const;
 };
+
+}
 
 #endif

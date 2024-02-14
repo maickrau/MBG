@@ -4,6 +4,9 @@
 #include <cstdlib>
 #include <tuple>
 
+namespace MBG
+{
+
 class Node
 {
 public:
@@ -18,5 +21,7 @@ public:
 private:
 	size_t val;
 };
+
+}
 
 #endif

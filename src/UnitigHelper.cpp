@@ -1,5 +1,10 @@
 #include "UnitigHelper.h"
 
+using namespace MBG;
+
+namespace MBG
+{
+
 size_t getUnitigOverlap(const HashList& hashlist, const size_t kmerSize, const UnitigGraph& unitigs, const std::pair<size_t, bool> from, const std::pair<size_t, bool> to)
 {
 	auto kmerOverlap = unitigs.edgeOverlap(from, to);
@@ -59,4 +64,6 @@ size_t getUnitigSize(const HashList& hashlist, const size_t kmerSize, const Unit
 	result -= unitigs.rightClip[unitig];
 	assert(result <= unitigs.unitigs[unitig].size() * kmerSize);
 	return result;
+}
+
 }

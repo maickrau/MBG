@@ -7,6 +7,9 @@
 #include <phmap.h>
 #include "MsatValueVector.h"
 
+namespace MBG
+{
+
 template <typename BigType>
 class TwobitLittleBigVector
 {
@@ -69,5 +72,7 @@ private:
 	std::vector<uint8_t> littles;
 	MsatValueVector bigs;
 };
+
+}
 
 #endif

@@ -31,6 +31,11 @@
 #include "DumbSelect.h"
 #include "KmerMatcher.h"
 
+using namespace MBG;
+
+namespace MBG
+{
+
 struct AssemblyStats
 {
 public:
@@ -1591,7 +1596,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	{
 		std::cerr << "Resolving unitigs" << std::endl;
 		std::cerr << unitigs.unitigs.size() << " unitigs before resolving" << std::endl;
-		std::tie(unitigs, readPaths) = resolveUnitigs(unitigs, reads, readPaths, partIterator, minUnitigCoverage, kmerSize, maxResolveLength, maxUnconditionalResolveLength, keepGaps, guesswork, copycountFilterHeuristic, onlyLocalResolve, doCleaning, std::cerr);
+		std::tie(unitigs, readPaths) = resolveUnitigs(unitigs, reads, readPaths, minUnitigCoverage, kmerSize, maxResolveLength, maxUnconditionalResolveLength, keepGaps, guesswork, copycountFilterHeuristic, onlyLocalResolve, doCleaning, std::cerr);
 		std::cerr << unitigs.unitigs.size() << " unitigs after resolving" << std::endl;
 	}
 	auto beforeSequences = getTime();
@@ -1657,4 +1662,6 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 		std::cerr << "It is recommended to clean the graph using vg (https://github.com/vgteam/vg) with the command:" << std::endl << std::endl;
 		std::cerr << "vg view -Fv " << outputGraph << " | vg mod -n -U 100 - | vg view - > cleaned." << outputGraph << std::endl << std::endl;
 	}
+}
+
 }

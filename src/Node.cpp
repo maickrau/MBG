@@ -2,6 +2,8 @@
 #include <cassert>
 #include "Node.h"
 
+using namespace MBG;
+
 Node::Node()
 {
 	val = std::numeric_limits<size_t>::max();

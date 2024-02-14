@@ -4,6 +4,8 @@
 #include "MBGCommon.h"
 #include "UnitigGraph.h"
 
+using namespace MBG;
+
 size_t UnitigGraph::edgeCoverage(size_t from, bool fromFw, size_t to, bool toFw) const
 {
 	return edgeCoverage(std::make_pair(from, fromFw), std::make_pair(to, toFw));

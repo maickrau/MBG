@@ -6,6 +6,11 @@
 #include "ConsensusMaker.h"
 #include "KmerMatcher.h"
 
+using namespace MBG;
+
+namespace MBG
+{
+
 void addCounts(ConsensusMaker& consensusMaker, const SequenceCharType& seq, const SequenceLengthType& poses, const std::string& rawSeq, const size_t seqStart, const size_t seqEnd, const size_t unitig, const size_t unitigStart, const size_t unitigEnd, const bool fw)
 {
 	consensusMaker.addStrings(unitig, unitigStart, unitigEnd, [seqStart, seqEnd, &consensusMaker, &seq, &poses, &rawSeq, fw](size_t i)
@@ -419,3 +424,4 @@ void getHpcVariantsAndReadPaths(const HashList& hashlist, const UnitigGraph& uni
 	}
 }
 
+}

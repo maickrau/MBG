@@ -2,6 +2,8 @@
 #include <cstring>
 #include "MsatValueVector.h"
 
+using namespace MBG;
+
 int popcount(uint64_t x);
 
 MsatValueVector::MsatValueChunk::MsatValueChunk() :

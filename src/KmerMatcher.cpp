@@ -1,5 +1,10 @@
 #include "KmerMatcher.h"
 
+using namespace MBG;
+
+namespace MBG
+{
+
 std::vector<std::tuple<size_t, size_t, bool>> getKmerLocator(const UnitigGraph& graph)
 {
 	size_t maxKmer = 0;
@@ -30,3 +35,4 @@ std::vector<std::tuple<size_t, size_t, bool>> getKmerLocator(const UnitigGraph& 
 	return kmerLocator;
 }
 
+}

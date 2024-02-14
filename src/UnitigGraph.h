@@ -1,5 +1,5 @@
-#ifndef UnitigGraph_h
-#define UnitigGraph_h
+#ifndef MBGUnitigGraph_h
+#define MBGUnitigGraph_h
 
 #include <unordered_set>
 #include <vector>
@@ -9,6 +9,9 @@
 #include "RankBitvector.h"
 #include "SparseEdgeContainer.h"
 #include "MostlySparse2DHashmap.h"
+
+namespace MBG
+{
 
 class UnitigGraph
 {
@@ -40,5 +43,7 @@ private:
 	std::unordered_set<std::pair<size_t, bool>> findReachableNewTips(const RankBitvector& kept, const VectorWithDirection<bool>& newlyTip, const std::pair<size_t, bool> start) const;
 	void keepTipGaps(RankBitvector& kept) const;
 };
+
+}
 
 #endif

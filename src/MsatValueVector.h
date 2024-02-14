@@ -4,6 +4,9 @@
 #include <cstdint>
 #include <vector>
 
+namespace MBG
+{
+
 class MsatValueVector
 {
 	class MsatValueChunk
@@ -34,5 +37,7 @@ public:
 private:
 	std::vector<MsatValueChunk> chunks;
 };
+
+}
 
 #endif

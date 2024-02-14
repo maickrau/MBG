@@ -1,6 +1,8 @@
 #include "StringIndex.h"
 #include "ErrorMaskHelper.h"
 
+using namespace MBG;
+
 void StringIndex::init(size_t maxCode)
 {
 	index.resize(maxCode);

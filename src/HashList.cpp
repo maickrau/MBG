@@ -3,6 +3,8 @@
 #include <chrono>
 #include "HashList.h"
 
+using namespace MBG;
+
 HashList::HashList(size_t kmerSize) :
 	kmerSize(kmerSize)
 {
@@ -146,6 +148,20 @@ std::pair<size_t, bool> HashList::addNode(HashType fwHash)
 		tipKmer.emplace_back(false);
 		return std::make_pair(fwNode, fw);
 	}
+}
+
+size_t HashList::addFakeNode()
+{
+	std::lock_guard<std::mutex> lock { *indexMutex };
+	size_t fwNode = size();
+	assert(coverage.size() == fwNode);
+	assert(edgeCoverage.size() == fwNode);
+	assert(sequenceOverlap.size() == fwNode);
+	coverage.emplace_back(1);
+	edgeCoverage.emplace_back();
+	sequenceOverlap.emplace_back();
+	tipKmer.emplace_back(false);
+	return fwNode;
 }
 
 void HashList::resize(size_t size)

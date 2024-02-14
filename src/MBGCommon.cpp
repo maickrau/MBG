@@ -4,6 +4,9 @@
 #include <vector>
 #include "MBGCommon.h"
 
+namespace MBG
+{
+
 uint16_t complement(const uint16_t original);
 
 HashType hash(VectorView<uint16_t> sequence)
@@ -128,4 +131,6 @@ std::vector<std::pair<size_t, bool>> revCompPath(const std::vector<std::pair<siz
 		result[i] = reverse(result[i]);
 	}
 	return result;
+}
+
 }

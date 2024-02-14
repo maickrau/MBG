@@ -7,6 +7,9 @@
 #include "VectorView.h"
 #include "CompressedSequence.h"
 
+namespace MBG
+{
+
 using HashType = unsigned __int128;
 using NodeType = size_t;
 using CharType = uint16_t;
@@ -28,6 +31,8 @@ std::vector<std::pair<size_t, bool>> revCompPath(const std::vector<std::pair<siz
 
 class PalindromicKmer : std::exception {};
 
+}
+
 namespace std
 {
 	template <> struct hash<const std::vector<size_t>&>
@@ -44,9 +49,9 @@ namespace std
 		}
 	};
 #if !defined(__clang__)
-	template <> struct hash<HashType>
+	template <> struct hash<MBG::HashType>
 	{
-		size_t operator()(HashType x) const
+		size_t operator()(MBG::HashType x) const
 		{
 			return (size_t)x ^ (size_t)(x >> 64);
 		}
@@ -59,16 +64,16 @@ namespace std
 			return hash<std::string>{}(x.first) ^ hash<size_t>{}(x.second);
 		}
 	};
-	template <> struct hash<std::pair<HashType, bool>>
+	template <> struct hash<std::pair<MBG::HashType, bool>>
 	{
-		size_t operator()(std::pair<HashType, bool> x) const
+		size_t operator()(std::pair<MBG::HashType, bool> x) const
 		{
-			return hash<HashType>{}(x.first);
+			return hash<MBG::HashType>{}(x.first);
 		}
 	};
-	template <> struct hash<std::pair<HashType, HashType>>
+	template <> struct hash<std::pair<MBG::HashType, MBG::HashType>>
 	{
-		size_t operator()(std::pair<HashType, HashType> x) const
+		size_t operator()(std::pair<MBG::HashType, MBG::HashType> x) const
 		{
 			return (size_t)x.first ^ (size_t)x.second;
 		}

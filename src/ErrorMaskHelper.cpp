@@ -4,6 +4,11 @@
 #include <cmath>
 #include "ErrorMaskHelper.h"
 
+using namespace MBG;
+
+namespace MBG
+{
+
 constexpr size_t MaxMotifLength = 6;
 
 std::vector<uint16_t> calculateNumsBefore()
@@ -350,4 +355,6 @@ SequenceCharType revCompRLE(const SequenceCharType& codes)
 		result[i] = complement(codes[codes.size()-1-i]);
 	}
 	return result;
+}
+
 }

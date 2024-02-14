@@ -13,7 +13,7 @@ namespace Serializer
 
 	void write(std::ostream& stream, size_t value);
 	void writeMostlyTwobits(std::ostream& stream, const std::vector<uint16_t>& value);
-	void writeMonotoneIncreasing(std::ostream& stream, const std::vector<LengthType>& value);
+	void writeMonotoneIncreasing(std::ostream& stream, const std::vector<MBG::LengthType>& value);
 	template <typename T>
 	void write(std::ostream& stream, const std::vector<T>& value)
 	{
@@ -24,7 +24,7 @@ namespace Serializer
 	void write(std::ostream& stream, const std::string& value);
 	void read(std::istream& stream, size_t& value);
 	void readMostlyTwobits(std::istream& stream, std::vector<uint16_t>& value);
-	void readMonotoneIncreasing(std::istream& stream, std::vector<LengthType>& value);
+	void readMonotoneIncreasing(std::istream& stream, std::vector<MBG::LengthType>& value);
 	template <typename T>
 	void read(std::istream& stream, std::vector<T>& value)
 	{

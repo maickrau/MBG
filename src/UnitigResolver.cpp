@@ -10,6 +10,11 @@
 #include "BigVectorSet.h"
 #include "Node.h"
 
+using namespace MBG;
+
+namespace MBG
+{
+
 #define assertPrintReads(expression, graph, paths, node) {if (!(expression)) {printReads(graph, paths, node);} assert(expression);}
 
 struct ReadPathInfo
@@ -587,7 +592,7 @@ ResolvableUnitigGraph getUnitigs(const UnitigGraph& initial, size_t minCoverage,
 		double sumHere = 0;
 		for (size_t j = 0; j < result.unitigs[i].size(); j++)
 		{
-			sumHere += hashlist.coverage.get(result.unitigs[i][j].first);
+			sumHere += result.hashlist.coverage.get(result.unitigs[i][j].first);
 		}
 		allkmerSum += sumHere;
 		allkmerDivisor += result.unitigs[i].size();
@@ -1488,7 +1493,7 @@ void unresolveRecursively(const ResolvableUnitigGraph& resolvableGraph, const ph
 	}
 }
 
-void createFakeEdgeNode(ResolvableUnitigGraph& resolvableGraph, const HashList& hashlist, phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t>& newEdgeNodes, const phmap::flat_hash_set<size_t>& resolvables, const phmap::flat_hash_set<size_t>& unresolvables, std::pair<size_t, bool> from, std::pair<size_t, bool> to)
+void createFakeEdgeNode(ResolvableUnitigGraph& resolvableGraph, phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t>& newEdgeNodes, const phmap::flat_hash_set<size_t>& resolvables, const phmap::flat_hash_set<size_t>& unresolvables, std::pair<size_t, bool> from, std::pair<size_t, bool> to)
 {
 	size_t newIndex = resolvableGraph.unitigs.size();
 	newEdgeNodes[std::make_pair(from, to)] = newIndex;
@@ -1523,7 +1528,7 @@ void createFakeEdgeNode(ResolvableUnitigGraph& resolvableGraph, const HashList& 
 	}
 }
 
-void createEdgeNode(ResolvableUnitigGraph& resolvableGraph, const HashList& hashlist, phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t>& newEdgeNodes, const phmap::flat_hash_set<size_t>& resolvables, const phmap::flat_hash_set<size_t>& unresolvables, std::pair<size_t, bool> from, std::pair<size_t, bool> to)
+void createEdgeNode(ResolvableUnitigGraph& resolvableGraph, phmap::flat_hash_map<std::pair<std::pair<size_t, bool>, std::pair<size_t, bool>>, size_t>& newEdgeNodes, const phmap::flat_hash_set<size_t>& resolvables, const phmap::flat_hash_set<size_t>& unresolvables, std::pair<size_t, bool> from, std::pair<size_t, bool> to)
 {
 	size_t newIndex = resolvableGraph.unitigs.size();
 	newEdgeNodes[std::make_pair(from, to)] = newIndex;
@@ -1570,7 +1575,7 @@ void createEdgeNode(ResolvableUnitigGraph& resolvableGraph, const HashList& hash
 				assert(resolvableGraph.unitigs.back()[resolvableGraph.unitigs.back().size() - start+i] == add[i]);
 			}
 			assert(add.size() > start);
-			rightClipBp = resolvableGraph.kmerSize - hashlist.getOverlap(resolvableGraph.unitigs.back().back(), add[start]) - 1;
+			rightClipBp = resolvableGraph.kmerSize - resolvableGraph.hashlist.getOverlap(resolvableGraph.unitigs.back().back(), add[start]) - 1;
 			assert(rightClipBp < resolvableGraph.kmerSize);
 			if (rightClipBp > availableIncrease - 1)
 			{
@@ -2481,7 +2486,7 @@ public:
 	phmap::flat_hash_map<std::pair<size_t, bool>, size_t> maybeTrimmable;
 };
 
-ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList& hashlist, std::vector<PathGroup>& readPaths, const phmap::flat_hash_set<size_t>& resolvables, const size_t minCoverage, const bool unconditional, const bool guesswork, const bool copycountFilterHeuristic, std::ostream& log)
+ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const phmap::flat_hash_set<size_t>& resolvables, const size_t minCoverage, const bool unconditional, const bool guesswork, const bool copycountFilterHeuristic, std::ostream& log)
 {
 	static BigVectorSet actuallyResolvables;
 	ResolutionResult result;
@@ -2617,12 +2622,12 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			if (newEdgeNodes.count(std::make_pair(reverse(edge), reverse(pos))) == 1) continue;
 			if ((resolvables.count(edge.first) == 0 || unresolvables.count(edge.first) == 1) && resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(pos, edge) + 1)
 			{
-				createFakeEdgeNode(resolvableGraph, hashlist, newEdgeNodes, resolvables, unresolvables, pos, edge);
+				createFakeEdgeNode(resolvableGraph, newEdgeNodes, resolvables, unresolvables, pos, edge);
 			}
 			else
 			{
 				assert(actuallyResolvables.get(edge.first) || resolvableGraph.unitigLength(edge.first) > resolvableGraph.getBpOverlap(pos, edge) + 1);
-				createEdgeNode(resolvableGraph, hashlist, newEdgeNodes, resolvables, unresolvables, pos, edge);
+				createEdgeNode(resolvableGraph, newEdgeNodes, resolvables, unresolvables, pos, edge);
 			}
 			assert(newEdgeNodes.count(std::make_pair(pos, edge)) == 1);
 			if (bwEdges.size() == 0)
@@ -2644,12 +2649,12 @@ ResolutionResult resolve(ResolvableUnitigGraph& resolvableGraph, const HashList&
 			if (newEdgeNodes.count(std::make_pair(reverse(edge), reverse(pos))) == 1) continue;
 			if ((resolvables.count(edge.first) == 0 || unresolvables.count(edge.first) == 1) && resolvableGraph.unitigLength(edge.first) == resolvableGraph.getBpOverlap(pos, edge) + 1)
 			{
-				createFakeEdgeNode(resolvableGraph, hashlist, newEdgeNodes, resolvables, unresolvables, pos, edge);
+				createFakeEdgeNode(resolvableGraph, newEdgeNodes, resolvables, unresolvables, pos, edge);
 			}
 			else
 			{
 				assert(actuallyResolvables.get(edge.first) || resolvableGraph.unitigLength(edge.first) > resolvableGraph.getBpOverlap(pos, edge) + 1);
-				createEdgeNode(resolvableGraph, hashlist, newEdgeNodes, resolvables, unresolvables, pos, edge);
+				createEdgeNode(resolvableGraph, newEdgeNodes, resolvables, unresolvables, pos, edge);
 			}
 			assert(newEdgeNodes.count(std::make_pair(pos, edge)) == 1);
 			if (fwEdges.size() == 0)
@@ -3212,7 +3217,7 @@ struct UntippingResult
 	phmap::flat_hash_set<size_t> maybeUnitigifiable;
 };
 
-void tryRemoveTip(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const double maxRemovableCoverage, const double minSafeCoverage, const size_t maxRemovableLength, const size_t i, UntippingResult& result)
+void tryRemoveTip(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const double maxRemovableCoverage, const double minSafeCoverage, const size_t maxRemovableLength, const size_t i, UntippingResult& result)
 {
 	assert(!resolvableGraph.unitigRemoved[i]);
 	bool fwHasSafeEdge = false;
@@ -3334,7 +3339,7 @@ UntippingResult removeLowCoverageCrosslinks(ResolvableUnitigGraph& resolvableGra
 	return result;
 }
 
-UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const double maxRemovableCoverage, const double minSafeCoverage, const size_t maxRemovableLength, const phmap::flat_hash_set<size_t>& maybeUntippable)
+UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const double maxRemovableCoverage, const double minSafeCoverage, const size_t maxRemovableLength, const phmap::flat_hash_set<size_t>& maybeUntippable)
 {
 	UntippingResult result;
 	for (size_t i = resolvableGraph.lastTippableChecked; i < resolvableGraph.unitigs.size(); i++)
@@ -3372,7 +3377,7 @@ UntippingResult removeLowCoverageTips(ResolvableUnitigGraph& resolvableGraph, st
 			resolvableGraph.everTippable.pop_back();
 			continue;
 		}
-		tryRemoveTip(resolvableGraph, readPaths, hashlist, maxRemovableCoverage, minSafeCoverage, maxRemovableLength, i, result);
+		tryRemoveTip(resolvableGraph, readPaths, maxRemovableCoverage, minSafeCoverage, maxRemovableLength, i, result);
 	}
 	return result;
 }
@@ -3894,7 +3899,7 @@ phmap::flat_hash_set<size_t> filterToOnlyLocallyRepetitives(const ResolvableUnit
 	return result;
 }
 
-void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const HashList& hashlist, const size_t minCoverage, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const bool doCleaning, std::ostream& log)
+void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const size_t minCoverage, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const bool doCleaning, std::ostream& log)
 {
 	checkValidity(resolvableGraph, readPaths);
 	std::priority_queue<size_t, std::vector<size_t>, UnitigLengthComparer> queue { UnitigLengthComparer { resolvableGraph } };
@@ -3952,7 +3957,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		size_t oldSize = resolvableGraph.unitigs.size();
 		checkValidity(resolvableGraph, readPaths);
 		log << "try resolve k=" << topSize;
-		auto resolutionResult = resolve(resolvableGraph, hashlist, readPaths, resolvables, minCoverage, topSize < maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, log);
+		auto resolutionResult = resolve(resolvableGraph, readPaths, resolvables, minCoverage, topSize < maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, log);
 		log << ", replaced " << resolutionResult.nodesResolved << " nodes with " << resolutionResult.nodesAdded << " nodes";
 		nodesRemoved += resolutionResult.nodesResolved;
 		if (resolutionResult.nodesResolved == 0)
@@ -4066,9 +4071,9 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		}
 		if (doCleaning)
 		{
-			auto removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, 10000, resolutionResult.maybeUnitigifiable);
+			auto removed = removeLowCoverageTips(resolvableGraph, readPaths, 3, 10, 10000, resolutionResult.maybeUnitigifiable);
 			resolutionResult.maybeUnitigifiable.insert(removed.maybeUnitigifiable.begin(), removed.maybeUnitigifiable.end());
-			auto removed2 = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 2, 5, 10000, resolutionResult.maybeUnitigifiable);
+			auto removed2 = removeLowCoverageTips(resolvableGraph, readPaths, 2, 5, 10000, resolutionResult.maybeUnitigifiable);
 			auto removed3 = removeLowCoverageCrosslinks(resolvableGraph, readPaths, 1, 5);
 			auto removed4 = removeLowCoverageCrosslinks(resolvableGraph, readPaths, 2, 10);
 			nodesRemoved += removed.nodesRemoved + removed2.nodesRemoved;
@@ -4144,7 +4149,7 @@ bool operator!=(const std::vector<std::pair<size_t, bool>>& left, const std::vec
 	return !(left == right);
 }
 
-std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const ReadpartIterator& partIterator, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const bool doCleaning, std::ostream& log)
+std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const bool doCleaning, std::ostream& log)
 {
 	auto resolvableGraph = getUnitigs(initial, minCoverage, hashlist, kmerSize, keepGaps, log);
 	log << rawReadPaths.size() << " raw read paths" << std::endl;
@@ -4203,7 +4208,7 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 	unitigifyAll(resolvableGraph, readPaths);
 	if (doCleaning)
 	{
-		auto removed = removeLowCoverageTips(resolvableGraph, readPaths, hashlist, 3, 10, 10000, phmap::flat_hash_set<size_t> {});
+		auto removed = removeLowCoverageTips(resolvableGraph, readPaths, 3, 10, 10000, phmap::flat_hash_set<size_t> {});
 		if (removed.nodesRemoved > 0)
 		{
 			log << "removed " << removed.nodesRemoved << " tips" << std::endl;
@@ -4225,8 +4230,10 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 			}
 		}
 	}
-	resolveRound(resolvableGraph, readPaths, hashlist, minCoverage, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, onlyLocalResolve, doCleaning, log);
-	resolveRound(resolvableGraph, readPaths, hashlist, 1, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, onlyLocalResolve, doCleaning, log);
+	resolveRound(resolvableGraph, readPaths, minCoverage, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, onlyLocalResolve, doCleaning, log);
+	resolveRound(resolvableGraph, readPaths, 1, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, onlyLocalResolve, doCleaning, log);
 	checkValidity(resolvableGraph, readPaths);
 	return resolvableToUnitigs(resolvableGraph, readPaths, readInfos);
+}
+
 }

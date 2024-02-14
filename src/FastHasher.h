@@ -8,6 +8,9 @@
 #include <mutex>
 #include "MBGCommon.h"
 
+namespace MBG
+{
+
 class FastHasher
 {
 public:
@@ -89,5 +92,7 @@ private:
 	uint64_t bwHash;
 	size_t kmerSize;
 };
+
+}
 
 #endif

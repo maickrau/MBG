@@ -3,6 +3,8 @@
 #include <cxxopts.hpp>
 #include "MBG.h"
 
+using namespace MBG;
+
 int main(int argc, char** argv)
 {
 	std::cerr << "MBG " << VERSION << std::endl;
