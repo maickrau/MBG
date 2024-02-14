@@ -3914,7 +3914,7 @@ phmap::flat_hash_set<size_t> filterToOnlyLocallyRepetitives(const ResolvableUnit
 	return result;
 }
 
-void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const size_t minCoverage, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const bool doCleaning, std::ostream& log)
+void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const size_t minCoverage, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork, const bool copycountFilterHeuristic, const size_t maxLocalResolve, const bool doCleaning, std::ostream& log)
 {
 	checkValidity(resolvableGraph, readPaths);
 	std::priority_queue<size_t, std::vector<size_t>, UnitigLengthComparer> queue { UnitigLengthComparer { resolvableGraph } };
@@ -3928,7 +3928,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 	while (queue.size() > 0)
 	{
 		size_t topSize = resolvableGraph.unitigLength(queue.top());
-		if (topSize >= maxResolveLength) break;
+		if (topSize >= maxResolveLength && topSize >= maxLocalResolve) break;
 		// assert(topSize >= lastTopSize);
 		lastTopSize = topSize;
 		phmap::flat_hash_set<size_t> resolvables;
@@ -3958,9 +3958,10 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 			thisLengthNodes.insert(queue.top());
 			queue.pop();
 		}
-		if (onlyLocalResolve)
+		if (topSize >= maxResolveLength)
 		{
-			resolvables = filterToOnlyLocallyRepetitives(resolvableGraph, readPaths, resolvables, maxResolveLength);
+			assert(topSize < maxLocalResolve);
+			resolvables = filterToOnlyLocallyRepetitives(resolvableGraph, readPaths, resolvables, maxLocalResolve);
 			auto oldResolvables = resolvables;
 			for (auto node : oldResolvables)
 			{
@@ -4164,7 +4165,7 @@ bool operator!=(const std::vector<std::pair<size_t, bool>>& left, const std::vec
 	return !(left == right);
 }
 
-std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork, const bool copycountFilterHeuristic, const bool onlyLocalResolve, const bool doCleaning, std::ostream& log)
+std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork, const bool copycountFilterHeuristic, const size_t maxLocalResolve, const bool doCleaning, std::ostream& log)
 {
 	auto resolvableGraph = getUnitigs(initial, minCoverage, hashlist, kmerSize, keepGaps, log);
 	log << rawReadPaths.size() << " raw read paths" << std::endl;
@@ -4237,7 +4238,7 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 		}
 		if (guesswork)
 		{
-			auto removed2 = cleanComponentsByCopynumber(resolvableGraph, readPaths, 50000, 0, maxResolveLength);
+			auto removed2 = cleanComponentsByCopynumber(resolvableGraph, readPaths, 50000, 0, std::max(maxResolveLength, maxLocalResolve));
 			if (removed2.nodesRemoved > 0 || removed2.edgesRemoved > 0)
 			{
 				log << "removed " << removed2.nodesRemoved << " nodes and " << removed2.edgesRemoved << " edges" << std::endl;
@@ -4245,8 +4246,8 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 			}
 		}
 	}
-	resolveRound(resolvableGraph, readPaths, minCoverage, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, onlyLocalResolve, doCleaning, log);
-	resolveRound(resolvableGraph, readPaths, 1, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, onlyLocalResolve, doCleaning, log);
+	resolveRound(resolvableGraph, readPaths, minCoverage, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, maxLocalResolve, doCleaning, log);
+	resolveRound(resolvableGraph, readPaths, 1, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, maxLocalResolve, doCleaning, log);
 	checkValidity(resolvableGraph, readPaths);
 	return resolvableToUnitigs(resolvableGraph, readPaths, readInfos);
 }
