@@ -3876,11 +3876,19 @@ bool isLocallyRepetitive(const ResolvableUnitigGraph& resolvableGraph, const std
 	return false;
 }
 
-phmap::flat_hash_set<size_t> filterToOnlyLocallyRepetitives(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const phmap::flat_hash_set<size_t>& unfilteredResolvables, size_t maxDist)
+phmap::flat_hash_set<size_t> filterToOnlyLocallyRepetitives(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const phmap::flat_hash_set<size_t>& unfilteredResolvables, const size_t maxDist)
 {
 	phmap::flat_hash_set<size_t> result;
 	for (size_t node : unfilteredResolvables)
 	{
+		if (maxDist == std::numeric_limits<size_t>::max())
+		{
+			if (isLocallyRepetitive(resolvableGraph, readPaths, node))
+			{
+				result.emplace(node);
+			}
+			continue;
+		}
 		bool found = false;
 		for (const std::pair<uint32_t, uint32_t> pospair : resolvableGraph.iterateCrossingReads(node, readPaths))
 		{
@@ -3928,7 +3936,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 	while (queue.size() > 0)
 	{
 		size_t topSize = resolvableGraph.unitigLength(queue.top());
-		if (topSize >= maxResolveLength && topSize >= maxLocalResolve) break;
+		if (topSize >= maxResolveLength) break;
 		// assert(topSize >= lastTopSize);
 		lastTopSize = topSize;
 		phmap::flat_hash_set<size_t> resolvables;
@@ -3958,7 +3966,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 			thisLengthNodes.insert(queue.top());
 			queue.pop();
 		}
-		if (topSize >= maxResolveLength)
+		if (maxResolveLength > 0)
 		{
 			assert(topSize < maxLocalResolve);
 			resolvables = filterToOnlyLocallyRepetitives(resolvableGraph, readPaths, resolvables, maxLocalResolve);
