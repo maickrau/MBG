@@ -1,6 +1,7 @@
 #ifndef VectorView_h
 #define VectorView_h
 
+#include <cstdint>
 #include <string_view>
 #include <vector>
 
