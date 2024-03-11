@@ -3936,7 +3936,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 	while (queue.size() > 0)
 	{
 		size_t topSize = resolvableGraph.unitigLength(queue.top());
-		if (topSize >= maxResolveLength) break;
+		if (topSize >= maxResolveLength && topSize >= maxLocalResolve) break;
 		// assert(topSize >= lastTopSize);
 		lastTopSize = topSize;
 		phmap::flat_hash_set<size_t> resolvables;
@@ -3966,7 +3966,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 			thisLengthNodes.insert(queue.top());
 			queue.pop();
 		}
-		if (maxResolveLength > 0)
+		if (maxLocalResolve > 0)
 		{
 			assert(topSize < maxLocalResolve);
 			resolvables = filterToOnlyLocallyRepetitives(resolvableGraph, readPaths, resolvables, maxLocalResolve);
