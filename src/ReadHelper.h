@@ -52,6 +52,14 @@ void findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize, siz
 		fwkmerHasher.addChar(sequence[seqPos]);
 		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
 		uint64_t hash = fwkmerHasher.hash();
+		// palindromic k-mer prevention: those s-mers which, if picked, might lead to picking a palindromic k-mer will arbitrarily have max hash value so they won't get picked
+		if (smerSize*2 > kmerSize)
+		{
+			if (sequence[seqPos-kmerSize/2] == complement(sequence[seqPos-kmerSize/2]) || sequence[seqPos-smerSize+1+kmerSize/2] == complement(sequence[seqPos-smerSize+1+kmerSize/2]))
+			{
+				hash = std::numeric_limits<uint64_t>::max();
+			}
+		}
 		if (endSmer(hash)) hash = 0;
 		while (smerOrder.size() > 0 && std::get<1>(smerOrder.back()) > hash) smerOrder.pop_back();
 		smerOrder.emplace_back(i, hash);
@@ -66,6 +74,14 @@ void findSyncmerPositions(const SequenceCharType& sequence, size_t kmerSize, siz
 		fwkmerHasher.addChar(sequence[seqPos]);
 		fwkmerHasher.removeChar(sequence[seqPos-smerSize]);
 		uint64_t hash = fwkmerHasher.hash();
+		// palindromic k-mer prevention: those s-mers which, if picked, might lead to picking a palindromic k-mer will arbitrarily have max hash value so they won't get picked
+		if (smerSize*2 > kmerSize)
+		{
+			if (sequence[seqPos-kmerSize/2] == complement(sequence[seqPos-kmerSize/2]) || sequence[seqPos-smerSize+1+kmerSize/2] == complement(sequence[seqPos-smerSize+1+kmerSize/2]))
+			{
+				hash = std::numeric_limits<uint64_t>::max();
+			}
+		}
 		if (endSmer(hash)) hash = 0;
 		// even though pop_front is used it turns out std::vector is faster than std::deque ?!
 		// because pop_front is O(w), but it is only called in O(1/w) fraction of loops
@@ -788,6 +804,15 @@ private:
 				}
 				positions.push_back(positionsWithPalindromes[i]);
 				hashes.push_back(fwHash);
+			}
+			for (size_t i = 1; i < positions.size(); i++)
+			{
+				if (positions[i] >= positions[i-1]+kmerSize)
+				{
+					std::cerr << "The genome has too many palindromic k-mers. Cannot build a graph. Try running with a different -w or different -k" << std::endl;
+					std::cerr << "Example read with palindromic k-mers: " << read.readName.first << std::endl;
+					std::abort();
+				}
 			}
 			callback(read, seq, poses, rawSeq, positions, hashes);
 		});
