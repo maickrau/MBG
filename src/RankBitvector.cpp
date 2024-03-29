@@ -116,3 +116,8 @@ std::vector<uint64_t>& RankBitvector::getBits()
 {
 	return bits;
 }
+
+const std::vector<uint64_t>& RankBitvector::getBits() const
+{
+	return bits;
+}
