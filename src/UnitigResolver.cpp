@@ -643,6 +643,47 @@ size_t getNumberOfHashes(const ResolvableUnitigGraph& resolvableGraph, size_t le
 	return result;
 }
 
+// debug only
+void writeFakeGraph(const ResolvableUnitigGraph& graph, const std::vector<PathGroup>& readPaths, const std::string& filename, const std::string& pathFileName, const std::string& readInfosFilename)
+{
+	std::ofstream file { filename };
+	for (size_t i = 0; i < graph.unitigs.size(); i++)
+	{
+		if (graph.unitigRemoved[i]) continue;
+		double coverage = graph.calculateCoverage(readPaths, i);
+		size_t length = graph.unitigLength(i);
+		file << "S\t" << i << "\t*\tLN:i:" << length << "\tll:f:" << coverage << "\tFC:i:" << (size_t)(coverage * length) << "\tsz:i:" << graph.unitigs[i].size() << std::endl;
+		for (auto edge : graph.edges.at(std::make_pair(i, true)))
+		{
+			file << "L\t" << i << "\t+\t" << edge.first << "\t" << (edge.second ? "+" : "-") << "\t" << graph.getBpOverlap(std::make_pair(i, true), edge) << "M" << std::endl;
+		}
+		for (auto edge : graph.edges.at(std::make_pair(i, false)))
+		{
+			file << "L\t" << i << "\t-\t" << edge.first << "\t" << (edge.second ? "+" : "-") << "\t" << graph.getBpOverlap(std::make_pair(i, false), edge) << "M" << std::endl;
+		}
+	}
+	std::ofstream paths { pathFileName };
+	for (size_t i = 0; i < readPaths.size(); i++)
+	{
+		for (size_t j = 0; j < readPaths[i].path.size(); j++)
+		{
+			paths << (readPaths[i].path[j].second ? ">" : "<") << readPaths[i].path[j].first;
+		}
+		size_t pathLength = getNumberOfHashes(graph, 0, 0, readPaths[i].path);
+		paths << "\t" << readPaths[i].reads.size() << "\t" << pathLength << "\t";
+		for (size_t j = 0; j < readPaths[i].reads.size(); j++)
+		{
+			paths << readPaths[i].reads[j].leftClip << "-" << (pathLength-readPaths[i].reads[j].rightClip) << "(" << readPaths[i].reads[j].readInfoIndex << ")" << ",";
+		}
+		paths << std::endl;
+	}
+	std::ofstream readInfos { readInfosFilename };
+	for (size_t i = 0; i < graph.readNames.size(); i++)
+	{
+		readInfos << i << "\t" << graph.readNames[i].first << std::endl;
+	}
+}
+
 std::pair<UnitigGraph, std::vector<ReadPath>> resolvableToUnitigs(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const std::vector<ReadPathInfo>& readInfos)
 {
 	{
@@ -2872,6 +2913,7 @@ size_t getEdgeCoverage(const ResolvableUnitigGraph& resolvableGraph, const std::
 void checkValidity(const ResolvableUnitigGraph& graph, const std::vector<PathGroup>& readPaths)
 {
 	return;
+	writeFakeGraph(graph, readPaths, "fakegraph.gfa", "fakepaths.txt", "fakenames.txt");
 	assert(graph.unitigs.size() == graph.edges.size());
 	assert(graph.unitigs.size() == graph.unitigRightClipBp.size());
 	assert(graph.unitigs.size() == graph.unitigLeftClipBp.size());
@@ -3081,7 +3123,7 @@ void removeEdgesAndNodes(ResolvableUnitigGraph& resolvableGraph, std::vector<Pat
 		size_t lastStart = 0;
 		for (size_t j = 0; j < readPaths[i].path.size(); j++)
 		{
-			if (removeNodes.count(readPaths[i].path[j].first) == 1 || (j > 0 && removeEdges.count(canon(readPaths[i].path[j-1], readPaths[i].path[j])) == 1))
+			if (removeNodes.count(readPaths[i].path[j].first) == 1 || (j > 0 && removeEdges.count(canon(readPaths[i].path[j-1], readPaths[i].path[j])) == 1 && removeNodes.count(readPaths[i].path[j].first) == 0 && removeNodes.count(readPaths[i].path[j-1].first) == 0))
 			{
 				if (j == lastStart)
 				{
@@ -4066,6 +4108,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 				}
 			}
 		}
+		checkValidity(resolvableGraph, readPaths);
 		if (guesswork && doCleaning)
 		{
 			phmap::flat_hash_set<size_t> cleanables = thisLengthNodes;
@@ -4095,6 +4138,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		}
 		if (doCleaning)
 		{
+			checkValidity(resolvableGraph, readPaths);
 			auto removed = removeLowCoverageTips(resolvableGraph, readPaths, 3, 10, 10000, resolutionResult.maybeUnitigifiable);
 			resolutionResult.maybeUnitigifiable.insert(removed.maybeUnitigifiable.begin(), removed.maybeUnitigifiable.end());
 			auto removed2 = removeLowCoverageTips(resolvableGraph, readPaths, 2, 5, 10000, resolutionResult.maybeUnitigifiable);
