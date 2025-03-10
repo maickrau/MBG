@@ -1562,6 +1562,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	{
 		std::cerr << "Collecting hpc variant k-mers" << std::endl;
 		loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads, std::cerr);
+		reads.sortByHash();
 		auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage, keepGaps, false);
 		if (minUnitigCoverage > minCoverage)
 		{
@@ -1575,6 +1576,7 @@ void runMBG(const std::vector<std::string>& inputReads, const std::string& outpu
 	auto beforeKmers = getTime();
 	std::cerr << "Collecting selected k-mers" << std::endl;
 	loadReadsAsHashesMultithread(reads, kmerSize, partIterator, numThreads, std::cerr);
+	reads.sortByHash();
 	auto beforeUnitigs = getTime();
 	std::cerr << "Unitigifying" << std::endl;
 	auto unitigs = getUnitigGraph(reads, minCoverage, minUnitigCoverage, keepGaps, (minUnitigCoverage >= 2) && (maxResolveLength > 0) && guesswork);
