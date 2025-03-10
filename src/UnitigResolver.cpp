@@ -3884,6 +3884,35 @@ void addPlusOneComponent(const ResolvableUnitigGraph& resolvableGraph, phmap::fl
 	resolvables.insert(checked.begin(), checked.end());
 }
 
+bool nodeIsPalindrome(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const size_t node)
+{
+	phmap::flat_hash_set<std::string> readsWhichCoverFw;
+	phmap::flat_hash_set<std::string> readsWhichCoverBw;
+	for (const std::pair<uint32_t, uint32_t> pospair : resolvableGraph.iterateCrossingReads(node, readPaths))
+	{
+		const size_t pathi = pospair.first;
+		if (readPaths[pathi].path.size() < 2) continue;
+		if (readPaths[pathi].reads.size() < 1) continue;
+		if (pospair.second == 0 || pospair.second == readPaths[pathi].path.size()-1) continue;
+		assert(pospair.second >= 1 && pospair.second < readPaths[pathi].path.size()-1);
+		for (auto read : readPaths[pathi].reads)
+		{
+			std::string readname = resolvableGraph.readNames[read.readNameIndex].first;
+			if (readPaths[pathi].path[pospair.second].second)
+			{
+				if (readsWhichCoverBw.count(readname) == 1) return true;
+				readsWhichCoverFw.insert(readname);
+			}
+			else
+			{
+				if (readsWhichCoverFw.count(readname) == 1) return true;
+				readsWhichCoverBw.insert(readname);
+			}
+		}
+	}
+	return false;
+}
+
 bool isLocallyRepetitive(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const size_t node)
 {
 	for (const std::pair<uint32_t, uint32_t> pospair : resolvableGraph.iterateCrossingReads(node, readPaths))
@@ -3918,11 +3947,19 @@ bool isLocallyRepetitive(const ResolvableUnitigGraph& resolvableGraph, const std
 	return false;
 }
 
-phmap::flat_hash_set<size_t> filterToOnlyLocallyRepetitives(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const phmap::flat_hash_set<size_t>& unfilteredResolvables, const size_t maxDist)
+phmap::flat_hash_set<size_t> filterToOnlyLocallyRepetitives(const ResolvableUnitigGraph& resolvableGraph, const std::vector<PathGroup>& readPaths, const phmap::flat_hash_set<size_t>& unfilteredResolvables, const size_t maxDist, const bool resolvePalindromesGlobal)
 {
 	phmap::flat_hash_set<size_t> result;
 	for (size_t node : unfilteredResolvables)
 	{
+		if (resolvePalindromesGlobal)
+		{
+			if (nodeIsPalindrome(resolvableGraph, readPaths, node))
+			{
+				result.emplace(node);
+				continue;
+			}
+		}
 		if (maxDist == std::numeric_limits<size_t>::max())
 		{
 			if (isLocallyRepetitive(resolvableGraph, readPaths, node))
@@ -3964,7 +4001,7 @@ phmap::flat_hash_set<size_t> filterToOnlyLocallyRepetitives(const ResolvableUnit
 	return result;
 }
 
-void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const size_t minCoverage, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork, const bool copycountFilterHeuristic, const size_t maxLocalResolve, const bool doCleaning, std::ostream& log)
+void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>& readPaths, const size_t minCoverage, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool guesswork, const bool copycountFilterHeuristic, const size_t maxLocalResolve, const bool resolvePalindromesGlobal, const bool doCleaning, std::ostream& log)
 {
 	checkValidity(resolvableGraph, readPaths);
 	std::priority_queue<size_t, std::vector<size_t>, UnitigLengthComparer> queue { UnitigLengthComparer { resolvableGraph } };
@@ -4011,7 +4048,7 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 		if (maxLocalResolve > 0)
 		{
 			assert(topSize < maxLocalResolve);
-			resolvables = filterToOnlyLocallyRepetitives(resolvableGraph, readPaths, resolvables, maxLocalResolve);
+			resolvables = filterToOnlyLocallyRepetitives(resolvableGraph, readPaths, resolvables, maxLocalResolve, resolvePalindromesGlobal);
 			auto oldResolvables = resolvables;
 			for (auto node : oldResolvables)
 			{
@@ -4217,7 +4254,7 @@ bool operator!=(const std::vector<std::pair<size_t, bool>>& left, const std::vec
 	return !(left == right);
 }
 
-std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork, const bool copycountFilterHeuristic, const size_t maxLocalResolve, const bool doCleaning, std::ostream& log)
+std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& initial, const HashList& hashlist, std::vector<ReadPath>& rawReadPaths, const size_t minCoverage, const size_t kmerSize, const size_t maxResolveLength, const size_t maxUnconditionalResolveLength, const bool keepGaps, const bool guesswork, const bool copycountFilterHeuristic, const size_t maxLocalResolve, const bool resolvePalindromesGlobal, const bool doCleaning, std::ostream& log)
 {
 	auto resolvableGraph = getUnitigs(initial, minCoverage, hashlist, kmerSize, keepGaps, log);
 	log << rawReadPaths.size() << " raw read paths" << std::endl;
@@ -4298,8 +4335,8 @@ std::pair<UnitigGraph, std::vector<ReadPath>> resolveUnitigs(const UnitigGraph& 
 			}
 		}
 	}
-	resolveRound(resolvableGraph, readPaths, minCoverage, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, maxLocalResolve, doCleaning, log);
-	resolveRound(resolvableGraph, readPaths, 1, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, maxLocalResolve, doCleaning, log);
+	resolveRound(resolvableGraph, readPaths, minCoverage, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, maxLocalResolve, resolvePalindromesGlobal, doCleaning, log);
+	resolveRound(resolvableGraph, readPaths, 1, maxResolveLength, maxUnconditionalResolveLength, guesswork, copycountFilterHeuristic, maxLocalResolve, resolvePalindromesGlobal, doCleaning, log);
 	checkValidity(resolvableGraph, readPaths);
 	return resolvableToUnitigs(resolvableGraph, readPaths, readInfos);
 }

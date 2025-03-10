@@ -36,6 +36,7 @@ int main(int argc, char** argv)
 		("no-kmer-filter-inside-unitig", "Don't filter out k-mers which are completely contained by two other k-mers")
 		("no-multiplex-cleaning", "Don't clean low coverage tips and structures during multiplex resolution")
 		("keep-sequence-name-tags", "Keep tags in input sequence names")
+		("resolve-palindromes-global", "Resolve palindromic nodes even if their length is above the local resolution length")
 	;
 	auto params = options.parse(argc, argv);
 	if (params.count("v") == 1)
@@ -102,6 +103,7 @@ int main(int argc, char** argv)
 	bool filterWithinUnitig = true;
 	bool doCleaning = true;
 	bool keepSequenceNameTags = false;
+	bool resolvePalindromesGlobal = false;
 	std::string errorMaskingStr = "hpc";
 	std::string nodeNamePrefix = "";
 	std::string sequenceCacheFile = "";
@@ -155,10 +157,16 @@ int main(int argc, char** argv)
 	if (params.count("hpc-variant-onecopy-coverage") == 1) hpcVariantOnecopyCoverage = params["hpc-variant-onecopy-coverage"].as<double>();
 	if (params.count("copycount-filter-heuristic") == 1) copycountFilterHeuristic = true;
 	if (params.count("only-local-resolve") == 1) onlyLocalResolve = true;
+	if (params.count("resolve-palindromes-global") == 1) resolvePalindromesGlobal = true;
 	if (params.count("output-homology-map") == 1) outputHomologyMap = params["output-homology-map"].as<std::string>();
 	if (params.count("no-kmer-filter-inside-unitig") == 1) filterWithinUnitig = false;
 	if (params.count("no-multiplex-cleaning")) doCleaning = false;
 	if (params.count("keep-sequence-name-tags")) keepSequenceNameTags = true;
+
+	if (resolvePalindromesGlobal && !onlyLocalResolve)
+	{
+		std::cerr << "--resolve-palindromes-global set but --only-local-resolve not set, --resolve-palindromes-global will not do anything" << std::endl;
+	}
 
 	if (numThreads == 0)
 	{
@@ -218,10 +226,11 @@ int main(int argc, char** argv)
 	std::cerr << "guesswork=" << (guesswork ? "yes" : "no") << ",";
 	std::cerr << "copycountfilter=" << (copycountFilterHeuristic ? "yes" : "no") << ",";
 	std::cerr << "onlylocal=" << (onlyLocalResolve ? "yes" : "no") << ",";
+	std::cerr << "resolvepalindromesglobal=" << (resolvePalindromesGlobal ? "yes" : "no") << ",";
 	std::cerr << "filterwithinunitig=" << (filterWithinUnitig ? "yes" : "no") << ",";
 	std::cerr << "cleaning=" << (doCleaning ? "yes" : "no") << ",";
 	std::cerr << "cache=" << (sequenceCacheFile.size() > 0 ? "yes" : "no");
 	std::cerr << std::endl;
 
-	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix, sequenceCacheFile, keepGaps, hpcVariantOnecopyCoverage, guesswork, copycountFilterHeuristic, onlyLocalResolve, outputHomologyMap, filterWithinUnitig, doCleaning, keepSequenceNameTags);
+	runMBG(inputReads, outputGraph, kmerSize, windowSize, minCoverage, minUnitigCoverage, errorMasking, numThreads, includeEndKmers, outputSequencePaths, maxResolveLength, blunt, maxUnconditionalResolveLength, nodeNamePrefix, sequenceCacheFile, keepGaps, hpcVariantOnecopyCoverage, guesswork, copycountFilterHeuristic, onlyLocalResolve, resolvePalindromesGlobal, outputHomologyMap, filterWithinUnitig, doCleaning, keepSequenceNameTags);
 }
