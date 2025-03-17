@@ -1331,6 +1331,20 @@ std::vector<std::pair<size_t, bool>> getUnitigPath(const ResolvableUnitigGraph& 
 			assert(newUnitig[i] == fwExtension[i]);
 		}
 		newUnitig.pop_back();
+		// rotate to fix corner case where guesswork resolution causes a circular unitig to falsely have zero edge coverage even though reads do span all -kmers
+		// simple heuristic: problem can only happend between two newly added nodes. added nodes are all higher IDs than existing. rotate so breakpoint is at lowest ID to guarantee one node is previously existing
+		size_t rotationBreakpoint = 0;
+		for (size_t i = 1; i < newUnitig.size(); i++)
+		{
+			if (newUnitig[i].first < newUnitig[rotationBreakpoint].first) rotationBreakpoint = i;
+		}
+		if (rotationBreakpoint != 0)
+		{
+			std::vector<std::pair<size_t, bool>> fixedUnitig;
+			fixedUnitig.insert(fixedUnitig.end(), newUnitig.begin()+rotationBreakpoint, newUnitig.end());
+			fixedUnitig.insert(fixedUnitig.end(), newUnitig.begin(), newUnitig.begin()+rotationBreakpoint);
+			std::swap(fixedUnitig, newUnitig);
+		}
 	}
 	else
 	{
