@@ -967,6 +967,7 @@ AssemblyStats writeGraph(const UnitigGraph& unitigs, const std::string& filename
 		{
 			file << "\tkl:f:" << unitigRawKmerCoverages[i];
 		}
+		file << "\tcl:i:" << unitigSequences[i].compressedSize();
 		file << std::endl;
 		stats.size += realSequence.size();
 		nodeSizes.push_back(realSequence.size());
