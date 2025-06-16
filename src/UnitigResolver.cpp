@@ -3860,6 +3860,27 @@ std::unordered_set<size_t> trimNodes(std::vector<std::pair<std::pair<size_t, boo
 	return maybeUnitigifiable;
 }
 
+bool nodeLengthIsOverlapPlusOne(const ResolvableUnitigGraph& resolvableGraph, size_t startNode, size_t maxLength)
+{
+	for (auto edge : resolvableGraph.edges[std::make_pair(startNode, true)])
+	{
+		if (edge.first == startNode) return false;
+		if (resolvableGraph.unitigLength(startNode) != resolvableGraph.getBpOverlap(std::make_pair(startNode, true), edge)+1)
+		{
+			return false;
+		}
+	}
+	for (auto edge : resolvableGraph.edges[std::make_pair(startNode, false)])
+	{
+		if (edge.first == startNode) return false;
+		if (resolvableGraph.unitigLength(startNode) != resolvableGraph.getBpOverlap(std::make_pair(startNode, false), edge)+1)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
 void addPlusOneComponent(const ResolvableUnitigGraph& resolvableGraph, phmap::flat_hash_set<size_t>& resolvables, size_t startNode, size_t maxLength)
 {
 	phmap::flat_hash_set<size_t> checked;
@@ -4039,9 +4060,25 @@ void resolveRound(ResolvableUnitigGraph& resolvableGraph, std::vector<PathGroup>
 			if (!resolvableGraph.unitigRemoved[queue.top()])
 			{
 				addPlusOneComponent(resolvableGraph, resolvables, queue.top(), topSize);
-				if (resolvableGraph.edges[std::make_pair(queue.top(), true)].size() >= 2 || resolvableGraph.edges[std::make_pair(queue.top(), false)].size() >= 2)
+				if (resolvableGraph.edges[std::make_pair(queue.top(), true)].size() >= 2 && resolvableGraph.edges[std::make_pair(queue.top(), false)].size() >= 2)
 				{
 					resolvables.emplace(queue.top());
+				}
+				else if (resolvableGraph.edges[std::make_pair(queue.top(), true)].size() >= 2 || resolvableGraph.edges[std::make_pair(queue.top(), false)].size() >= 2)
+				{
+					assert(resolvableGraph.edges[std::make_pair(queue.top(), true)].size() <= 1 || resolvableGraph.edges[std::make_pair(queue.top(), false)].size() <= 1);
+					if (resolvableGraph.edges[std::make_pair(queue.top(), true)].size() == 0 || resolvableGraph.edges[std::make_pair(queue.top(), false)].size() == 0)
+					{
+						resolvables.emplace(queue.top());
+					}
+					else
+					{
+						assert(resolvableGraph.edges[std::make_pair(queue.top(), true)].size() == 1 || resolvableGraph.edges[std::make_pair(queue.top(), false)].size() == 1);
+						if (nodeLengthIsOverlapPlusOne(resolvableGraph, queue.top(), topSize))
+						{
+							resolvables.emplace(queue.top());
+						}
+					}
 				}
 				else if (resolvableGraph.edges[std::make_pair(queue.top(), true)].size() >= 1 && resolvableGraph.edges[std::make_pair(queue.top(), false)].size() >= 1)
 				{
