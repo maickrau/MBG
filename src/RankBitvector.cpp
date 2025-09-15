@@ -6,8 +6,17 @@ int popcount(uint64_t x)
 	//https://gcc.gnu.org/onlinedocs/gcc-4.8.4/gcc/X86-Built-in-Functions.html
 	// return __builtin_popcountll(x);
 	//for some reason __builtin_popcount takes 21 instructions so call assembly directly
+#ifdef __x86_64__
 	__asm__("popcnt %0, %0" : "+r" (x));
 	return x;
+#else
+	uint64_t count = 0;
+	while (x) {
+		count += x & 1;
+		x >>= 1;
+	}
+	return count;
+#endif
 }
 
 RankBitvector::RankBitvector() :

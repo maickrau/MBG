@@ -1,17 +1,31 @@
 PLATFORM=$(shell uname -s)
 
+# Figure out bamtools, if we find the binary use it as the root or fallback to system libs
+BAMTOOLS_BIN=$(shell command -v bamtools 2>/dev/null)
+BAMTOOLS_PREFIX=$(patsubst %/bin/bamtools,%,$(BAMTOOLS_BIN))
+
+# Guess include and lib dirs under that prefix
+# don't use this if the user specified one
+BAMTOOLS_INCLUDE ?= $(wildcard $(BAMTOOLS_PREFIX)/include/bamtools)
+BAMTOOLS_LIB     ?= $(firstword $(wildcard $(BAMTOOLS_PREFIX)/lib64 $(BAMTOOLS_PREFIX)/lib))
+
 GPP=$(CXX)
 CPPFLAGS=-Wall -Wextra -std=c++17 -O3 -g -Izstr/src -Iparallel-hashmap/parallel_hashmap/ -Wno-unused-parameter -Icxxopts/include -Iconcurrentqueue `pkg-config --cflags zlib` -fPIE
-# silly workaround: bamtools does not have pkg-config cflags for finding the include directory
-# instead assume it's a folder at the same location as zlib
-CPPFLAGS+=`pkg-config --cflags zlib`/bamtools
+
+ifneq ($(BAMTOOLS_INCLUDE),)
+CPPFLAGS+=-I$(BAMTOOLS_INCLUDE)
+endif
 
 ODIR=obj
 BINDIR=bin
 SRCDIR=src
 LIBDIR=lib
 
-LIBS=`pkg-config --libs zlib` -lbamtools
+LIBS=`pkg-config --libs zlib`
+ifneq ($(BAMTOOLS_LIB),)
+LIBS+=-L$(BAMTOOLS_LIB)
+endif
+LIBS+=-lbamtools
 
 _DEPS = fastqloader.h CommonUtils.h MBGCommon.h VectorWithDirection.h FastHasher.h SparseEdgeContainer.h HashList.h UnitigGraph.h BluntGraph.h ReadHelper.h HPCConsensus.h ErrorMaskHelper.h CompressedSequence.h ConsensusMaker.h StringIndex.h LittleBigVector.h MostlySparse2DHashmap.h RankBitvector.h TwobitLittleBigVector.h UnitigResolver.h CumulativeVector.h UnitigHelper.h BigVectorSet.h Serializer.h DumbSelect.h MsatValueVector.h Node.h KmerMatcher.h
 DEPS = $(patsubst %, $(SRCDIR)/%, $(_DEPS))
@@ -19,11 +33,12 @@ DEPS = $(patsubst %, $(SRCDIR)/%, $(_DEPS))
 _OBJ = MBG.o fastqloader.o CommonUtils.o MBGCommon.o FastHasher.o SparseEdgeContainer.o HashList.o UnitigGraph.o BluntGraph.o HPCConsensus.o ErrorMaskHelper.o CompressedSequence.o ConsensusMaker.o StringIndex.o RankBitvector.o UnitigResolver.o UnitigHelper.o BigVectorSet.o ReadHelper.o Serializer.o DumbSelect.o MsatValueVector.o Node.o KmerMatcher.o
 OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 
+ifeq ($(PLATFORM),Linux)
 LINKFLAGS = $(CPPFLAGS) -Wl,-Bstatic $(LIBS) -Wl,-Bdynamic -Wl,--as-needed -lpthread -pthread -static-libstdc++
 
-ifeq ($(PLATFORM),Linux)
 else
    CPPFLAGS += -D_LIBCPP_DISABLE_AVAILABILITY
+   LINKFLAGS = $(CPPFLAGS) $(LIBS) -lpthread -pthread -static-libstdc++
 endif
 
 VERSION := Branch $(shell git rev-parse --abbrev-ref HEAD) commit $(shell git rev-parse HEAD) $(shell git show -s --format=%ci)
